@@ -68,6 +68,45 @@ async function answerTogether(playerA, playerB, gameId, snapshot, aIndex = 0, bI
   return revealed;
 }
 
+async function answerWithRetry(playerA, playerB, gameId, snapshot) {
+  const [privateA, privateB] = await Promise.all([self(playerA, gameId), self(playerB, gameId)]);
+  const first = await rpc(playerA, 'submit_answer', {
+    p_game_id: gameId,
+    p_window_id: snapshot.activeWindowId,
+    p_option_id: privateA.options[0].id,
+  });
+  const retry = await rpc(playerA, 'submit_answer', {
+    p_game_id: gameId,
+    p_window_id: snapshot.activeWindowId,
+    p_option_id: privateA.options[0].id,
+  });
+  assert.equal(retry.publicState.revision, first.publicState.revision, 'duplicate answer must not mutate state');
+  await rpc(playerB, 'submit_answer', {
+    p_game_id: gameId,
+    p_window_id: snapshot.activeWindowId,
+    p_option_id: privateB.options[1].id,
+  });
+  return state(playerA, gameId);
+}
+
+async function answerWithTimeout(playerA, host, gameId, snapshot) {
+  const privateA = await self(playerA, gameId);
+  await rpc(playerA, 'submit_answer', {
+    p_game_id: gameId,
+    p_window_id: snapshot.activeWindowId,
+    p_option_id: privateA.options[0].id,
+  });
+  const waitMs = Math.max(0, snapshot.deadlineMs - snapshot.serverNowMs + 150);
+  await delay(waitMs);
+  await rpc(host, 'advance_if_due', { p_game_id: gameId, p_window_id: snapshot.activeWindowId });
+  const revealed = await state(host, gameId);
+  const answers = Object.values(revealed.currentQuestion.revealedAnswers);
+  assert.equal(answers.length, 2, 'timeout still publishes a result for both seats');
+  assert.equal(answers.filter((answer) => answer.label === 'No answer').length, 1, 'timeout seals exactly one missing answer');
+  assert.equal(revealed.timeline.at(-1).payload.timedOut, true);
+  return revealed;
+}
+
 async function advanceRevealHold(host, gameId, snapshot) {
   const waitMs = Math.max(0, snapshot.deadlineMs - snapshot.serverNowMs + 150);
   await delay(waitMs);
@@ -79,7 +118,7 @@ const host = await actor('host');
 const playerA = await actor('player A');
 const playerB = await actor('player B');
 
-const created = await rpc(host, 'create_game', { p_mode: 'standard', p_timer_seconds: 15 });
+const created = await rpc(host, 'create_game', { p_mode: 'standard', p_timer_seconds: 8 });
 const gameId = created.publicState.gameId;
 const roomCode = created.publicState.roomCode;
 await rpc(playerA, 'claim_seat', { p_room_code: roomCode, p_sticker: 'moon' });
@@ -91,6 +130,10 @@ await Promise.all([
 
 let snapshot = await state(host, gameId);
 assert.equal(snapshot.checkpoint.kind, 'awaiting_learn_questions');
+const staleRevision = await agent(host, gameId, { ...snapshot, revision: snapshot.revision - 1 }, 'propose_learn_questions', { questions: [] });
+assert.equal(staleRevision.code, 'REVISION_CONFLICT');
+const wrongPhase = await agent(host, gameId, snapshot, 'propose_challenge_question', { question: {} });
+assert.equal(wrongPhase.code, 'INVALID_PHASE');
 
 const learnQuestions = [
   ['Which spontaneous afternoon plan feels most natural?', ['Cafe crawl', 'Long walk', 'Make something', 'Call a friend']],
@@ -114,11 +157,17 @@ const conflict = await agent(host, gameId, learnCheckpoint, 'propose_learn_quest
   questions: learnQuestions.map((question, index) => index === 0 ? { ...question, prompt: 'Which unplanned afternoon sounds most like you?' } : question),
 });
 assert.equal(conflict.code, 'IDEMPOTENCY_CONFLICT');
+const expiredCheckpoint = await agent(host, gameId, learnCheckpoint, 'place_suspicion', {
+  targetSeat: 'seat_a', reason: 'Expired checkpoint probe', evidenceIds: [],
+});
+assert.equal(expiredCheckpoint.code, 'CHECKPOINT_EXPIRED');
 
 snapshot = await state(host, gameId);
 for (let ordinal = 1; ordinal <= 5; ordinal += 1) {
   assert.equal(snapshot.currentQuestion.ordinal, ordinal);
-  snapshot = await answerTogether(playerA, playerB, gameId, snapshot);
+  snapshot = ordinal === 1
+    ? await answerWithRetry(playerA, playerB, gameId, snapshot)
+    : await answerTogether(playerA, playerB, gameId, snapshot);
   snapshot = await advanceRevealHold(host, gameId, snapshot);
 }
 
@@ -159,6 +208,17 @@ assert.equal(snapshot.checkpoint.kind, 'awaiting_challenge_question');
 for (let round = 1; round <= 4; round += 1) {
   assert.equal(snapshot.round, round);
   const basisId = snapshot.eligibleEvidence.at(-1).id;
+  if (round === 1) {
+    const invalidEvidence = await agent(host, gameId, snapshot, 'propose_challenge_question', {
+      question: {
+        prompt: 'Which public clue should guide this round?',
+        options: ['First clue', 'Second clue', 'Third clue', 'Fourth clue'],
+        basisEvidenceIds: [9_999_999_999],
+      },
+    });
+    assert.equal(invalidEvidence.code, 'INVALID_EVIDENCE');
+    assert.equal(invalidEvidence.revision, snapshot.revision);
+  }
   const questionResult = await agent(host, gameId, snapshot, 'propose_challenge_question', {
     question: {
       prompt: `Round ${round}: which choice would your friend expect from you?`,
@@ -168,7 +228,9 @@ for (let round = 1; round <= 4; round += 1) {
   });
   assert.equal(questionResult.ok, true);
   snapshot = await state(host, gameId);
-  snapshot = await answerTogether(playerA, playerB, gameId, snapshot, round % 4, (round + 1) % 4);
+  snapshot = round === 2
+    ? await answerWithTimeout(playerA, host, gameId, snapshot)
+    : await answerTogether(playerA, playerB, gameId, snapshot, round % 4, (round + 1) % 4);
   assert.equal(snapshot.checkpoint.kind, 'awaiting_suspicion');
   const challengeEvidence = snapshot.eligibleEvidence.at(-1).id;
   const suspicion = await agent(host, gameId, snapshot, 'place_suspicion', {
@@ -183,10 +245,20 @@ for (let round = 1; round <= 4; round += 1) {
     assert.equal(snapshot.phase, 'objection');
     assert.equal(snapshot.timeline.at(-1).type, 'suspicion_staged');
     assert.equal('targetSeat' in snapshot.timeline.at(-1).payload, false, 'staged suspicion target must remain sealed');
+    assert.equal(snapshot.objection.pendingTarget, null, 'staged suspicion target must not leak through the public objection projection');
+    assert.equal(snapshot.suspicion?.round === 3, false, 'staged suspicion must not replace the last public suspicion');
     const blindWindow = snapshot.activeWindowId;
-    await rpc(playerA, 'claim_objection', { p_game_id: gameId, p_window_id: blindWindow });
+    const sequenceBeforeClaim = snapshot.sequence;
+    const claims = await Promise.allSettled([
+      rpc(playerA, 'claim_objection', { p_game_id: gameId, p_window_id: blindWindow }),
+      rpc(playerB, 'claim_objection', { p_game_id: gameId, p_window_id: blindWindow }),
+    ]);
+    assert.equal(claims.filter((claim) => claim.status === 'fulfilled').length, 2, 'the losing simultaneous claim is an idempotent no-op');
     snapshot = await state(host, gameId);
     assert.equal(snapshot.checkpoint.kind, 'awaiting_objection_question');
+    assert.equal(snapshot.sequence, sequenceBeforeClaim + 1, 'simultaneous Objection claims must emit exactly one event');
+    assert(['seat_a', 'seat_b'].includes(snapshot.objection.claimedBy));
+    assert(['seat_a', 'seat_b'].includes(snapshot.objection.pendingTarget));
     const objectionBasis = snapshot.eligibleEvidence.at(-1).id;
     const objectionQuestion = await agent(host, gameId, snapshot, 'propose_objection_question', {
       question: {
@@ -237,6 +309,7 @@ assert.equal(snapshot.phase, 'revealed');
 assert(snapshot.result.originalSeat);
 assert(snapshot.result.mirrorSeat);
 assert(snapshot.result.winner);
+assert.equal(snapshot.revision, snapshot.sequence, 'each durable mutation must map to exactly one ordered event');
 
 const demoHost = await actor('demo host');
 const demoA = await actor('demo player A');
@@ -261,13 +334,17 @@ console.log(JSON.stringify({
   standardGame: { gameId, roomCode, finalRevision: snapshot.revision, finalSequence: snapshot.sequence },
   demoGame: { gameId: demoId, roomCode: demoCode },
   checks: [
+    'revision-and-checkpoint-conflicts',
     'invalid-question-rollback',
     'agent-idempotency',
+    'duplicate-answer-idempotency',
+    'answer-timeout',
     'five-learn-rounds',
     'traits-and-private-feedback',
     'private-role-reveal',
     'four-challenge-rounds',
-    'blind-objection',
+    'invalid-evidence-rollback',
+    'blind-objection-privacy-and-concurrency',
     'accusation-countdown-reload',
     'demo-fixture-v1',
   ],

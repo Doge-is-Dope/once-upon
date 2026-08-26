@@ -51,7 +51,7 @@ button:disabled { cursor: not-allowed; opacity: .55; transform: none !important;
 .helper { margin-top: 18px; color: rgb(23 35 25 / 65%); font-size: 13px; }
 .timer-choice { width: fit-content; margin: 26px auto 0; padding: 7px; display: flex; gap: 4px; border: 1.5px solid var(--line); border-radius: 13px; background: rgb(255 255 255 / 65%); }
 .timer-choice legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.timer-choice label { min-height: 42px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.timer-choice label { min-height: 48px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
 .timer-choice label:has(input:checked) { background: var(--acid); }
 .timer-choice input { accent-color: var(--ink); }
 .error-banner { max-width: 620px; margin: 18px auto 0; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 12px; background: #ffd4cc; font-size: 14px; font-weight: 650; }
@@ -110,7 +110,7 @@ footer { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 0 0 40p
 .qr-wrap { width: fit-content; margin: 0 auto; padding: 14px; border: 2px solid var(--line); border-radius: 16px; background: white; }
 .join-card p { margin: 16px 0 2px; font-size: 13px; }
 .big-code { display: block; font-family: var(--font-geist-mono), monospace; font-size: clamp(46px, 8vw, 74px); letter-spacing: .13em; line-height: 1.15; }
-.text-button { min-height: 44px; padding: 6px 10px; border: 0; background: none; text-decoration: underline; text-underline-offset: 4px; font-weight: 750; }
+.text-button { min-height: 48px; padding: 6px 10px; border: 0; background: none; text-decoration: underline; text-underline-offset: 4px; font-weight: 750; }
 .lobby-players { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .lobby-players .toggle-row { grid-column: 1 / -1; }
 .toggle-row { min-height: 64px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; border: 1.5px solid var(--line); border-radius: 14px; background: white; cursor: pointer; }

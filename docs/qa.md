@@ -24,6 +24,20 @@ Recorded 2026-08-26 UTC on `https://can-you-be-me.clement-liang.chatgpt.site`:
 
 This automated evidence does not replace the physical two-phone or three-consecutive-game release matrix below.
 
+## Gate 3 automated production evidence
+
+Recorded 2026-08-26 UTC against the production Supabase project before feature freeze:
+
+- The staged Q3 suspicion target remains absent from the public projection throughout the blind Objection window.
+- Concurrent Objection claims produce one durable event and one winner; the losing call is an idempotent no-op.
+- Duplicate answers do not increment revision, and a one-player answer deadline records the other seat as `No answer` with `timedOut: true`.
+- Stale revision, expired checkpoint, wrong phase, invalid evidence, invalid question, and conflicting Agent retry paths return structured errors without mutating revision.
+- The complete standard game again reached reveal at revision/sequence 50; Demo fixture `demo-v1` again reached private role reveal.
+- `wait_for_public_event` now has automated durable-read, subscribe/re-read, timeout cap, cancellation-race, and cleanup coverage.
+- Desktop and phone Playwright projects pass at 320px and 16:9, with axe, keyboard, 48px touch targets, and reduced-motion assertions.
+
+Physical-device runs remain in the post-freeze production game matrix below.
+
 ## Required manual matrix
 
 - ChatGPT Desktop with supported Sol and Terra configurations.

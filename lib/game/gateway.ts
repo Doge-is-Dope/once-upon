@@ -130,10 +130,12 @@ export class GameGateway {
 
   async waitForPublicEvent(gameId: string, afterSequence: number, timeoutMs: number, signal?: AbortSignal): Promise<PublicEvent | null> {
     const cappedTimeout = Math.min(Math.max(timeoutMs, 0), 20_000);
+    if (signal?.aborted) throw new DOMException('WebMCP execution was cancelled.', 'AbortError');
     const existing = await this.getEventsAfter(gameId, afterSequence);
     if (existing[0]) return existing[0];
+    if (signal?.aborted) throw new DOMException('WebMCP execution was cancelled.', 'AbortError');
 
-    return new Promise<PublicEvent | null>(async (resolve, reject) => {
+    return new Promise<PublicEvent | null>((resolve, reject) => {
       let settled = false;
       let cleanup = () => {};
       const finish = (value: PublicEvent | null, error?: unknown) => {
@@ -155,8 +157,16 @@ export class GameGateway {
       const onAbort = () => finish(null, new DOMException('WebMCP execution was cancelled.', 'AbortError'));
       const timer = setTimeout(() => finish(null), cappedTimeout);
       signal?.addEventListener('abort', onAbort, { once: true });
-      cleanup = await this.subscribe(gameId, () => void read(), () => {});
-      await read();
+      void this.subscribe(gameId, () => void read(), () => {})
+        .then(async (unsubscribe) => {
+          if (settled) {
+            unsubscribe();
+            return;
+          }
+          cleanup = unsubscribe;
+          await read();
+        })
+        .catch((error: unknown) => finish(null, error));
     });
   }
 }

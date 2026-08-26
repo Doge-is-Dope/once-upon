@@ -284,7 +284,11 @@ begin
   select jsonb_build_object('id', s.id, 'round', s.round, 'targetSeat', s.target_seat, 'reason', s.reason, 'evidenceIds', s.evidence_ids, 'resolution', s.resolution)
   into suspicion from private.suspicions s where s.game_id = p_game_id and s.is_public order by s.round desc limit 1;
 
-  select jsonb_build_object('available', o.available, 'claimedBy', o.claimed_by, 'pendingTarget', o.pending_target)
+  select jsonb_build_object(
+    'available', o.available,
+    'claimedBy', o.claimed_by,
+    'pendingTarget', case when g.checkpoint_kind = 'awaiting_objection_question' then o.pending_target else null end
+  )
   into objection from private.objections o where o.game_id = p_game_id;
 
   select coalesce(jsonb_agg(jsonb_build_object(

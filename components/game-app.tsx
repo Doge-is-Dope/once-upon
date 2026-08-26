@@ -80,7 +80,10 @@ export function GameApp() {
       (status) => {
         if (!disposed) dispatch({ type: 'connection', payload: { status: status === 'SUBSCRIBED' ? 'connected' : 'reconnecting' } });
       },
-    ).then((cleanup) => { unsubscribe = cleanup; });
+    ).then((cleanup) => {
+      if (disposed) cleanup();
+      else unsubscribe = cleanup;
+    });
     const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, activePhase === 'lobby' ? 10_000 : 5_000);
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
     document.addEventListener('visibilitychange', onVisible);
