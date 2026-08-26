@@ -1,0 +1,18 @@
+project_id = "can-you-be-me"
+
+[api]
+enabled = true
+schemas = ["api"]
+extra_search_path = ["extensions"]
+
+[auth]
+enabled = true
+
+[auth.email]
+enable_signup = false
+
+[auth.anonymous]
+enabled = true
+
+[realtime]
+enabled = true
