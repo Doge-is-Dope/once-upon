@@ -36,7 +36,7 @@ function friendlyError(error: unknown): string {
 export function GameApp() {
   const [roomCode, setRoomCode] = useState<string | null>(() => roomFromLocation());
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
-  const [timerSeconds, setTimerSeconds] = useState<8 | 15>(8);
+  const timerSeconds = 8 as const;
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const activeGameId = state.bootstrap?.publicState.gameId;
   const activePhase = state.bootstrap?.publicState.phase;
@@ -123,7 +123,7 @@ export function GameApp() {
     finally { dispatch({ type: 'pending', payload: null }); }
   };
 
-  if (!roomCode) return <Landing timerSeconds={timerSeconds} onTimerChange={setTimerSeconds} onCreate={createRoom} pending={state.pendingAction} error={state.error} />;
+  if (!roomCode) return <Landing onCreate={createRoom} pending={state.pendingAction} error={state.error} />;
   if (!state.bootstrap) return <LoadingScreen roomCode={roomCode} message={state.pendingAction ?? 'Finding your room…'} error={state.error} />;
   if (state.bootstrap.viewerKind === 'join') return <JoinRoom bootstrap={state.bootstrap} pending={state.pendingAction} error={state.error} onJoin={(sticker) => run('Claiming your seat…', () => gameGateway.claimSeat(roomCode, sticker))} />;
   return <RoomExperience bootstrap={state.bootstrap} connection={state.connection.status} pending={state.pendingAction} error={state.error} onAction={run} />;
@@ -140,13 +140,17 @@ function BrandHeader({ roomCode }: { roomCode?: string }) {
   );
 }
 
-function Landing({ timerSeconds, onTimerChange, onCreate, pending, error }: { timerSeconds: 8 | 15; onTimerChange(value: 8 | 15): void; onCreate(mode: GameMode): void; pending: string | null; error: string | null }) {
-  return <main id="content" className="game-shell" tabIndex={-1}><BrandHeader /><section className="hero" aria-labelledby="game-title"><p className="eyebrow">Two friends. One secret Mirror.</p><h1 id="game-title">Can ChatGPT tell<br />who is being real?</h1><p className="lede">Answer in private. Bluff in public. Let the Detective decide who is the Original—and who is only pretending.</p><fieldset className="timer-choice"><legend>Answer timer</legend><label><input type="radio" name="timer" checked={timerSeconds === 8} onChange={() => onTimerChange(8)} /> 8 seconds</label><label><input type="radio" name="timer" checked={timerSeconds === 15} onChange={() => onTimerChange(15)} /> Extended — 15 seconds</label></fieldset><div className="hero-actions"><button className="button button-primary" type="button" onClick={() => onCreate('standard')} disabled={Boolean(pending)}>{pending ?? 'Create a room'}</button><button className="button button-secondary" type="button" onClick={() => onCreate('demo')} disabled={Boolean(pending)}>Try Demo Room</button></div>{error && <p className="error-banner" role="alert">{error}</p>}<p className="helper">You’ll need this screen and two phones. No accounts or text entry.</p></section><PreviewBoard /><footer><p>Built for the WebMCP Challenge · Private answers stay private until reveal.</p></footer></main>;
+function Landing({ onCreate, pending, error }: { onCreate(mode: GameMode): void; pending: string | null; error: string | null }) {
+  return <main id="content" className="game-shell" tabIndex={-1}><BrandHeader /><section className="hero" aria-labelledby="game-title"><p className="eyebrow">2 players · 2 phones · 5–7 min</p><h1 id="game-title">Can you fool ChatGPT?</h1><p className="lede">Two friends answer private questions. Then one becomes the Mirror and tries to answer like the other. ChatGPT must catch them.</p><div className="hero-actions"><button className="button button-primary" type="button" onClick={() => onCreate('standard')} disabled={Boolean(pending)}>{pending ?? 'Start a game'}</button><button className="button button-secondary" type="button" onClick={() => onCreate('demo')} disabled={Boolean(pending)}>Quick demo</button></div>{error && <p className="error-banner" role="alert">{error}</p>}<p className="helper">Use this screen as the board. Both modes need two phones.</p></section><HowItWorks /><footer><p>Built for the WebMCP Challenge · Private answers stay private until reveal.</p></footer></main>;
 }
 
-function PreviewBoard() {
-  const players = [{ seat: 'Player A', sticker: '🐯', name: 'Tiger', trait: 'Bold planner' }, { seat: 'Player B', sticker: '👻', name: 'Ghost', trait: 'Quiet wildcard' }];
-  return <section className="board-preview" aria-labelledby="preview-title"><div className="board-topline"><div><p className="eyebrow">Live game preview</p><h2 id="preview-title">Detective checkpoint</h2></div><Progress phase="challenge" round={3} /></div><div className="board-grid">{players.map((player) => <article className="player-card" key={player.seat}><div className="sticker" aria-hidden="true">{player.sticker}</div><p className="player-seat">{player.seat}</p><h3>{player.name}</h3><span className="ready-badge">✓ Ready</span><div className="trait-list"><span>{player.trait}</span><span>{player.name === 'Tiger' ? 'Snack loyalist' : 'Last-minute energy'}</span></div></article>)}<DetectiveStage checkpoint="Detective is thinking…" title="Who chose “leave at sunrise” for the right reason?" body="Timers are paused while ChatGPT reviews the public evidence." /></div></section>;
+function HowItWorks() {
+  const steps = [
+    { icon: '📱', title: 'Join on two phones', body: 'Both players scan the room code.' },
+    { icon: '🎭', title: 'Get secret roles', body: 'One is the Original. One becomes the Mirror.' },
+    { icon: '🕵️', title: 'Fool the Detective', body: 'The Original answers honestly. The Mirror predicts them. ChatGPT names the fake.' },
+  ];
+  return <section className="how-it-works" aria-labelledby="how-title"><div className="how-heading"><p className="eyebrow">How it works</p><h2 id="how-title">Three steps. One fake.</h2></div><ol className="step-list">{steps.map((step, index) => <li className="step-card" key={step.title}><div className="step-top" aria-hidden="true"><span className="step-number">{index + 1}</span><span className="step-icon">{step.icon}</span></div><h3>{step.title}</h3><p>{step.body}</p></li>)}</ol></section>;
 }
 
 function LoadingScreen({ roomCode, message, error }: { roomCode: string; message: string; error: string | null }) {

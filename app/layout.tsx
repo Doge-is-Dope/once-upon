@@ -6,18 +6,18 @@ const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Can You Be Me? — A live AI detective party game',
-  description: 'Two friends answer in private while ChatGPT tries to catch the secret Mirror.',
+  title: 'Can You Be Me? — Fool the AI Detective',
+  description: 'Two friends, two phones, one secret Mirror. Can ChatGPT tell who is real?',
   openGraph: {
-    title: 'Can You Be Me?',
-    description: 'Can ChatGPT catch the Mirror?',
+    title: 'Can You Be Me? — Fool the AI Detective',
+    description: 'Two friends, two phones, one secret Mirror. Can ChatGPT tell who is real?',
     type: 'website',
     images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Can You Be Me? AI detective party game' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Can You Be Me?',
-    description: 'Can ChatGPT catch the Mirror?',
+    title: 'Can You Be Me? — Fool the AI Detective',
+    description: 'Two friends, two phones, one secret Mirror. Can ChatGPT tell who is real?',
     images: ['/og.png'],
   },
 };
