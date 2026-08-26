@@ -6,9 +6,23 @@ No production pass should be marked complete without a URL, timestamp, device/br
 
 - `npm run verify`: ESLint, Vitest/RTL, and production build.
 - `npm run test:e2e`: Playwright host and phone viewports.
+- `npm run test:supabase`: independent anonymous Host/player/outsider projection and authorization smoke test.
+- `npm run test:supabase:e2e`: complete standard game plus versioned Demo Room against the configured Supabase project.
 - `npx supabase db lint --linked`: migration and database function checks.
 - `npx supabase test db --linked`: pgTAP schema/security smoke tests.
 - `npm audit --omit=dev`: production dependency advisories.
+
+## Gate 2 automated production evidence
+
+Recorded 2026-08-26 UTC on `https://can-you-be-me.clement-liang.chatgpt.site`:
+
+- Public HTTPS page loaded and created a Supabase-backed room from the deployed origin.
+- The deployed document exposed exactly ten WebMCP tools; `get_public_game_state` executed successfully against the bound Host room.
+- A complete standard game reached the durable reveal result at revision/sequence 50, including five Learn rounds, traits, private roles, four Challenges, blind Objection, resolution, accusation, and countdown advancement.
+- Demo fixture `demo-v1` reached private role reveal with two traits per player.
+- Invalid question rollback, Agent retry/idempotency conflict, stable private option order, unrelated-user denial, and hidden private schema checks passed.
+
+This automated evidence does not replace the physical two-phone or three-consecutive-game release matrix below.
 
 ## Required manual matrix
 

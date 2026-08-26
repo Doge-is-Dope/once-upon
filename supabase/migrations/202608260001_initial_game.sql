@@ -914,7 +914,7 @@ declare
   item jsonb;
   seat_value text;
   traits jsonb;
-  evidence_ids bigint[];
+  evidence_id_values bigint[];
   suspicion_record private.suspicions;
   target text;
   decision text;
@@ -965,43 +965,43 @@ begin
       for item in select * from jsonb_array_elements(p_payload->'players') loop
         seat_value:=item->>'seat'; traits:=item->'traits';
         if seat_value not in ('seat_a','seat_b') or jsonb_array_length(coalesce(traits,'[]'))<>2 then raise exception 'INVALID_TRAITS'; end if;
-        evidence_ids:=private.assert_evidence(p_game_id,item->'evidenceIds',1);
+        evidence_id_values:=private.assert_evidence(p_game_id,item->'evidenceIds',1);
         if exists(select 1 from jsonb_array_elements_text(traits) where char_length(trim(value)) not between 2 and 48 or value~E'[\n\r]') then raise exception 'INVALID_TRAITS'; end if;
         insert into private.player_traits(game_id,seat,ordinal,trait,evidence_ids)
-        select p_game_id,seat_value,ordinality,trim(value),evidence_ids from jsonb_array_elements_text(traits) with ordinality;
+        select p_game_id,seat_value,ordinality,trim(value),evidence_id_values from jsonb_array_elements_text(traits) with ordinality;
       end loop;
       if (select count(*) from private.player_traits where game_id=p_game_id)<>4 then raise exception 'INVALID_TRAITS'; end if;
       update private.games set phase='trait_review',checkpoint_kind=null,checkpoint_id=null,current_question_id=null,current_round_id=null where id=p_game_id;
       event_result:=private.emit_event(p_game_id,'detective','traits_published','The Detective published two traits for each player','{}');
     elsif p_tool_name='place_suspicion' then
-      target:=p_payload->>'targetSeat'; reason_value:=trim(p_payload->>'reason'); evidence_ids:=private.assert_evidence(p_game_id,p_payload->'evidenceIds',1);
+      target:=p_payload->>'targetSeat'; reason_value:=trim(p_payload->>'reason'); evidence_id_values:=private.assert_evidence(p_game_id,p_payload->'evidenceIds',1);
       if target not in ('seat_a','seat_b') or char_length(reason_value) not between 2 and 140 then raise exception 'INVALID_SUSPICION'; end if;
       insert into private.suspicions(game_id,round,target_seat,reason,evidence_ids,is_public)
-      values(p_game_id,g.round,target,reason_value,evidence_ids,g.round<>3) returning * into suspicion_record;
+      values(p_game_id,g.round,target,reason_value,evidence_id_values,g.round<>3) returning * into suspicion_record;
       if g.round=3 then
         update private.objections set pending_target=target where game_id=p_game_id;
         update private.games set phase='objection',checkpoint_kind=null,checkpoint_id=null,active_window_id=extensions.gen_random_uuid(),deadline=clock_timestamp()+interval '3 seconds',window_kind='blind_objection' where id=p_game_id;
         event_result:=private.emit_event(p_game_id,'detective','suspicion_staged','The Detective locked a hidden Q3 suspicion','{}');
       elsif g.round<4 then
         update private.games set round=g.round+1,checkpoint_kind='awaiting_challenge_question',checkpoint_id=extensions.gen_random_uuid(),current_question_id=null,current_round_id=null where id=p_game_id;
-        event_result:=private.emit_event(p_game_id,'detective','suspicion_placed','The Detective placed suspicion',jsonb_build_object('round',g.round,'targetSeat',target,'reason',reason_value,'evidenceIds',evidence_ids));
+        event_result:=private.emit_event(p_game_id,'detective','suspicion_placed','The Detective placed suspicion',jsonb_build_object('round',g.round,'targetSeat',target,'reason',reason_value,'evidenceIds',evidence_id_values));
       else
         update private.games set phase='accuse',checkpoint_kind='awaiting_accusation',checkpoint_id=extensions.gen_random_uuid() where id=p_game_id;
-        event_result:=private.emit_event(p_game_id,'detective','suspicion_placed','The Detective placed the final suspicion',jsonb_build_object('round',g.round,'targetSeat',target,'reason',reason_value,'evidenceIds',evidence_ids));
+        event_result:=private.emit_event(p_game_id,'detective','suspicion_placed','The Detective placed the final suspicion',jsonb_build_object('round',g.round,'targetSeat',target,'reason',reason_value,'evidenceIds',evidence_id_values));
       end if;
     elsif p_tool_name='resolve_objection' then
-      decision:=p_payload->>'decision'; reason_value:=trim(p_payload->>'reason'); evidence_ids:=private.assert_evidence(p_game_id,p_payload->'evidenceIds',1);
+      decision:=p_payload->>'decision'; reason_value:=trim(p_payload->>'reason'); evidence_id_values:=private.assert_evidence(p_game_id,p_payload->'evidenceIds',1);
       select * into suspicion_record from private.suspicions where game_id=p_game_id and round=3 for update;
       if decision not in ('keep','switch') or suspicion_record.id is null or char_length(reason_value) not between 2 and 140 then raise exception 'INVALID_RESOLUTION'; end if;
       target:=case when decision='keep' then suspicion_record.target_seat when suspicion_record.target_seat='seat_a' then 'seat_b' else 'seat_a' end;
-      update private.suspicions set target_seat=target,reason=reason_value,evidence_ids=evidence_ids,resolution=decision,is_public=true where id=suspicion_record.id;
+      update private.suspicions set target_seat=target,reason=reason_value,evidence_ids=evidence_id_values,resolution=decision,is_public=true where id=suspicion_record.id;
       update private.games set phase='challenge',round=4,checkpoint_kind='awaiting_challenge_question',checkpoint_id=extensions.gen_random_uuid(),current_question_id=null,current_round_id=null where id=p_game_id;
-      event_result:=private.emit_event(p_game_id,'detective','objection_resolved','The Detective resolved the Objection',jsonb_build_object('decision',decision,'targetSeat',target,'reason',reason_value,'evidenceIds',evidence_ids));
+      event_result:=private.emit_event(p_game_id,'detective','objection_resolved','The Detective resolved the Objection',jsonb_build_object('decision',decision,'targetSeat',target,'reason',reason_value,'evidenceIds',evidence_id_values));
     elsif p_tool_name='propose_accusation' then
-      target:=p_payload->>'targetSeat'; reason_value:=trim(p_payload->>'reason'); evidence_ids:=private.assert_evidence(p_game_id,p_payload->'evidenceIds',2);
+      target:=p_payload->>'targetSeat'; reason_value:=trim(p_payload->>'reason'); evidence_id_values:=private.assert_evidence(p_game_id,p_payload->'evidenceIds',2);
       if target not in ('seat_a','seat_b') or char_length(reason_value) not between 2 and 180 then raise exception 'INVALID_ACCUSATION'; end if;
-      update private.games set accusation_target=target,accusation_evidence=evidence_ids,accusation_reason=reason_value,checkpoint_kind=null,checkpoint_id=null,reveal_at=clock_timestamp()+interval '3 seconds',deadline=clock_timestamp()+interval '3 seconds',active_window_id=extensions.gen_random_uuid(),window_kind='accusation' where id=p_game_id;
-      event_result:=private.emit_event(p_game_id,'detective','accusation_committed','The Detective committed a final accusation',jsonb_build_object('targetSeat',target,'evidenceIds',evidence_ids,'reason',reason_value));
+      update private.games set accusation_target=target,accusation_evidence=evidence_id_values,accusation_reason=reason_value,checkpoint_kind=null,checkpoint_id=null,reveal_at=clock_timestamp()+interval '3 seconds',deadline=clock_timestamp()+interval '3 seconds',active_window_id=extensions.gen_random_uuid(),window_kind='accusation' where id=p_game_id;
+      event_result:=private.emit_event(p_game_id,'detective','accusation_committed','The Detective committed a final accusation',jsonb_build_object('targetSeat',target,'evidenceIds',evidence_id_values,'reason',reason_value));
     end if;
   exception
     when others then

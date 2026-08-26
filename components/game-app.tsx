@@ -1,7 +1,6 @@
 'use client';
 
 import { QRCodeSVG } from 'qrcode.react';
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { gameGateway } from '@/lib/game/gateway';
 import {
@@ -128,7 +127,14 @@ export function GameApp() {
 }
 
 function BrandHeader({ roomCode }: { roomCode?: string }) {
-  return <header className="site-header"><Link className="brand" href="/" aria-label="Can You Be Me? home"><span className="brand-mark" aria-hidden="true">?</span><span>Can You Be Me?</span></Link>{roomCode ? <span className="room-pill">Room <strong>{roomCode}</strong></span> : <span className="live-pill"><span aria-hidden="true" /> Detective game</span>}</header>;
+  return (
+    <header className="site-header">
+      {/* Vinext's production RSC prefetch currently throws for this same-document reset link. */}
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+      <a className="brand" href="/" aria-label="Can You Be Me? home"><span className="brand-mark" aria-hidden="true">?</span><span>Can You Be Me?</span></a>
+      {roomCode ? <span className="room-pill">Room <strong>{roomCode}</strong></span> : <span className="live-pill"><span aria-hidden="true" /> Detective game</span>}
+    </header>
+  );
 }
 
 function Landing({ timerSeconds, onTimerChange, onCreate, pending, error }: { timerSeconds: 8 | 15; onTimerChange(value: 8 | 15): void; onCreate(mode: GameMode): void; pending: string | null; error: string | null }) {
