@@ -2,22 +2,22 @@
 
 ## 1. Outcome
 
-Build an English-only, two-player party game in which two friends answer private multiple-choice questions while ChatGPT acts as the public Detective through WebMCP. One player is secretly the **Mirror** and imitates the other, the **Original**. Both humans win if the Detective accuses the Original; the Detective wins if it catches the Mirror.
+Build an English-only, two-player party game in which two friends answer private multiple-choice questions while a compatible AI client acts as the public Detective through WebMCP. One player is secretly the **Mirror** and imitates the other, the **Original**. Both humans win if the Detective accuses the Original; the Detective wins if it catches the Mirror.
 
-The submission is successful when a judge can open one public URL in ChatGPT's in-app browser, connect two phones by QR code, finish a coherent 5–7 minute game, observe ChatGPT making and revising suspicions through real WebMCP calls, and verify from the public repository that private roles and sealed answers never reach the Host or Agent before reveal.
+The submission is successful when a judge can open one public URL in a compatible AI client's browser, connect two phones by QR code, finish a coherent 5–7 minute game, observe the AI Detective making and revising suspicions through real WebMCP calls, and verify from the public repository that private roles and sealed answers never reach the Host or Agent before reveal.
 
 ## 2. Locked MVP
 
-- One Host Board, two phone Player Views, and one ChatGPT Detective.
+- One Host Board, two phone Player Views, and one AI Detective.
 - No account setup, nickname field, chat, voice, photos, leaderboard, or player-written text.
 - Players choose one of six preset sticker identities: Tiger, Frog, Ghost, Toast, Moon, or Cherry.
-- **Learn:** ChatGPT generates one immutable batch of five shared four-choice questions. If fewer than two answers differ, it generates one adaptive Contrast question.
-- ChatGPT publishes two short traits per player; each player taps `That's me` or `Not me` for each trait. Feedback is revealed only after both players finish.
+- **Learn:** The AI Detective generates one immutable batch of five shared four-choice questions. If fewer than two answers differ, it generates one adaptive Contrast question.
+- The AI Detective publishes two short traits per player; each player taps `That's me` or `Not me` for each trait. Feedback is revealed only after both players finish.
 - **Role reveal:** one phone privately receives Original and the other Mirror. The Host and Agent cannot read either role.
-- **Challenge:** ChatGPT generates one adaptive shared question per round from public evidence. Original answers as themselves; Mirror predicts Original. Each normal question has an eight-second answer timer. A lobby accessibility toggle changes all answer timers to fifteen seconds.
-- After each revealed Challenge answer, ChatGPT places one public suspicion marker with a short reason and public evidence references.
-- After Q3, players get one three-second **blind shared Objection** window before the current suspicion is shown. The first tap consumes the single team token. If used, ChatGPT generates one three-choice follow-up for the suspected player from eligible public evidence, then must keep or switch its suspicion after the answer is revealed.
-- After Q4, ChatGPT cites two or more public evidence events and commits one accusation. A server-owned three-second countdown reveals the roles.
+- **Challenge:** The AI Detective generates one adaptive shared question per round from public evidence. Original answers as themselves; Mirror predicts Original. Each normal question has an eight-second answer timer. A lobby accessibility toggle changes all answer timers to fifteen seconds.
+- After each revealed Challenge answer, the AI Detective places one public suspicion marker with a short reason and public evidence references.
+- After Q3, players get one three-second **blind shared Objection** window before the current suspicion is shown. The first tap consumes the single team token. If used, the AI Detective generates one three-choice follow-up for the suspected player from eligible public evidence, then must keep or switch its suspicion after the answer is revealed.
+- After Q4, the AI Detective cites two or more public evidence events and commits one accusation. A server-owned three-second countdown reveals the roles.
 - Result uses one static event timeline and playful achievement stickers. No share card and no animated replay in the MVP.
 - **Demo Room** may preload fictional Learn answers and traits, but Challenge, Objection, accusation, and both phone players remain live.
 
@@ -30,7 +30,7 @@ The submission is successful when a judge can open one public URL in ChatGPT's i
 - Two symmetric player columns showing sticker identity, ready/answered state, revealed choices, traits, and current suspicion.
 - Center stage holds the current question, countdown, simultaneous reveal, objection prompt, or accusation countdown.
 - Suspicion is a large movable sticker/magnet, never conveyed by color alone.
-- Agent checkpoints explicitly show `Detective is thinking…`; player timers do not run while waiting for ChatGPT.
+- Agent checkpoints explicitly show `Detective is thinking…`; player timers do not run while waiting for the AI Detective.
 
 ### Player View
 
@@ -120,7 +120,7 @@ type AgentCheckpoint =
   | null;
 ```
 
-No player timer runs at an Agent checkpoint. If ChatGPT is interrupted, the game remains at that checkpoint. Resumption is always `get_public_game_state` followed by the eligible idempotent action; no separate resume tool exists.
+No player timer runs at an Agent checkpoint. If the AI client is interrupted, the game remains at that checkpoint. Resumption is always `get_public_game_state` followed by the eligible idempotent action; no separate resume tool exists.
 
 ## 6. WebMCP Contract
 
@@ -174,7 +174,7 @@ Feature absence is a blocking Host error, not a degraded Judge Mode. Human phone
 - [ ] **1. Prove the deployed vertical slice**
   Spec ref: `PLAN.md > Technical Architecture` and `WebMCP Contract`
   What to build: Scaffold the React/TypeScript Site, configure Supabase environments, deploy a public shell, and expose one read-only plus one revision-checked test tool against one temporary room row.
-  Acceptance: A production Site opens without authentication, two phones can reach it, and ChatGPT plus Chrome 149+ can discover and execute the tools.
+  Acceptance: A production Site opens without authentication, two phones can reach it, and compatible AI clients plus Chrome 149+ can discover and execute the tools.
   Verify: Inspect `window.originAgentCluster`, list registered tools, execute both calls, and confirm the write appears once in Postgres.
 
 - [ ] **2. Implement schema, RPC foundation, and RLS**
@@ -217,7 +217,7 @@ Feature absence is a blocking Host error, not a degraded Judge Mode. Human phone
   Spec ref: `PLAN.md > WebMCP Contract`
   What to build: Singleton registration manager, current-state callbacks, abortable waits, structured errors, checkpoint recovery, and unsupported-environment screen.
   Acceptance: Strict Mode, reload, room change, cancellation, duplicated events, and stale revisions create no duplicate tool or state mutation.
-  Verify: Unit tests for registration/cancellation plus production interruption/resume prompts in ChatGPT.
+  Verify: Unit tests for registration/cancellation plus production interruption/resume prompts in compatible AI clients.
 
 - [ ] **9. Polish the party-game experience**
   Spec ref: `PLAN.md > UX and Timing`
@@ -245,7 +245,7 @@ Feature absence is a blocking Host error, not a degraded Judge Mode. Human phone
 - Concurrency: repeated answer, simultaneous second answers, duplicate Agent write, stale revision, two Objection taps.
 - Recovery: phone refresh, Host refresh, Broadcast loss/reordering, Agent wait timeout/cancel, Agent interruption at every checkpoint, reload during accusation countdown.
 - Validation: invalid/private evidence, invalid generated-question structure, duplicate or overlong Agent text, wrong phase, expired checkpoint, full room.
-- Compatibility: latest ChatGPT desktop with GPT-5.6 Sol or Terra; Chrome 149+ with WebMCP testing enabled; two current mobile browsers.
+- Compatibility: compatible AI clients with imperative WebMCP support; Chrome 149+ with WebMCP testing enabled; two current mobile browsers.
 - UX: 320 px phone, 16:9 Board, keyboard focus, contrast, reduced motion, no player text inputs.
 
 ## 9. Delivery Gates
@@ -260,7 +260,7 @@ Feature absence is a blocking Host error, not a degraded Judge Mode. Human phone
 
 ## 10. Submission Story
 
-The wow moment is the Q3 sequence: both humans must decide whether to object before seeing where ChatGPT's suspicion lands; ChatGPT then asks a bounded follow-up, publicly explains whether the new evidence changed its mind, and commits a final accusation without ever receiving the secret role. The demo should lead with this human–Agent tension, then prove the structured WebMCP calls and privacy boundary.
+The wow moment is the Q3 sequence: both humans must decide whether to object before seeing where the AI Detective's suspicion lands; the AI then asks a bounded follow-up, publicly explains whether the new evidence changed its mind, and commits a final accusation without ever receiving the secret role. The demo should lead with this human–Agent tension, then prove the structured WebMCP calls and privacy boundary.
 
 Official references:
 

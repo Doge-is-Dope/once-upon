@@ -18,7 +18,7 @@ Before the corresponding reveal, the following must not appear in Host/player pr
 - unrevealed trait feedback;
 - staged Q3 suspicion.
 
-The accepted exception is that a generated five-question Learn batch can remain visible in the Host's ChatGPT tool history. Host Board and phones receive only the opened question.
+The accepted exception is that a generated five-question Learn batch can remain visible in the Host AI client's tool history. Host Board and phones receive only the opened question.
 
 ## Input and concurrency controls
 

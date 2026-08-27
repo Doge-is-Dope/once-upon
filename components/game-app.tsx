@@ -135,22 +135,63 @@ function BrandHeader({ roomCode }: { roomCode?: string }) {
       {/* Vinext's production RSC prefetch currently throws for this same-document reset link. */}
       {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
       <a className="brand" href="/" aria-label="Can You Be Me? home"><span className="brand-mark" aria-hidden="true">?</span><span>Can You Be Me?</span></a>
-      {roomCode ? <span className="room-pill">Room <strong>{roomCode}</strong></span> : <span className="live-pill"><span aria-hidden="true" /> Detective game</span>}
+      {roomCode ? <span className="room-pill">Room <strong>{roomCode}</strong></span> : null}
     </header>
   );
 }
 
 function Landing({ onCreate, pending, error }: { onCreate(mode: GameMode): void; pending: string | null; error: string | null }) {
-  return <main id="content" className="game-shell" tabIndex={-1}><BrandHeader /><section className="hero" aria-labelledby="game-title"><p className="eyebrow">2 players · 2 phones · 5–7 min</p><h1 id="game-title">Can you fool ChatGPT?</h1><p className="lede">Two friends answer private questions. Then one becomes the Mirror and tries to answer like the other. ChatGPT must catch them.</p><div className="hero-actions"><button className="button button-primary" type="button" onClick={() => onCreate('standard')} disabled={Boolean(pending)}>{pending ?? 'Start a game'}</button><button className="button button-secondary" type="button" onClick={() => onCreate('demo')} disabled={Boolean(pending)}>Quick demo</button></div>{error && <p className="error-banner" role="alert">{error}</p>}<p className="helper">Use this screen as the board. Both modes need two phones.</p></section><HowItWorks /><footer><p>Built for the WebMCP Challenge · Private answers stay private until reveal.</p></footer></main>;
+  return <main id="content" className="game-shell landing-shell" tabIndex={-1}><BrandHeader /><div className="landing-stage"><section className="hero" aria-labelledby="game-title"><p className="eyebrow">2 players · 2 phones · 5–7 min</p><h1 id="game-title">Can you fool the AI Detective?</h1><p className="lede">Two friends team up against an AI Detective. First, it learns your real answers. Then one becomes the Mirror and tries to copy the other.</p><div className="hero-actions"><button className="button button-primary" type="button" onClick={() => onCreate('standard')} disabled={Boolean(pending)}>{pending ?? 'Start a game'}</button></div>{error && <p className="error-banner" role="alert">{error}</p>}</section><HowItWorks /></div><footer><p>Built for the WebMCP Challenge · Private answers stay private until reveal.</p></footer></main>;
 }
 
+const TUTORIAL_STEPS = [
+  {
+    icon: '👋',
+    navLabel: 'Learn',
+    title: 'Start with honest answers',
+    body: 'Join on two phones. Before roles exist, both of you answer five questions honestly so the AI Detective can learn your differences.',
+  },
+  {
+    icon: '🎭',
+    navLabel: 'Roles',
+    title: 'Get secret roles',
+    body: 'One phone gets Original; the other gets Mirror. You’re on the same team, and the roles stay hidden from the AI Detective.',
+  },
+  {
+    icon: '🪞',
+    navLabel: 'Play',
+    title: 'Answer for your role',
+    body: 'Across four Challenges, Original answers as themselves. Mirror predicts the Original. The AI Detective reveals both answers and marks a suspect.',
+  },
+  {
+    icon: '✋',
+    navLabel: 'Object',
+    title: 'Object once, before you know',
+    body: 'After Challenge 3, you have 3 seconds to blindly use one shared Objection before seeing the suspicion. First tap spends it; the hidden suspect answers one extra question.',
+  },
+  {
+    icon: '🏆',
+    navLabel: 'Win',
+    title: 'Make the AI accuse the wrong player',
+    body: 'The AI Detective accuses one player of being the Mirror. If it points at the Original, you both win. If it catches the Mirror, the AI wins.',
+  },
+] as const;
+
 function HowItWorks() {
-  const steps = [
-    { icon: '📱', title: 'Join on two phones', body: 'Both players scan the room code.' },
-    { icon: '🎭', title: 'Get secret roles', body: 'One is the Original. One becomes the Mirror.' },
-    { icon: '🕵️', title: 'Fool the Detective', body: 'The Original answers honestly. The Mirror predicts them. ChatGPT names the fake.' },
-  ];
-  return <section className="how-it-works" aria-labelledby="how-title"><div className="how-heading"><p className="eyebrow">How it works</p><h2 id="how-title">Three steps. One fake.</h2></div><ol className="step-list">{steps.map((step, index) => <li className="step-card" key={step.title}><div className="step-top" aria-hidden="true"><span className="step-number">{index + 1}</span><span className="step-icon">{step.icon}</span></div><h3>{step.title}</h3><p>{step.body}</p></li>)}</ol></section>;
+  const [activeStep, setActiveStep] = useState(0);
+  const step = TUTORIAL_STEPS[activeStep];
+
+  return <section className="tutorial" aria-labelledby="tutorial-title"><div className="tutorial-topline"><p className="eyebrow">How to play</p><span className="tutorial-step-count">Step {activeStep + 1} of {TUTORIAL_STEPS.length}</span></div><TutorialScene step={activeStep} /><div className="tutorial-copy" aria-live="polite" aria-atomic="true"><span className="step-icon" aria-hidden="true">{step.icon}</span><div><h2 id="tutorial-title">{step.title}</h2><p>{step.body}</p></div></div><ol className="tutorial-steps" aria-label="Game rules" role="list">{TUTORIAL_STEPS.map((item, index) => <li key={item.title}><button type="button" aria-current={index === activeStep ? 'step' : undefined} aria-label={`Show step ${index + 1}: ${item.title}`} onClick={() => setActiveStep(index)}><span className="step-index">{index + 1}</span><strong>{item.navLabel}</strong></button></li>)}</ol></section>;
+}
+
+function TutorialScene({ step }: { step: number }) {
+  return <div className={`tutorial-scene tutorial-scene-${step + 1}`} key={step} aria-hidden="true">
+    {step === 0 && <><div className="learn-label"><span>Learn 1/5</span><strong>Both answer as themselves</strong></div><div className="learn-phone learn-phone-a"><span>🐯</span><small>My honest answer</small><strong>Pizza</strong></div><div className="learn-phone learn-phone-b"><span>👻</span><small>My honest answer</small><strong>Sushi</strong></div></>}
+    {step === 1 && <><div className="role-card original"><span>🐯</span><small>Answer as yourself</small><strong>Original</strong></div><div className="role-card mirror"><span>👻</span><small>Predict the Original</small><strong>Mirror</strong></div><div className="secret-stamp">Same team · Secret roles</div></>}
+    {step === 2 && <><div className="demo-question"><span>Challenge 2/4</span><strong>Favorite snack?</strong></div><div className="answer-card answer-a"><small>Original · Myself</small><span>🐯</span><strong>Pizza</strong></div><div className="answer-card answer-b"><small>Mirror · My prediction</small><span>👻</span><strong>Pizza</strong></div><div className="suspicion-badge"><span>🕵️</span><strong>Who copied?</strong></div></>}
+    {step === 3 && <><div className="blind-label">Suspicion hidden</div><div className="objection-token"><small>One shared token</small><strong>OBJECTION!</strong><span>×1</span></div><div className="follow-up-card"><span>Extra question</span><strong>Keep or switch?</strong></div></>}
+    {step === 4 && <><div className="verdict-title"><span>🕵️</span><strong>Final accusation</strong></div><div className="outcome-card humans"><small>Accuses Original</small><strong>You both win!</strong></div><div className="outcome-card detective"><small>Catches Mirror</small><strong>AI wins</strong></div></>}
+  </div>;
 }
 
 function LoadingScreen({ roomCode, message, error }: { roomCode: string; message: string; error: string | null }) {
@@ -189,7 +230,7 @@ function PlayerSummary({ player, suspicion = false }: { player: PublicPlayer; su
 function CenterStage({ game }: { game: PublicGameSnapshot }) {
   if (game.result) return <ResultStage game={game} />;
   if (game.revealAtMs) return <DetectiveStage checkpoint="Accusation locked" title="The truth arrives in three…" body="Roles are sealed until the server countdown finishes." timerGame={game} />;
-  if (game.checkpoint) return <DetectiveStage key={game.checkpoint.id} checkpoint={checkpointCopy(game)} title={checkpointTitle(game)} body="Player timers are paused. ChatGPT can resume from the current public state at any time." checkpointGame={game} />;
+  if (game.checkpoint) return <DetectiveStage key={game.checkpoint.id} checkpoint={checkpointCopy(game)} title={checkpointTitle(game)} body="Player timers are paused. The AI Detective can resume from the current public state at any time." checkpointGame={game} />;
   if (game.currentQuestion) return <div className="question-stage"><p className="eyebrow">{game.currentQuestion.kind} · {game.currentQuestion.ordinal}</p><h2>{game.currentQuestion.prompt}</h2><Countdown game={game} /><RevealedAnswers game={game} /></div>;
   return <DetectiveStage checkpoint="Game in progress" title={phaseTitle(game)} body="Waiting for the next durable state transition." />;
 }

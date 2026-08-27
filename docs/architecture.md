@@ -3,7 +3,7 @@
 The browser is a projection client, not a second game engine.
 
 ```text
-ChatGPT Detective ── document.modelContext tools ──┐
+AI Detective ────── document.modelContext tools ──┐
                                                    │ Host anonymous session
 Host Board ────────────────────────────────────────┼── api RPC ── private Supabase state
 Player A phone ── player-only projection ──────────┤                  │
@@ -14,4 +14,4 @@ Every gameplay mutation locks the game row, updates durable state, increments `r
 
 Human writes use the server-owned `windowId` plus the authenticated seat. Agent writes use the server-owned `checkpointId` plus `expectedRevision`. Accepted generated content is immutable and receives server-generated IDs.
 
-The Host and Detective share the Host's anonymous Supabase identity. This proves room ownership and checkpoint validity, but it cannot cryptographically prove that prose came from ChatGPT instead of Host-page JavaScript.
+The Host and Detective share the Host's anonymous Supabase identity. This proves room ownership and checkpoint validity, but it cannot cryptographically prove that prose came from the AI client instead of Host-page JavaScript.

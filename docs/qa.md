@@ -40,7 +40,7 @@ Physical-device runs remain in the post-freeze production game matrix below.
 
 ## Required manual matrix
 
-- ChatGPT Desktop with supported Sol and Terra configurations.
+- Compatible AI clients with imperative WebMCP support.
 - Chrome WebMCP testing build.
 - iOS Safari and Android Chrome on two physical phones.
 - 320px phone viewport and 16:9 Host Board.

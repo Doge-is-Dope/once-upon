@@ -1,8 +1,8 @@
 # Can You Be Me?
 
-Can ChatGPT catch the Mirror?
+Can an AI Detective catch the Mirror?
 
-Can You Be Me? is a live, three-screen party game for one Host Board and two phones. Both players answer privately. One later becomes the **Original** and the other the **Mirror**, who must predict the Original. ChatGPT acts as the Detective through ten page-level WebMCP tools: it creates every live question, cites revealed evidence, places suspicions, handles the one shared Objection, and commits the final accusation.
+Can You Be Me? is a live, three-screen party game for one Host Board and two phones. Both players answer privately. One later becomes the **Original** and the other the **Mirror**, who must predict the Original. A compatible AI client acts as the Detective through ten page-level WebMCP tools: it creates every live question, cites revealed evidence, places suspicions, handles the one shared Objection, and commits the final accusation.
 
 ## What is implemented
 
@@ -41,11 +41,11 @@ Requirements: Node.js 22.13+, npm, a Supabase project, and a browser build that 
    npm run dev
    ```
 
-5. Open the Host Board in ChatGPT Desktop or a compatible WebMCP testing browser. Scan the displayed QR code from two separate phones.
+5. Open the Host Board in a compatible AI client or WebMCP testing browser. Scan the displayed QR code from two separate phones.
 
 ## Detective prompt
 
-Paste this into the ChatGPT conversation attached to the Host Board:
+Paste this into the AI client conversation attached to the Host Board:
 
 > You are the Detective for Can You Be Me? Call get_public_game_state first. Perform only the single eligible action for the active checkpoint. Generate English, playful, 13+ party-safe questions. Cite only eligible public evidence IDs. After every action, read the returned state or wait_for_public_event, and resume by calling get_public_game_state whenever interrupted. Never ask for a room ID.
 
