@@ -1,67 +1,64 @@
 # Can You Be Me?
 
-Can an AI Detective catch the Mirror?
+Two friends team up to fool an AI Detective. One secretly becomes the **Mirror** and tries to answer like the other. Can the AI tell who is copying whom?
 
-Can You Be Me? is a live, three-screen party game for one Host Board and two phones. Both players answer privately. One later becomes the **Original** and the other the **Mirror**, who must predict the Original. A compatible AI client acts as the Detective through ten page-level WebMCP tools: it creates every live question, cites revealed evidence, places suspicions, handles the one shared Objection, and commits the final accusation.
+[Play the game](https://can-you-be-me.clement-liang.chatgpt.site)
 
-## What is implemented
+## Play
 
-- Anonymous Supabase lobby, QR join, two unique seats, sticker identity, ready lock, and 8/15-second modes.
-- Server-authoritative Learn, optional Contrast, traits, private roles, four Challenge rounds, blind Q3 Objection, accusation countdown, reveal, timeline, and achievement stickers.
-- A versioned Demo Room fixture that skips live Learn generation but copies normal questions, options, revealed answer records, traits, and public evidence into a fresh game.
-- Ten singleton imperative WebMCP tools with checkpoint/revision control, canonical-payload idempotency, structured errors, evidence validation, and cancellable 20-second durable waits.
-- Public and private projections kept separate; Realtime is an invalidation hint and every recovery path refetches durable state.
-- Keyboard, phone, reduced-motion, focus, and live-region behavior.
+Bring two players, two phones, and a shared screen with an AI client that can use WebMCP. The phones can use regular browsers.
 
-## Local setup
+1. Open the game with your AI client and say **“Let’s play.”** The AI opens a room and shows a QR code.
+2. Scan it on both phones, choose stickers, and tap **I’m ready**. Answer five questions honestly, then check your secret roles.
+3. Across four rounds, the **Original** answers as themselves while the **Mirror** predicts their answers. If the Detective accuses the Original, both players win. If it catches the Mirror, the AI wins.
 
-Requirements: Node.js 22.13+, npm, a Supabase project, and a browser build that supports imperative WebMCP.
+Through WebMCP, the AI writes the questions, follows revealed answers, and makes its accusation. Private roles and answers stay hidden until their reveal.
 
-1. Install dependencies:
+You can also choose **Start a game** yourself, then ask the AI to play.
 
-   ```bash
-   npm install
-   ```
+## Run locally
 
-2. Copy `.env.example` to `.env.local` and provide the project URL and publishable key. Never put a service-role key in a browser environment variable.
+Requires Node.js, pnpm, and your own Supabase project. See [package.json](package.json) for supported versions.
 
-3. In Supabase, enable Anonymous Auth. Link the CLI and apply the migration:
+1. Install dependencies and copy the environment template:
 
    ```bash
-   npx supabase login
-   npx supabase link --project-ref YOUR_PROJECT_REF
-   npx supabase db push
+   pnpm install --frozen-lockfile
+   cp .env.example .env.local
    ```
 
-   The migration exposes only the `api` schema, creates a private Realtime channel policy, and revokes direct browser access to core tables. Confirm `api` is listed under API exposed schemas in the project settings.
+   Fill in your project's URL and **publishable key**. Never use a secret or service-role key in browser variables.
 
-4. Start the site:
+2. Enable [Anonymous Sign-Ins](https://supabase.com/docs/guides/auth/auth-anonymous) in Supabase, then apply migrations to your development project:
 
    ```bash
-   npm run dev
+   pnpm exec supabase login
+   pnpm exec supabase link --project-ref YOUR_PROJECT_REF
+   pnpm exec supabase db push
    ```
 
-5. Open the Host Board in a compatible AI client or WebMCP testing browser. Scan the displayed QR code from two separate phones.
+   Add `api` to the project's [exposed schemas](https://supabase.com/docs/guides/api/using-custom-schemas). Keep `private` unexposed; the migrations already configure permissions.
 
-## Detective prompt
+3. Start the app:
 
-Paste this into the AI client conversation attached to the Host Board:
+   ```bash
+   pnpm run dev
+   ```
 
-> You are the Detective for Can You Be Me? Call get_public_game_state first. Perform only the single eligible action for the active checkpoint. Generate English, playful, 13+ party-safe questions. Cite only eligible public evidence IDs. After every action, read the returned state or wait_for_public_event, and resume by calling get_public_game_state whenever interrupted. Never ask for a room ID.
+   Open the URL printed in the terminal. For a game on physical phones, use an HTTPS deployment all devices can reach; `localhost` QR links only work on the host computer.
 
-## Verification
+## Checks and contributing
 
 ```bash
-npm run verify
-npm run test:e2e
+pnpm run verify
+pnpm exec playwright install chromium webkit # First-time browser setup
+pnpm run test:e2e
 ```
 
-Database and production verification require a linked Supabase project. See [docs/qa.md](docs/qa.md), [docs/security.md](docs/security.md), and [docs/webmcp.md](docs/webmcp.md).
+`verify` runs lint, unit tests, and a production build. Browser tests cover the shared screen and phone UI.
 
-## Current delivery status
-
-The local source, UI, contracts, migration, and automated browser/unit test harness are present. A real Supabase project, WebMCP production gate, three full production games, public deployment, repository publication, video upload, and Devpost submission still require authenticated external services and recorded evidence; this README does not claim those gates have passed.
+See [architecture](docs/architecture.md), [WebMCP tools](docs/webmcp.md), [security](docs/security.md), and [QA](docs/qa.md) for implementation details and remaining manual checks.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE).

@@ -2,8 +2,9 @@
   "name": "can-you-be-me",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.23.0",
   "engines": {
-    "node": ">=22.13.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
     "dev": "vinext dev",
@@ -15,7 +16,7 @@
     "test:e2e": "playwright test",
     "test:supabase": "node --env-file=.env.local scripts/supabase-smoke.mjs",
     "test:supabase:e2e": "node --env-file=.env.local scripts/supabase-e2e.mjs",
-    "verify": "npm run lint && npm run test && npm run build"
+    "verify": "pnpm run lint && pnpm run test && pnpm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

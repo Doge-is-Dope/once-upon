@@ -18,7 +18,7 @@ import {
 } from '@/lib/game/contracts';
 import { initialRoomState, roomReducer } from '@/lib/game/reducer';
 import { displaySeconds, measureServerClock, monotonicNowMs, remainingMs, type ServerClock } from '@/lib/game/timing';
-import { bindHostRoom, getWebMcpCapability, type WebMcpCapabilityIssue } from '@/lib/webmcp/registry';
+import { bindGameLauncher, bindHostRoom, getWebMcpCapability, type WebMcpCapabilityIssue } from '@/lib/webmcp/registry';
 import { hasSupabaseConfig } from '@/lib/supabase/client';
 
 function roomFromLocation(): string | null {
@@ -26,6 +26,9 @@ function roomFromLocation(): string | null {
   const value = new URLSearchParams(window.location.search).get('room')?.trim().toUpperCase();
   return value && /^[A-Z0-9]{4}$/.test(value) ? value : null;
 }
+
+// Read the initial URL after hydration; room creation updates local state below.
+function subscribeToInitialRoom() { return () => {}; }
 
 function friendlyError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -36,25 +39,34 @@ function friendlyError(error: unknown): string {
 }
 
 export function GameApp() {
-  const [roomCode, setRoomCode] = useState<string | null>(() => roomFromLocation());
+  const initialRoomCode = useSyncExternalStore(subscribeToInitialRoom, roomFromLocation, () => null);
+  const [createdRoomCode, setRoomCode] = useState<string | null>(null);
+  const roomCode = createdRoomCode ?? initialRoomCode;
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
   const timerSeconds = 8 as const;
   const refreshInFlight = useRef<Promise<void> | null>(null);
+  const creationInFlight = useRef<Promise<RoomBootstrap> | null>(null);
+  const createdHostRoom = useRef<RoomBootstrap | null>(null);
+  const mounted = useRef(false);
   const activeGameId = state.bootstrap?.publicState.gameId;
   const activePhase = state.bootstrap?.publicState.phase;
   const activeViewer = state.bootstrap?.viewerKind;
 
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
   const refresh = useCallback(async () => {
-    const bootstrap = state.bootstrap;
-    if (!bootstrap || bootstrap.viewerKind === 'join') return;
+    if (!activeGameId || !activeViewer || activeViewer === 'join') return;
     if (refreshInFlight.current) return refreshInFlight.current;
     const task = (async () => {
-      const next = await gameGateway.refresh(bootstrap.publicState.gameId, bootstrap.viewerKind);
+      const next = await gameGateway.refresh(activeGameId, activeViewer);
       dispatch({ type: 'snapshot', payload: next });
     })().finally(() => { refreshInFlight.current = null; });
     refreshInFlight.current = task;
     return task;
-  }, [state.bootstrap]);
+  }, [activeGameId, activeViewer]);
 
   const run = useCallback(async (label: string, action: () => Promise<RoomBootstrap>) => {
     dispatch({ type: 'pending', payload: label });
@@ -94,11 +106,12 @@ export function GameApp() {
 
   useEffect(() => {
     if (state.bootstrap?.viewerKind !== 'host') return;
+    let disposed = false;
     let release = () => {};
     void bindHostRoom(state.bootstrap.publicState.gameId, refresh)
-      .then((nextRelease) => { release = nextRelease; })
-      .catch((error) => dispatch({ type: 'error', payload: friendlyError(error) }));
-    return () => release();
+      .then((nextRelease) => { if (disposed) nextRelease(); else release = nextRelease; })
+      .catch((error) => { if (!disposed) dispatch({ type: 'error', payload: friendlyError(error) }); });
+    return () => { disposed = true; release(); };
   }, [refresh, state.bootstrap?.publicState.gameId, state.bootstrap?.viewerKind]);
 
   const navigateToRoom = useCallback((bootstrap: RoomBootstrap) => {
@@ -108,24 +121,65 @@ export function GameApp() {
     dispatch({ type: 'bootstrapped', payload: bootstrap });
   }, []);
 
-  const createRoom = async (mode: GameMode) => {
+  const createRoom = useCallback((mode: GameMode): Promise<RoomBootstrap> => {
+    if (creationInFlight.current) return creationInFlight.current;
+    if (createdHostRoom.current && roomFromLocation() === createdHostRoom.current.publicState.roomCode) {
+      return Promise.resolve(createdHostRoom.current);
+    }
     dispatch({ type: 'error', payload: null });
-    if (!hasSupabaseConfig()) {
-      dispatch({ type: 'error', payload: 'This build needs its Supabase public environment values before rooms can be created.' });
-      return;
-    }
-    const capability = getWebMcpCapability();
-    if (!capability.supported) {
-      dispatch({ type: 'error', payload: capability.reason ?? 'WebMCP is unavailable.' });
-      return;
-    }
-    dispatch({ type: 'pending', payload: 'Creating room…' });
-    try { navigateToRoom(await gameGateway.createRoom(mode, timerSeconds)); }
-    catch (error) { dispatch({ type: 'error', payload: friendlyError(error) }); }
-    finally { dispatch({ type: 'pending', payload: null }); }
-  };
+    const task = (async () => {
+      try {
+        if (!mounted.current || roomFromLocation()) throw new Error('Open the game homepage on the shared screen to start a game.');
+        if (!hasSupabaseConfig()) throw new Error('This build needs its Supabase public environment values before rooms can be created.');
+        const capability = getWebMcpCapability();
+        if (!capability.supported) throw new Error(capability.reason);
+        dispatch({ type: 'pending', payload: 'Creating room…' });
+        const bootstrap = await gameGateway.createRoom(mode, timerSeconds);
+        // A committed room is retained even if the AI stops waiting for it.
+        createdHostRoom.current = bootstrap;
+        if (!mounted.current || roomFromLocation()) throw new DOMException('The game page was closed.', 'AbortError');
+        navigateToRoom(bootstrap);
+        return bootstrap;
+      } catch (error) {
+        if (mounted.current) dispatch({ type: 'error', payload: friendlyError(error) });
+        throw error;
+      } finally {
+        if (mounted.current) dispatch({ type: 'pending', payload: null });
+      }
+    })().finally(() => { creationInFlight.current = null; });
+    creationInFlight.current = task;
+    return task;
+  }, [navigateToRoom]);
 
-  if (!roomCode) return <Landing onCreate={createRoom} pending={state.pendingAction} error={state.error} />;
+  const refreshCreatedRoom = useCallback(async (gameId: string) => {
+    const next = await gameGateway.refresh(gameId, 'host');
+    if (mounted.current) dispatch({ type: 'snapshot', payload: next });
+  }, []);
+
+  useEffect(() => {
+    // Check the actual URL too: a phone's initial hydration can briefly render
+    // the landing page before useSyncExternalStore picks up its room code.
+    if (roomFromLocation()) return;
+    let disposed = false;
+    let registering = false;
+    let release = () => {};
+    const register = () => {
+      if (registering || roomFromLocation() || !hasSupabaseConfig() || !getWebMcpCapability().supported) return;
+      registering = true;
+      void bindGameLauncher(() => createRoom('standard'), refreshCreatedRoom)
+        .then((nextRelease) => { if (disposed) nextRelease(); else release = nextRelease; })
+        .catch((error) => {
+          registering = false;
+          if (!disposed) dispatch({ type: 'error', payload: friendlyError(error) });
+        });
+    };
+    register();
+    window.addEventListener('focus', register);
+    // Keep this document's launcher through the transition to its Host room.
+    return () => { disposed = true; window.removeEventListener('focus', register); release(); };
+  }, [createRoom, refreshCreatedRoom]);
+
+  if (!roomCode) return <Landing onCreate={(mode) => { void createRoom(mode).catch(() => {}); }} pending={state.pendingAction} error={state.error} />;
   if (!state.bootstrap) return <LoadingScreen roomCode={roomCode} message={state.pendingAction ?? 'Finding your room…'} error={state.error} />;
   if (state.bootstrap.viewerKind === 'join') return <JoinRoom bootstrap={state.bootstrap} pending={state.pendingAction} error={state.error} onJoin={(sticker) => run('Claiming your seat…', () => gameGateway.claimSeat(roomCode, sticker))} />;
   return <RoomExperience bootstrap={state.bootstrap} connection={state.connection.status} pending={state.pendingAction} error={state.error} onAction={run} />;
@@ -218,7 +272,7 @@ function Landing({ onCreate, pending, error }: { onCreate(mode: GameMode): void;
     } as const)[support];
   const interactiveLabel = chromeFlagRequired ? 'WebMCP setup' : browserUnsupported ? 'Browser support' : undefined;
 
-  return <main id="content" className="game-shell landing-shell" tabIndex={-1}><BrandHeader /><div className="landing-stage"><section className="hero" aria-labelledby="game-title"><p className="eyebrow">2 players · 2 phones · 5–7 min</p><h1 id="game-title">Can you fool the AI Detective?</h1><p className="lede">Two friends team up against an AI Detective. First, it learns your real answers. Then one becomes the Mirror and tries to copy the other.</p><div className="hero-actions"><Tooltip content={supportMessage} interactiveLabel={interactiveLabel}><button className="button button-primary" type="button" onClick={() => onCreate('standard')} disabled={support !== true || Boolean(pending)}>{pending ?? 'Start a game'}</button></Tooltip></div>{error && <p className="error-banner" role="alert">{error}</p>}</section><HowItWorks /></div><footer><p>Built for the WebMCP Challenge</p></footer></main>;
+  return <main id="content" className="game-shell landing-shell" tabIndex={-1}><BrandHeader /><div className="landing-stage"><section className="hero" aria-labelledby="game-title"><p className="eyebrow">2 players · 2 phones · 5–7 min</p><h1 id="game-title">Can you fool the AI Detective?</h1><p className="lede">Two friends team up against an AI Detective. First, it learns your real answers. Then one becomes the Mirror and tries to copy the other.</p><div className="hero-actions"><Tooltip content={supportMessage} interactiveLabel={interactiveLabel}><button className="button button-primary" type="button" onClick={() => onCreate('standard')} disabled={support !== true || Boolean(pending)}>{pending ?? 'Start a game'}</button></Tooltip></div>{support === true && <p className="hero-ai-hint">Or tell your AI, <strong>“Let’s play.”</strong></p>}{error && <p className="error-banner" role="alert">{error}</p>}</section><HowItWorks /></div><footer><p>Built for the WebMCP Challenge</p></footer></main>;
 }
 
 const TUTORIAL_STEPS = [
@@ -345,11 +399,22 @@ function RoomExperience({ bootstrap, connection, pending, error, onAction }: { b
 
 function HostBoard({ game, pending, onAction }: { game: PublicGameSnapshot; pending: string | null; onAction(label: string, action: () => Promise<RoomBootstrap>): () => void }) {
   const joinUrl = typeof window === 'undefined' ? '' : `${window.location.origin}/?room=${game.roomCode}`;
-  return <section className="host-board" aria-labelledby="board-title"><div className="board-topline"><div><p className="eyebrow">Main screen · {game.mode === 'demo' ? 'Demo Room' : 'Live Room'}</p><h1 id="board-title">{phaseTitle(game)}</h1></div><Progress phase={game.phase} round={game.round} /></div>{game.phase === 'lobby' ? <LobbyBoard game={game} joinUrl={joinUrl} pending={pending} onAction={onAction} /> : <ActiveBoard game={game} />}</section>;
+  return <section className="host-board" aria-labelledby="board-title"><div className="board-topline"><h1 id="board-title">{phaseTitle(game)}</h1>{game.phase !== 'lobby' && <Progress phase={game.phase} round={game.round} />}</div>{game.phase === 'lobby' ? <LobbyBoard game={game} joinUrl={joinUrl} pending={pending} onAction={onAction} /> : <ActiveBoard game={game} />}</section>;
 }
 
 function LobbyBoard({ game, joinUrl, pending, onAction }: { game: PublicGameSnapshot; joinUrl: string; pending: string | null; onAction(label: string, action: () => Promise<RoomBootstrap>): () => void }) {
-  return <div className="lobby-layout"><div className="join-card"><div className="qr-wrap">{joinUrl && <QRCodeSVG value={joinUrl} size={180} level="M" />}</div><p>Scan with both phones</p><strong className="big-code">{game.roomCode}</strong><button type="button" className="text-button" onClick={() => void navigator.clipboard.writeText(joinUrl)}>Copy join link</button></div><div className="lobby-players">{game.players.map((player) => <PlayerSummary key={player.seat} player={player} />)}<label className="toggle-row"><input type="checkbox" checked={game.timerSeconds === 15} disabled={game.players.some((player) => player.ready) || Boolean(pending)} onChange={(event) => void onAction('Updating timer…', () => gameGateway.setTimerMode(game.gameId, event.target.checked ? 15 : 8))()} /><span><strong>Extended answer time</strong><small>{game.timerSeconds === 15 ? '15 seconds' : '8 seconds'}</small></span></label></div></div>;
+  const timerLocked = game.players.some((player) => player.ready);
+  return <div className="lobby-layout">
+    <div className="join-card"><div className="qr-wrap">{joinUrl && <QRCodeSVG value={joinUrl} size={180} level="M" title="Scan to join this room" />}</div><p>Scan to join</p><strong className="big-code">{game.roomCode}</strong><button type="button" className="text-button" onClick={() => void navigator.clipboard.writeText(joinUrl)}>Copy join link</button></div>
+    <div className="lobby-side">
+      <div className="lobby-players">{game.players.map((player) => <PlayerSummary key={player.seat} player={player} />)}</div>
+      <details className="lobby-settings">
+        <summary>Settings</summary>
+        <label className="toggle-row"><input type="checkbox" checked={game.timerSeconds === 15} disabled={timerLocked || Boolean(pending)} aria-describedby={timerLocked ? 'timer-locked-hint' : undefined} onChange={(event) => void onAction('Updating timer…', () => gameGateway.setTimerMode(game.gameId, event.target.checked ? 15 : 8))()} /><span><strong>Extended answer time</strong><small>{game.timerSeconds === 15 ? '15 seconds' : '8 seconds'}</small></span></label>
+        {timerLocked && <p id="timer-locked-hint">Answer time is locked once a player is ready.</p>}
+      </details>
+    </div>
+  </div>;
 }
 
 function ActiveBoard({ game }: { game: PublicGameSnapshot }) {
@@ -358,7 +423,7 @@ function ActiveBoard({ game }: { game: PublicGameSnapshot }) {
 
 function PlayerSummary({ player, suspicion = false }: { player: PublicPlayer; suspicion?: boolean }) {
   const meta = player.sticker ? STICKER_META[player.sticker] : null;
-  return <article className={`player-card compact ${suspicion ? 'suspected' : ''}`}><div className="sticker" aria-hidden="true">{meta?.emoji ?? '…'}</div><p className="player-seat">{player.seat === 'seat_a' ? 'Player A' : 'Player B'}</p><h2>{meta?.label ?? 'Waiting for a player…'}</h2>{meta && <span className="ready-badge">{player.answered ? '✓ Answer locked' : player.ready ? '✓ Ready' : 'Waiting'}</span>}{suspicion && <div className="suspicion-sticker">Suspicious!</div>}<div className="trait-list">{player.traits.map((trait) => <span key={trait.id}>{trait.text}{trait.feedback && <small> · {trait.feedback === 'thats_me' ? 'That’s me' : 'Not me'}</small>}</span>)}</div></article>;
+  return <article className={`player-card compact ${suspicion ? 'suspected' : ''}`}><div className="sticker" aria-hidden="true">{meta?.emoji}</div><p className="player-seat">{player.seat === 'seat_a' ? 'Player A' : 'Player B'}</p><h2>{meta?.label ?? 'Waiting to join…'}</h2>{meta && <span className="ready-badge">{player.answered ? '✓ Answer locked' : player.ready ? '✓ Ready' : 'Waiting'}</span>}{suspicion && <div className="suspicion-sticker">Suspicious!</div>}<div className="trait-list">{player.traits.map((trait) => <span key={trait.id}>{trait.text}{trait.feedback && <small> · {trait.feedback === 'thats_me' ? 'That’s me' : 'Not me'}</small>}</span>)}</div></article>;
 }
 
 function CenterStage({ game }: { game: PublicGameSnapshot }) {
@@ -453,14 +518,19 @@ function PhoneResult({ game, self }: { game: PublicGameSnapshot; self: PlayerSel
 }
 
 function Progress({ phase, round }: { phase: string; round: number }) {
-  return <ol className="progress-strip" aria-label="Game progress"><li className={phase !== 'lobby' ? 'complete' : 'active'}>Learn</li><li className={phase === 'challenge' || phase === 'objection' ? 'active' : phase === 'accuse' || phase === 'revealed' ? 'complete' : ''}>Challenge {round ? `${Math.min(round, 4)}/4` : ''}</li><li className={phase === 'accuse' ? 'active' : phase === 'revealed' ? 'complete' : ''}>Accuse</li></ol>;
+  const stage = phase === 'accuse' || phase === 'revealed' ? 2 : phase === 'challenge' || phase === 'objection' ? 1 : 0;
+  const labels = ['Learn', `Challenge${round ? ` ${Math.min(round, 4)}/4` : ''}`, 'Accuse'];
+  return <div className="game-progress"><p id="game-progress-label">Game progress</p><ol className="progress-strip" aria-labelledby="game-progress-label">{labels.map((label, index) => {
+    const active = index === stage && phase !== 'revealed';
+    return <li key={index} className={active ? 'active' : index < stage || phase === 'revealed' ? 'complete' : undefined} aria-current={active ? 'step' : undefined}>{label}</li>;
+  })}</ol></div>;
 }
 
 function phaseTitle(game: PublicGameSnapshot): string {
   const learnTitle = game.currentQuestion?.kind === 'contrast' || game.checkpoint?.kind === 'awaiting_contrast_question'
     ? 'Learn · Extra question'
     : game.currentQuestion?.kind === 'learn' ? `Learn ${game.currentQuestion.ordinal}/5` : 'Learn';
-  return ({ lobby: 'Invite both players', learn: learnTitle, trait_review: 'Meet the players', role_reveal: 'Secret roles', challenge: `Challenge ${game.round}/4`, objection: 'Objection!', accuse: 'Final accusation', revealed: 'Case closed' } as Record<string, string>)[game.phase];
+  return ({ lobby: 'Invite players', learn: learnTitle, trait_review: 'Meet the players', role_reveal: 'Secret roles', challenge: `Challenge ${game.round}/4`, objection: 'Objection!', accuse: 'Final accusation', revealed: 'Case closed' } as Record<string, string>)[game.phase];
 }
 
 function checkpointCopy(game: PublicGameSnapshot): string {

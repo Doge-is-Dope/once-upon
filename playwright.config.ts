@@ -13,5 +13,5 @@ export default defineConfig({
   ],
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
-    : { command: 'npm run dev', url: 'http://localhost:3000', reuseExistingServer: true },
+    : { command: 'pnpm run dev', url: 'http://localhost:3000', reuseExistingServer: true },
 });

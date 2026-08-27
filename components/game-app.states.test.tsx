@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlayerSelfSnapshot, PublicGameSnapshot, RoomBootstrap } from '@/lib/game/contracts';
 import { gameGateway } from '@/lib/game/gateway';
 import * as webMcp from '@/lib/webmcp/registry';
+import * as supabase from '@/lib/supabase/client';
 import { GameApp } from './game-app';
 
 function game(overrides: Partial<PublicGameSnapshot> = {}): PublicGameSnapshot {
@@ -50,13 +51,114 @@ describe('GameApp room guidance', () => {
       return () => {};
     });
     vi.spyOn(webMcp, 'bindHostRoom').mockResolvedValue(() => {});
-    vi.spyOn(webMcp, 'getWebMcpCapability').mockReturnValue({ supported: false, reason: 'WebMCP is unavailable in this browser.' });
+    vi.spyOn(webMcp, 'bindGameLauncher').mockResolvedValue(() => {});
+    vi.spyOn(webMcp, 'getWebMcpCapability').mockReturnValue({ supported: false, issue: 'api_unavailable', reason: 'WebMCP is unavailable in this browser.' });
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  function allowAiStart() {
+    window.history.replaceState({}, '', '/');
+    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: true });
+    vi.spyOn(supabase, 'hasSupabaseConfig').mockReturnValue(true);
+  }
+
+  it.each(['AI', 'button'])('shares a pending room when the %s starts first and reuses the successful room', async (first) => {
+    allowAiStart();
+    const bootstrap: RoomBootstrap = { publicState: game(), selfState: null, viewerKind: 'host' };
+    let finish!: (value: RoomBootstrap) => void;
+    const create = vi.spyOn(gameGateway, 'createRoom').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    vi.spyOn(gameGateway, 'refresh').mockResolvedValue({ publicState: bootstrap.publicState, selfState: null });
+    render(<GameApp />);
+    const launch = vi.mocked(webMcp.bindGameLauncher).mock.calls[0][0];
+    const button = screen.getByRole('button', { name: 'Start a game' });
+    let pending!: Promise<RoomBootstrap>;
+    await act(async () => {
+      if (first === 'button') fireEvent.click(button);
+      pending = launch();
+      if (first === 'AI') fireEvent.click(button);
+      expect(create).toHaveBeenCalledExactlyOnceWith('standard', 8);
+      finish(bootstrap);
+      await pending;
+    });
+    expect(window.location.search).toBe('?room=TEST');
+    expect(screen.getByRole('heading', { name: 'Invite players' })).toBeInTheDocument();
+    expect(screen.getByTitle('Scan to join this room')).toBeInTheDocument();
+    await expect(launch()).resolves.toBe(bootstrap);
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it('reports an AI creation failure in the page and rejects the tool callback', async () => {
+    allowAiStart();
+    const create = vi.spyOn(gameGateway, 'createRoom').mockRejectedValue(new Error('Unable to create room.'));
+    render(<GameApp />);
+    const launch = vi.mocked(webMcp.bindGameLauncher).mock.calls[0][0];
+    await act(async () => { await expect(launch()).rejects.toThrow('Unable to create room.'); });
+    expect(screen.getByRole('alert')).toHaveTextContent('Unable to create room.');
+    expect(screen.getByRole('button', { name: 'Start a game' })).toBeEnabled();
+    expect(window.location.search).toBe('');
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it('rechecks the actual route before a previously discovered entry callback creates a room', async () => {
+    allowAiStart();
+    const create = vi.spyOn(gameGateway, 'createRoom');
+    vi.spyOn(gameGateway, 'bootstrapRoom').mockImplementation(() => new Promise(() => {}));
+    render(<GameApp />);
+    const launch = vi.mocked(webMcp.bindGameLauncher).mock.calls[0][0];
+    window.history.replaceState({}, '', '/?room=TEST');
+    await act(async () => { await expect(launch()).rejects.toThrow('Open the game homepage'); });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('releases a launcher whose registration finishes after unmount', async () => {
+    allowAiStart();
+    let finish!: (release: () => void) => void;
+    vi.mocked(webMcp.bindGameLauncher).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const release = vi.fn();
+    const view = render(<GameApp />);
+    view.unmount();
+    await act(async () => { finish(release); });
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('does not navigate to a room after the page that requested it unmounts', async () => {
+    allowAiStart();
+    let finish!: (bootstrap: RoomBootstrap) => void;
+    vi.spyOn(gameGateway, 'createRoom').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const view = render(<GameApp />);
+    const launch = vi.mocked(webMcp.bindGameLauncher).mock.calls[0][0];
+    let pending!: Promise<RoomBootstrap>;
+    act(() => { pending = launch(); });
+    view.unmount();
+    finish({ publicState: game(), selfState: null, viewerKind: 'host' });
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(window.location.search).toBe('');
+  });
+
+  it('releases a Host binding that finishes after unmount', async () => {
+    let finish!: (release: () => void) => void;
+    vi.mocked(webMcp.bindHostRoom).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const release = vi.fn();
+    const view = await showRoom(game());
+    view.unmount();
+    await act(async () => { finish(release); });
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('keeps Host tools bound while public snapshots refresh', async () => {
+    const snapshot = game();
+    await showRoom(snapshot);
+    const invalidate = vi.mocked(gameGateway.subscribe).mock.calls[0][1];
+    vi.mocked(gameGateway.refresh).mockResolvedValue({ publicState: { ...snapshot, revision: 2, sequence: 2 }, selfState: null });
+    await act(async () => { invalidate(); });
+    expect(gameGateway.refresh).toHaveBeenCalledWith(snapshot.gameId, 'host');
+    expect(webMcp.bindHostRoom).toHaveBeenCalledOnce();
+    expect(gameGateway.subscribe).toHaveBeenCalledOnce();
   });
 
   it('explains sticker choice once and still marks taken stickers', async () => {
@@ -81,6 +183,7 @@ describe('GameApp room guidance', () => {
     expect(screen.queryByRole('heading', { name: 'Choose your sticker' })).not.toBeInTheDocument();
     expect(document.querySelector('.tooltip-content')).toBeNull();
     expect(webMcp.getWebMcpCapability).not.toHaveBeenCalled();
+    expect(webMcp.bindGameLauncher).not.toHaveBeenCalled();
   });
 
   it('shows one waiting message per empty seat without losing occupied-seat status', async () => {
@@ -93,7 +196,85 @@ describe('GameApp room guidance', () => {
     expect(screen.getAllByText('TEST')).toHaveLength(2);
     expect(within(occupied).getByText('✓ Ready')).toBeInTheDocument();
     expect(within(empty).getAllByText(/Waiting/)).toHaveLength(1);
-    expect(within(empty).getByRole('heading')).toHaveTextContent('Waiting for a player…');
+    expect(within(empty).getByRole('heading')).toHaveTextContent('Waiting to join…');
+    expect(empty.querySelector('.sticker')).toBeEmptyDOMElement();
+    expect(occupied.querySelector('.sticker')).toHaveTextContent('🐯');
+  });
+
+  it('keeps lobby headings focused and settings collapsed by default', async () => {
+    await showRoom(game());
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Invite players');
+    expect(screen.getByText('Scan to join', { exact: true })).toBeVisible();
+    expect(screen.queryByText(/Main screen|Live Room|Demo Room/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Game progress' })).not.toBeInTheDocument();
+    expect(screen.getByText('Settings').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('Extended answer time')).not.toBeVisible();
+  });
+
+  it('updates the existing timer setting, blocks duplicate changes, and keeps settings open', async () => {
+    const snapshot = game();
+    snapshot.players.forEach((player) => { player.ready = false; });
+    let finish!: (value: RoomBootstrap) => void;
+    const update = vi.spyOn(gameGateway, 'setTimerMode').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await showRoom(snapshot);
+    fireEvent.click(screen.getByText('Settings'));
+    const input = screen.getByRole('checkbox', { name: /Extended answer time/ });
+    expect(input).toBeEnabled();
+    expect(input).not.toBeChecked();
+    fireEvent.click(input);
+    expect(update).toHaveBeenCalledWith('test-game', 15);
+    expect(input).toBeDisabled();
+    await act(async () => { finish({ publicState: { ...snapshot, timerSeconds: 15 }, selfState: null, viewerKind: 'host' }); });
+    expect(input).toBeChecked();
+    expect(input).toBeEnabled();
+    expect(screen.getByText('15 seconds')).toBeVisible();
+    expect(screen.getByText('Settings').closest('details')).toHaveAttribute('open');
+    fireEvent.click(input);
+    expect(update).toHaveBeenLastCalledWith('test-game', 8);
+    await act(async () => { finish({ publicState: snapshot, selfState: null, viewerKind: 'host' }); });
+    expect(input).not.toBeChecked();
+    expect(screen.getByText('8 seconds')).toBeVisible();
+  });
+
+  it.each([0, 1])('keeps answer time locked when player %i is ready', async (readyIndex) => {
+    const snapshot = game();
+    snapshot.players.forEach((player, index) => { player.ready = index === readyIndex; });
+    const update = vi.spyOn(gameGateway, 'setTimerMode');
+    await showRoom(snapshot);
+    fireEvent.click(screen.getByText('Settings'));
+    const input = screen.getByRole('checkbox', { name: /Extended answer time/ });
+    expect(input).toBeDisabled();
+    expect(input).toHaveAccessibleDescription('Answer time is locked once a player is ready.');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('retains the current timer and reports failures inside the existing error flow', async () => {
+    const snapshot = game();
+    snapshot.players.forEach((player) => { player.ready = false; });
+    vi.spyOn(gameGateway, 'setTimerMode').mockRejectedValue(new Error('Could not update answer time.'));
+    await showRoom(snapshot);
+    fireEvent.click(screen.getByText('Settings'));
+    const input = screen.getByRole('checkbox', { name: /Extended answer time/ });
+    await act(async () => { fireEvent.click(input); });
+    expect(input).not.toBeChecked();
+    expect(input).toBeEnabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not update answer time.');
+  });
+
+  it.each([
+    ['learn', 'Learn', 0], ['trait_review', 'Learn', 0], ['role_reveal', 'Learn', 0],
+    ['challenge', 'Challenge 2/4', 1], ['objection', 'Challenge 2/4', 1], ['accuse', 'Accuse', 2],
+    ['revealed', null, 3],
+  ] as const)('labels the actual current phase during %s', async (phase, current, completeCount) => {
+    await showRoom(game({ phase, round: phase === 'learn' || phase === 'trait_review' || phase === 'role_reveal' ? 0 : 2 }));
+    const progress = screen.getByRole('list', { name: 'Game progress' });
+    const active = progress.querySelector('[aria-current="step"]');
+    if (current) {
+      expect(active).toHaveTextContent(current);
+      expect(active).toHaveClass('active');
+    } else expect(active).toBeNull();
+    expect(progress.querySelectorAll('.complete')).toHaveLength(completeCount);
+    expect(screen.queryByText(/Main screen ·/)).not.toBeInTheDocument();
   });
 
   it('keeps phase and activity headings separate and delays recovery guidance', async () => {

@@ -4,13 +4,21 @@ No production pass should be marked complete without a URL, timestamp, device/br
 
 ## Automated checks
 
-- `npm run verify`: ESLint, Vitest/RTL, and production build.
-- `npm run test:e2e`: Playwright host and phone viewports.
-- `npm run test:supabase`: independent anonymous Host/player/outsider projection and authorization smoke test.
-- `npm run test:supabase:e2e`: complete standard game plus versioned Demo Room against the configured Supabase project.
-- `npx supabase db lint --linked`: migration and database function checks.
-- `npx supabase test db --linked`: pgTAP schema/security smoke tests.
-- `npm audit --omit=dev`: production dependency advisories.
+- `pnpm run verify`: ESLint, Vitest/RTL, and production build.
+- `pnpm run test:e2e`: Playwright host and phone viewports.
+- `pnpm run test:supabase`: independent anonymous Host/player/outsider projection and authorization smoke test.
+- `pnpm run test:supabase:e2e`: complete standard game plus versioned Demo Room against the configured Supabase project.
+- `pnpm exec supabase db lint --linked`: migration and database function checks.
+- `pnpm exec supabase test db --linked`: pgTAP schema/security smoke tests.
+- `pnpm audit --prod`: production dependency advisories.
+
+## Local AI entry verification
+
+Recorded 2026-08-27 against `http://localhost:3000`, without remote room creation or deployment:
+
+- `pnpm run verify` passed: lint, 108 unit tests, and production build.
+- Host/Phone Playwright passed 41 tests, with one expected desktop-only check skipped on the phone profile. The new flow invokes the real page tool handlers against a mocked gateway: homepage discovery, room creation, immediate public-state read, QR display, two-player readiness, and the first Learn question. Manual start and phone-only entry also pass.
+- Commit review found three new player-array/tuple type errors in `components/game-app.states.test.tsx`; these are now fixed by updating each fixture player's readiness without replacing the tuple. Lint and all 108 unit tests pass after the fix. `pnpm exec tsc --noEmit --incremental false` now reports only the pre-existing event actor error in `lib/game/gateway.test.ts:9` (`'server'` is not a valid actor).
 
 ## Gate 2 automated production evidence
 
@@ -40,6 +48,7 @@ Physical-device runs remain in the post-freeze production game matrix below.
 
 ## Required manual matrix
 
+- From the homepage, tell a connected AI client “Let’s play” without a setup prompt. Verify room creation, QR join from two phones, readiness, and the first Learn questions. Repeat from an already-open Host room and confirm no second room is created. The historical production evidence above predates this entry tool; local mocked tool tests do not establish natural-language client compatibility.
 - Compatible AI clients with imperative WebMCP support.
 - Chrome WebMCP testing build.
 - iOS Safari and Android Chrome on two physical phones.

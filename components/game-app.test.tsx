@@ -11,6 +11,7 @@ describe('GameApp landing', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/');
     vi.spyOn(webMcp, 'getWebMcpCapability').mockReturnValue({ supported: true });
+    vi.spyOn(webMcp, 'bindGameLauncher').mockResolvedValue(() => {});
     vi.spyOn(supabase, 'hasSupabaseConfig').mockReturnValue(false);
   });
 
@@ -33,6 +34,16 @@ describe('GameApp landing', () => {
     expect(start).toBeEnabled();
     expect(start).not.toHaveAttribute('aria-describedby');
     expect(document.querySelector('.tooltip-content')).toBeNull();
+    expect(screen.getByText('“Let’s play.”')).toBeVisible();
+    expect(webMcp.bindGameLauncher).not.toHaveBeenCalled();
+  });
+
+  it('makes the AI entry available without creating a room on page load', () => {
+    vi.mocked(supabase.hasSupabaseConfig).mockReturnValue(true);
+    const create = vi.spyOn(gameGateway, 'createRoom');
+    render(<GameApp />);
+    expect(webMcp.bindGameLauncher).toHaveBeenCalledOnce();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('disables unsupported browsers with one short accessible hint and never creates a room', () => {
@@ -54,6 +65,8 @@ describe('GameApp landing', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     fireEvent.click(start);
     expect(create).not.toHaveBeenCalled();
+    expect(webMcp.bindGameLauncher).not.toHaveBeenCalled();
+    expect(screen.queryByText('“Let’s play.”')).not.toBeInTheDocument();
   });
 
   it('guides desktop Chrome 149+ users to enable WebMCP without linking to a chrome URL', async () => {

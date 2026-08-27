@@ -1,6 +1,6 @@
 'use client';
 
-import type { QuestionDraft, Seat } from '@/lib/game/contracts';
+import type { PublicGameSnapshot, QuestionDraft, RoomBootstrap, Seat } from '@/lib/game/contracts';
 import { gameGateway, type GameGateway } from '@/lib/game/gateway';
 
 interface HostBinding {
@@ -10,7 +10,14 @@ interface HostBinding {
   generation: number;
 }
 
+interface GameLauncherBinding {
+  createRoom: () => Promise<RoomBootstrap>;
+  refresh: (gameId: string) => Promise<void>;
+  releaseHost: () => void;
+}
+
 let binding: HostBinding | null = null;
+let launcher: GameLauncherBinding | null = null;
 let generation = 0;
 let registrationPromise: Promise<void> | null = null;
 let registrationController: AbortController | null = null;
@@ -64,8 +71,25 @@ const questionSchema = {
 } as const;
 
 function activeBinding(): HostBinding {
-  if (!binding) throw new Error('NOT_AUTHORIZED: No active Host room is bound to these tools.');
+  if (!binding) throw new Error('NOT_AUTHORIZED: No active Host room. On the homepage, call start_game to play.');
   return { ...binding };
+}
+
+function setHostBinding(gameId: string, refresh: () => Promise<void>): () => void {
+  const leaseGeneration = ++generation;
+  binding = { gameId, gateway: gameGateway, refresh, generation: leaseGeneration };
+  return () => {
+    if (binding?.generation === leaseGeneration) binding = null;
+  };
+}
+
+function startedGame(publicState: PublicGameSnapshot) {
+  return {
+    roomCode: publicState.roomCode,
+    joinUrl: new URL(`/?room=${publicState.roomCode}`, window.location.origin).href,
+    publicState,
+    instructions: 'You are the AI Detective. Invite two human players to scan the on-screen QR code, choose stickers, and tap I’m ready on their own phones. Read get_public_game_state and perform its eligibleAgentActions using checkpoint.id and revision, even if phase is still lobby. When no action is eligible, use wait_for_public_event with the current sequence and a timeoutMs of 20000, then read state again. Follow the game until phase is revealed. Write playful English questions suitable for a 13+ party and cite only eligible public evidence. Players control their own answers and secret roles.',
+  };
 }
 
 function writeSchema(properties: Record<string, unknown>, required: string[]) {
@@ -109,8 +133,27 @@ function questionInput(value: unknown): QuestionDraft {
 
 const toolDefinitions: WebMcpToolDefinition[] = [
   {
+    name: 'start_game',
+    description: 'Play Can You Be Me? when the user asks to play, for example “Let’s play.” Create a room on this shared screen and act as the AI Detective for two human players joining on phones. Reuses the current Host room if one is already open. No room code or setup prompt is needed.',
+    inputSchema: emptySchema,
+    async execute(_input, { signal }) {
+      signal.throwIfAborted();
+      if (binding) return startedGame(await binding.gateway.getPublicState(binding.gameId));
+      const current = launcher;
+      if (!current) throw new Error('NOT_AUTHORIZED: Open the game homepage on the shared screen to start a game.');
+      const bootstrap = await current.createRoom();
+      if (launcher !== current) throw new DOMException('The game page was closed.', 'AbortError');
+      if (bootstrap.viewerKind !== 'host') throw new Error('NOT_AUTHORIZED: Only the Host can start the Detective.');
+      // Bind before returning so the agent can read state immediately, without
+      // waiting for React to attach the Host effect after the room appears.
+      current.releaseHost = setHostBinding(bootstrap.publicState.gameId, () => current.refresh(bootstrap.publicState.gameId));
+      return startedGame(bootstrap.publicState);
+    },
+    annotations: { readOnlyHint: false, untrustedContentHint: true },
+  },
+  {
     name: 'get_public_game_state',
-    description: 'Read the current public Can You Be Me? game state, checkpoint, eligible Detective action, and citable public evidence. Never returns secret roles or sealed answers.',
+    description: 'Read the current public Can You Be Me? game state, checkpoint, eligible Detective action, and citable public evidence. Never returns secret roles or sealed answers. As Detective, perform the eligibleAgentActions using checkpoint.id and revision, even in the lobby. Otherwise wait_for_public_event using sequence, then read again. Finish when phase is revealed.',
     inputSchema: emptySchema,
     async execute() {
       const current = activeBinding();
@@ -120,7 +163,7 @@ const toolDefinitions: WebMcpToolDefinition[] = [
   },
   {
     name: 'wait_for_public_event',
-    description: 'Wait briefly for the next durable public game event, then return that event or null on timeout.',
+    description: 'Wait briefly for the next durable public game event, then return that event or null on timeout. Read get_public_game_state afterward, including after a timeout, to find the next eligible Detective action.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -270,10 +313,16 @@ export async function ensureWebMcpRegistered(): Promise<void> {
 
 export async function bindHostRoom(gameId: string, refresh: () => Promise<void>): Promise<() => void> {
   await ensureWebMcpRegistered();
-  const leaseGeneration = ++generation;
-  binding = { gameId, gateway: gameGateway, refresh, generation: leaseGeneration };
+  return setHostBinding(gameId, refresh);
+}
+
+export async function bindGameLauncher(createRoom: () => Promise<RoomBootstrap>, refresh: (gameId: string) => Promise<void>): Promise<() => void> {
+  await ensureWebMcpRegistered();
+  const current: GameLauncherBinding = { createRoom, refresh, releaseHost: () => {} };
+  launcher = current;
   return () => {
-    if (binding?.generation === leaseGeneration) binding = null;
+    if (launcher === current) launcher = null;
+    current.releaseHost();
   };
 }
 

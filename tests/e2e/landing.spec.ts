@@ -527,6 +527,26 @@ test('interactive tutorial fills a 16:9 first viewport without horizontal overfl
   expect((tutorialBox?.y ?? 0) + (tutorialBox?.height ?? 0)).toBeLessThanOrEqual(700);
 });
 
+test('landing fits desktop heights without scrolling and keeps overflow content reachable', async ({ page }) => {
+  await page.goto('/');
+  for (const viewport of [{ width: 1280, height: 700 }, { width: 1280, height: 720 }, { width: 1366, height: 768 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport);
+    for (let step = 0; step < 5; step++) {
+      await page.locator('.tutorial-steps button').nth(step).click();
+      expect(await page.evaluate(() => document.documentElement.scrollHeight), `${viewport.width}×${viewport.height}, step ${step + 1}`).toBeLessThanOrEqual(viewport.height);
+      await expect(page.locator('footer')).toBeInViewport();
+    }
+  }
+  for (const viewport of [{ width: 1280, height: 480 }, { width: 636, height: 789 }, { width: 390, height: 700 }]) {
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(viewport.height);
+    await page.getByRole('link', { name: 'Can You Be Me? home' }).focus();
+    await page.locator('.tutorial-steps button').last().focus();
+    await expect(page.locator('.tutorial-steps button').last()).toBeInViewport();
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  }
+});
+
 test('page-wide tutorial arrows work before clicking and preserve the pointer selection style', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     Object.defineProperty(document, 'modelContext', { configurable: true, value: { registerTool: async () => {} } });
