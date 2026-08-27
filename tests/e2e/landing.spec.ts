@@ -78,6 +78,104 @@ test('unsupported browsers show a disabled start with a short accessible explana
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 });
 
+test('desktop Chrome 149+ explains how to enable WebMCP inside the existing tooltip', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'host', 'The setup path is only for desktop Chrome.');
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgentData', {
+      configurable: true,
+      value: { brands: [{ brand: 'Google Chrome', version: '149' }], mobile: false },
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (value: string) => {
+        document.documentElement.dataset.copiedSetupAddress = value;
+        document.documentElement.dataset.copySetupCount = String(Number(document.documentElement.dataset.copySetupCount ?? 0) + 1);
+      } },
+    });
+    Object.defineProperty(document, 'modelContext', { configurable: true, value: undefined });
+  });
+  await page.goto('/');
+
+  const start = page.getByRole('button', { name: 'Start a game' });
+  const trigger = page.getByRole('group', { name: 'Start a game' });
+  const hint = page.locator('[role="dialog"][aria-label="WebMCP setup"]');
+  await expect(start).toBeDisabled();
+  await expect(start).toHaveAccessibleDescription(/WebMCP isn’t enabled/);
+  await expect(hint).toContainText('Paste this into Chrome’s address bar, then set WebMCP Testing to Enabled.');
+  await expect(hint).not.toContainText('Learn more');
+  await expect(hint).toBeHidden();
+  await page.getByRole('link', { name: 'Can You Be Me? home' }).focus();
+  await page.keyboard.press('Tab');
+  await expect(trigger).toBeFocused();
+  await expect(hint).toBeVisible();
+
+  await page.keyboard.press('Tab');
+  const docs = hint.getByRole('link', { name: 'WebMCP' });
+  await expect(docs).toBeFocused();
+  await expect(docs).toHaveAttribute('href', 'https://developer.chrome.com/docs/ai/webmcp');
+  await page.keyboard.press('Tab');
+  const copy = hint.locator('.webmcp-copy-button');
+  await expect(copy).toBeFocused();
+  await expect(copy).toHaveAccessibleName('Copy Chrome setting');
+  await page.keyboard.press('Enter');
+  await expect(copy).toHaveAttribute('data-copied', 'true');
+  await expect(copy).toHaveAttribute('data-celebrating', 'true');
+  await expect(copy).toBeDisabled();
+  await expect(copy).toHaveAccessibleName('Chrome setting copied');
+  await expect(copy.locator('[data-icon="check"]')).toHaveCSS('opacity', '1');
+  await expect(copy.locator('.webmcp-copy-confetti i')).toHaveCount(8);
+  await expect(copy.locator('.webmcp-copy-status')).toHaveText('Chrome setting copied.');
+  await expect(copy.getByText('Copied', { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.dataset.copiedSetupAddress)).toBe('chrome://flags/#enable-webmcp-testing');
+  expect(await page.evaluate(() => document.documentElement.dataset.copySetupCount)).toBe('1');
+  await page.keyboard.press('Enter');
+  expect(await page.evaluate(() => document.documentElement.dataset.copySetupCount)).toBe('1');
+  await expect(copy).toHaveAttribute('data-celebrating', 'false', { timeout: 1_200 });
+  await expect(copy.locator('.webmcp-copy-confetti')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(hint).toBeHidden();
+  await trigger.hover();
+  await expect(hint).toBeVisible();
+  await page.getByRole('heading', { level: 1 }).hover();
+  await expect(hint).toBeHidden();
+  await trigger.hover();
+  await expect(hint).toBeVisible();
+  await expect(copy).toHaveAttribute('data-copied', 'true');
+  await expect(copy).toHaveAttribute('data-celebrating', 'false');
+  await expect(copy.locator('.webmcp-copy-confetti')).toHaveCount(0);
+  await expect(copy.locator('.webmcp-success-motion')).toHaveCSS('animation-name', 'none');
+  await expect(hint).toContainText('chrome://flags/#enable-webmcp-testing');
+  expect(await hint.locator('code').evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return range.getClientRects().length;
+  })).toBe(1);
+  await expect(hint.locator('a[href^="chrome://"]')).toHaveCount(0);
+  await expect(copy).toHaveAccessibleName('Copy Chrome setting', { timeout: 4_000 });
+  await expect(copy).toHaveAttribute('data-copied', 'false');
+  await expect(copy).toBeEnabled();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await copy.press('Enter');
+  await expect(copy).toHaveAccessibleName('Chrome setting copied');
+  await expect(copy.locator('[data-icon="check"]')).toHaveCSS('opacity', '1');
+  await expect(copy.locator('.webmcp-success-motion')).toHaveCSS('animation-name', 'none');
+  await expect(copy.locator('.webmcp-copy-confetti')).toBeHidden();
+
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expect(hint).toBeHidden();
+  await trigger.focus();
+  await expect(hint).toBeVisible();
+  expect(await hint.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const box = await hint.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+  await page.keyboard.press('Escape');
+  await expect(hint).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
 test('WebMCP help opens the official documentation without leaving the game', async ({ page, context }, testInfo) => {
   const officialDocs = 'https://developer.chrome.com/docs/ai/webmcp';
   // Keep navigation deterministic; the destination itself is verified separately.

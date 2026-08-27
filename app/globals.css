@@ -52,10 +52,40 @@ button:disabled { cursor: not-allowed; opacity: .55; transform: none !important;
 .tooltip-trigger[data-disabled="true"] { cursor: not-allowed; }
 .tooltip-trigger[data-disabled="true"]:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .tooltip-trigger[data-disabled="true"] > :first-child { pointer-events: none; }
-.tooltip-content { display: none; position: fixed; inset: auto; z-index: 10; width: max-content; max-width: min(340px, calc(100vw - 32px)); margin: 0; padding: 9px 12px; border: 1px solid var(--ink); border-radius: 10px; background: var(--ink); box-shadow: 0 4px 12px rgb(23 35 25 / 18%); font-family: var(--font-geist-mono), monospace; font-size: .8125rem; font-weight: 650; line-height: 1.5; color: white; text-align: left; overflow-wrap: anywhere; }
+.tooltip-content { display: none; position: fixed; inset: auto; z-index: 10; width: max-content; max-width: min(440px, calc(100vw - 32px)); margin: 0; padding: 9px 12px; border: 1px solid var(--ink); border-radius: 10px; background: var(--ink); box-shadow: 0 4px 12px rgb(23 35 25 / 18%); font-family: var(--font-geist-mono), monospace; font-size: .8125rem; font-weight: 650; line-height: 1.5; color: white; text-align: left; overflow-wrap: anywhere; }
 .tooltip-content[data-open="true"] { display: block; }
 .tooltip-content a { color: inherit; cursor: pointer; text-decoration-line: underline; text-decoration-style: dashed; text-decoration-thickness: 1px; text-underline-offset: .2em; }
 .tooltip-content a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; border-radius: 2px; }
+.webmcp-setup-hint { width: 390px; max-width: 100%; display: grid; gap: 7px; font-weight: 550; }
+.webmcp-setup-hint > strong { font-size: .875rem; font-weight: 800; }
+.webmcp-setup-address { display: grid; grid-template-columns: minmax(0, 1fr) 40px; align-items: center; min-height: 48px; padding: 3px; border: 1px solid rgb(255 255 255 / 48%); border-radius: 8px; background: rgb(255 255 255 / 10%); }
+.webmcp-setup-address code { min-width: 0; padding: 5px 6px; font: inherit; font-size: .75rem; overflow-wrap: anywhere; user-select: all; }
+.webmcp-copy-button { position: relative; isolation: isolate; width: 40px; height: 40px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: white; cursor: pointer; }
+.webmcp-copy-button:hover:not(:disabled) { background: rgb(255 255 255 / 12%); }
+.webmcp-copy-button:active:not(:disabled) { background: rgb(255 255 255 / 18%); }
+.webmcp-copy-button:disabled { cursor: default; opacity: 1; }
+.webmcp-copy-button:focus-visible { outline: 2px solid white; outline-offset: -3px; }
+.webmcp-copy-icons { position: relative; z-index: 1; display: inline-grid; place-items: center; }
+.webmcp-copy-icon { grid-area: 1 / 1; display: grid; place-items: center; opacity: 0; filter: blur(2px); transform: scale(.25); transition: opacity 250ms ease-in-out, filter 250ms ease-in-out, transform 250ms ease-in-out; will-change: opacity, filter, transform; }
+.webmcp-copy-icon[data-icon="clipboard"], .webmcp-copy-button[data-copied="true"] .webmcp-copy-icon[data-icon="check"] { opacity: 1; filter: blur(0); transform: scale(1); }
+.webmcp-copy-button[data-copied="true"] .webmcp-copy-icon[data-icon="clipboard"] { opacity: 0; filter: blur(2px); transform: scale(.25); }
+.webmcp-copy-icon svg { display: block; width: 19px; height: 19px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.webmcp-copy-icon[data-icon="clipboard"] svg { stroke-width: 1.75; }
+.webmcp-success-motion { display: grid; place-items: center; }
+.webmcp-copy-button[data-celebrating="true"] .webmcp-success-motion { animation: webmcp-check-arrive 500ms cubic-bezier(.22, 1, .36, 1) both; }
+.webmcp-success-icon path { stroke-dasharray: 22; stroke-dashoffset: 22; }
+.webmcp-copy-button[data-copied="true"] .webmcp-success-icon path { stroke-dashoffset: 0; }
+.webmcp-copy-button[data-celebrating="true"] .webmcp-success-icon path { animation: webmcp-check-draw 500ms cubic-bezier(.22, 1, .36, 1) 80ms forwards; }
+.webmcp-copy-confetti { position: absolute; left: 50%; top: 50%; z-index: 0; width: 0; height: 0; pointer-events: none; }
+.webmcp-copy-confetti i { --particle-color: var(--acid); position: absolute; left: -1.5px; top: -1.5px; width: 3px; height: 3px; border-radius: 50%; background: var(--particle-color); opacity: 0; animation: webmcp-copy-confetti 520ms ease-out var(--particle-delay, 0ms) forwards; }
+.webmcp-copy-confetti i:nth-child(1) { --particle-x: -20px; --particle-y: -7px; --particle-rotate: -80deg; --particle-color: var(--acid); }
+.webmcp-copy-confetti i:nth-child(2) { --particle-x: -13px; --particle-y: -19px; --particle-rotate: -45deg; --particle-color: var(--coral); --particle-delay: 20ms; border-radius: 1px; height: 5px; }
+.webmcp-copy-confetti i:nth-child(3) { --particle-x: 1px; --particle-y: -21px; --particle-rotate: 30deg; --particle-color: var(--sky); --particle-delay: 40ms; }
+.webmcp-copy-confetti i:nth-child(4) { --particle-x: 17px; --particle-y: -14px; --particle-rotate: 75deg; --particle-color: white; --particle-delay: 60ms; border-radius: 1px; width: 5px; }
+.webmcp-copy-confetti i:nth-child(5) { --particle-x: 21px; --particle-y: 3px; --particle-rotate: 120deg; --particle-color: var(--acid); --particle-delay: 80ms; }
+.webmcp-copy-confetti i:nth-child(6) { --particle-x: 13px; --particle-y: 18px; --particle-rotate: 160deg; --particle-color: var(--coral); --particle-delay: 60ms; border-radius: 1px; height: 5px; }
+.webmcp-copy-confetti i:nth-child(7) { --particle-x: -2px; --particle-y: 20px; --particle-rotate: 210deg; --particle-color: var(--sky); --particle-delay: 40ms; }
+.webmcp-copy-confetti i:nth-child(8) { --particle-x: -17px; --particle-y: 13px; --particle-rotate: 260deg; --particle-color: white; --particle-delay: 20ms; border-radius: 1px; width: 5px; }
 .error-banner { max-width: 620px; margin: 18px auto 0; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 12px; background: #ffd4cc; font-size: 14px; font-weight: 650; }
 
 .tutorial { min-height: 500px; padding: 24px; display: flex; flex-direction: column; border: 2px solid var(--line); border-radius: 28px; background: rgb(255 255 255 / 78%); box-shadow: 9px 10px 0 var(--line); }
@@ -217,6 +247,17 @@ footer { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 0 0 40p
 
 @keyframes tutorial-pop { from { opacity: 0; } }
 @keyframes pulse { to { transform: scale(1.04); } }
+@keyframes webmcp-check-arrive {
+  from { transform: translateY(5px) rotate(35deg); filter: blur(6px); }
+  65% { transform: translateY(-1px) rotate(-3deg); filter: blur(0); }
+  to { transform: translateY(0) rotate(0); filter: blur(0); }
+}
+@keyframes webmcp-check-draw { from { stroke-dashoffset: 22; } to { stroke-dashoffset: 0; } }
+@keyframes webmcp-copy-confetti {
+  0% { opacity: 0; transform: translate(0, 0) scale(.4) rotate(0); }
+  18% { opacity: 1; transform: translate(calc(var(--particle-x) * .25), calc(var(--particle-y) * .25)) scale(1) rotate(calc(var(--particle-rotate) * .25)); }
+  100% { opacity: 0; transform: translate(var(--particle-x), var(--particle-y)) scale(.65) rotate(var(--particle-rotate)); }
+}
 
 @keyframes think { to { transform: translateY(-6px); background: var(--coral); } }
 @media (min-width: 781px) and (max-width: 900px) {
@@ -271,6 +312,8 @@ footer { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 0 0 40p
 }
 @media (prefers-reduced-motion: reduce) {
   html:focus-within { scroll-behavior: auto; }
-  .tutorial-scene > *, .thinking-dots i, .countdown.urgent { animation: none !important; }
-  .button, .sticker-picker button, .choice-grid button { transition: none !important; }
+  .tutorial-scene > *, .thinking-dots i, .countdown.urgent, .webmcp-success-motion, .webmcp-success-icon path, .webmcp-copy-confetti i { animation: none !important; }
+  .webmcp-success-icon path { stroke-dashoffset: 0; }
+  .webmcp-copy-confetti { display: none; }
+  .button, .sticker-picker button, .choice-grid button, .webmcp-copy-icon { transition: none !important; }
 }

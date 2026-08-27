@@ -14,7 +14,10 @@ describe('GameApp landing', () => {
     vi.spyOn(supabase, 'hasSupabaseConfig').mockReturnValue(false);
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
 
   it('keeps the server-rendered start disabled without claiming the browser is unsupported', () => {
     const markup = document.createElement('div');
@@ -33,7 +36,7 @@ describe('GameApp landing', () => {
   });
 
   it('disables unsupported browsers with one short accessible hint and never creates a room', () => {
-    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false, reason: 'WebMCP is unavailable in this browser.' });
+    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false, issue: 'api_unavailable', reason: 'WebMCP is unavailable in this browser.' });
     vi.mocked(supabase.hasSupabaseConfig).mockReturnValue(true);
     const create = vi.spyOn(gameGateway, 'createRoom');
     render(<GameApp />);
@@ -53,8 +56,74 @@ describe('GameApp landing', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it.each(['Open this game over HTTPS.', 'This host is missing origin isolation.'])('preserves the actual setup problem: %s', (reason) => {
-    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false, reason });
+  it('guides desktop Chrome 149+ users to enable WebMCP without linking to a chrome URL', async () => {
+    vi.useFakeTimers();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({
+      supported: false,
+      issue: 'api_unavailable',
+      reason: 'WebMCP is unavailable in this browser.',
+      canEnableWithChromeFlag: true,
+    });
+    render(<GameApp />);
+
+    const start = screen.getByRole('button', { name: 'Start a game' });
+    const trigger = screen.getByRole('group', { name: 'Start a game' });
+    const hint = screen.getByRole('dialog', { hidden: true });
+    expect(hint).toHaveAttribute('aria-label', 'WebMCP setup');
+    expect(start).toBeDisabled();
+    expect(start).toHaveAccessibleDescription(/WebMCP isn’t enabled/);
+    expect(hint).toHaveTextContent('Paste this into Chrome’s address bar, then set WebMCP Testing to Enabled.');
+    expect(hint).not.toHaveTextContent('Enable WebMCP Testing, then relaunch Chrome.');
+    expect(hint).not.toHaveTextContent('Learn more');
+    expect(hint).toHaveTextContent('chrome://flags/#enable-webmcp-testing');
+    expect(within(hint).queryByRole('link', { name: /chrome:\/\/flags/i, hidden: true })).not.toBeInTheDocument();
+    const docs = within(hint).getByRole('link', { name: 'WebMCP', hidden: true });
+    expect(docs).toHaveAttribute('href', 'https://developer.chrome.com/docs/ai/webmcp');
+
+    fireEvent.pointerEnter(trigger);
+    const copy = within(hint).getByRole('button', { name: 'Copy Chrome setting', hidden: true });
+    expect(copy.parentElement).toHaveClass('webmcp-setup-address');
+    expect(copy.querySelectorAll('.webmcp-copy-icon')).toHaveLength(2);
+    await act(async () => { fireEvent.click(copy); });
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('chrome://flags/#enable-webmcp-testing');
+    expect(copy).toHaveAttribute('data-copied', 'true');
+    expect(copy).toHaveAttribute('data-celebrating', 'true');
+    expect(copy).toBeDisabled();
+    expect(copy).toHaveAccessibleName('Chrome setting copied');
+    expect(within(copy).queryByText('Copied')).not.toBeInTheDocument();
+    expect(copy.querySelector('.webmcp-copy-status')).toHaveTextContent('Chrome setting copied.');
+    const firstBurst = copy.querySelector('.webmcp-copy-confetti');
+    expect(firstBurst?.children).toHaveLength(8);
+
+    await act(async () => { fireEvent.click(copy); });
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(copy.querySelector('.webmcp-copy-confetti')).toBe(firstBurst);
+    act(() => vi.advanceTimersByTime(600));
+    expect(copy).toHaveAttribute('data-copied', 'true');
+    expect(copy).toHaveAttribute('data-celebrating', 'false');
+    expect(copy.querySelector('.webmcp-copy-confetti')).not.toBeInTheDocument();
+    fireEvent.pointerLeave(trigger);
+    fireEvent.pointerEnter(trigger);
+    expect(copy).toHaveAttribute('data-celebrating', 'false');
+    expect(copy.querySelector('.webmcp-copy-confetti')).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1_399));
+    expect(copy).toBeDisabled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(copy).toHaveAccessibleName('Copy Chrome setting');
+    expect(copy).toBeEnabled();
+    expect(copy).toHaveAttribute('data-copied', 'false');
+    expect(copy.querySelector('.webmcp-copy-confetti')).not.toBeInTheDocument();
+    expect(copy.querySelector('.webmcp-copy-status')).toBeEmptyDOMElement();
+    vi.useRealTimers();
+  });
+
+  it.each([
+    ['https_required', 'Open this game over HTTPS.'],
+    ['origin_isolation_required', 'This host is missing origin isolation.'],
+  ] as const)('preserves the actual setup problem: %s', (issue, reason) => {
+    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false, issue, reason });
     render(<GameApp />);
     expect(screen.getByRole('button', { name: 'Start a game' })).toBeDisabled();
     expect(screen.getByRole('tooltip', { hidden: true })).toHaveTextContent(reason);
@@ -62,7 +131,7 @@ describe('GameApp landing', () => {
   });
 
   it('rechecks support on window focus and cleans up when the landing unmounts', () => {
-    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false });
+    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false, issue: 'api_unavailable', reason: 'WebMCP is unavailable in this browser.' });
     const { unmount } = render(<GameApp />);
     const start = screen.getByRole('button', { name: 'Start a game' });
     expect(start).toBeDisabled();
@@ -70,7 +139,7 @@ describe('GameApp landing', () => {
     fireEvent.focus(window);
     expect(start).toBeEnabled();
     expect(document.querySelector('.tooltip-content')).toBeNull();
-    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false });
+    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false, issue: 'api_unavailable', reason: 'WebMCP is unavailable in this browser.' });
     fireEvent.focus(window);
     expect(start).toBeDisabled();
     expect(start).toHaveAccessibleDescription('This browser doesn’t support WebMCP');
@@ -101,14 +170,14 @@ describe('GameApp landing', () => {
     vi.mocked(supabase.hasSupabaseConfig).mockReturnValue(true);
     const create = vi.spyOn(gameGateway, 'createRoom');
     render(<GameApp />);
-    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false, reason: 'WebMCP is unavailable in this browser.' });
+    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false, issue: 'api_unavailable', reason: 'WebMCP is unavailable in this browser.' });
     fireEvent.click(screen.getByRole('button', { name: 'Start a game' }));
     expect(create).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('WebMCP is unavailable in this browser.');
   });
 
   it('reveals the disabled-start explanation on hover or focus and dismisses it with Escape', () => {
-    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false });
+    vi.mocked(webMcp.getWebMcpCapability).mockReturnValue({ supported: false, issue: 'api_unavailable', reason: 'WebMCP is unavailable in this browser.' });
     render(<GameApp />);
     const trigger = screen.getByRole('group', { name: 'Start a game' });
     const hint = screen.getByRole('dialog', { hidden: true });

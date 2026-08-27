@@ -13,6 +13,29 @@ beforeEach(() => {
 });
 
 describe('WebMCP registry', () => {
+  it.each([
+    ['desktop Chrome 149', { userAgentData: { brands: [{ brand: 'Google Chrome', version: '149' }], mobile: false }, userAgent: '' }, true],
+    ['desktop Chrome 148', { userAgentData: { brands: [{ brand: 'Google Chrome', version: '148' }], mobile: false }, userAgent: '' }, false],
+    ['mobile Chrome 149', { userAgentData: { brands: [{ brand: 'Google Chrome', version: '149' }], mobile: true }, userAgent: '' }, false],
+    ['desktop Edge 149', { userAgentData: { brands: [{ brand: 'Chromium', version: '149' }, { brand: 'Microsoft Edge', version: '149' }], mobile: false }, userAgent: '' }, false],
+    ['fallback desktop Chrome 149', { userAgent: 'Mozilla/5.0 Chrome/149.0.0.0 Safari/537.36' }, true],
+    ['fallback mobile Chrome 149', { userAgent: 'Mozilla/5.0 (Linux; Android 16) Chrome/149.0.0.0 Mobile Safari/537.36' }, false],
+    ['fallback Firefox', { userAgent: 'Mozilla/5.0 Firefox/148.0' }, false],
+  ])('recognizes %s only when the Chrome flag can be enabled', async (_label, browser, expected) => {
+    const { isDesktopChrome149Plus } = await import('./registry');
+    expect(isDesktopChrome149Plus(browser as Navigator)).toBe(expected);
+  });
+
+  it('returns a stable API-unavailable cause without changing the feature gate', async () => {
+    document.modelContext = undefined;
+    const { getWebMcpCapability } = await import('./registry');
+    expect(getWebMcpCapability()).toMatchObject({
+      supported: false,
+      issue: 'api_unavailable',
+      reason: 'WebMCP is unavailable in this browser.',
+    });
+  });
+
   it('exposes ten distinct atomic tools', async () => {
     const { webMcpToolNames } = await import('./registry');
     const names = webMcpToolNames();

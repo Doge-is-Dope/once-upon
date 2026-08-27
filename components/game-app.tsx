@@ -2,6 +2,7 @@
 
 import { QRCodeSVG } from 'qrcode.react';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
+import { CheckIcon, CopyIcon } from './icons';
 import { Tooltip } from './tooltip';
 import { gameGateway } from '@/lib/game/gateway';
 import {
@@ -17,7 +18,7 @@ import {
 } from '@/lib/game/contracts';
 import { initialRoomState, roomReducer } from '@/lib/game/reducer';
 import { displaySeconds, measureServerClock, monotonicNowMs, remainingMs, type ServerClock } from '@/lib/game/timing';
-import { bindHostRoom, getWebMcpCapability } from '@/lib/webmcp/registry';
+import { bindHostRoom, getWebMcpCapability, type WebMcpCapabilityIssue } from '@/lib/webmcp/registry';
 import { hasSupabaseConfig } from '@/lib/supabase/client';
 
 function roomFromLocation(): string | null {
@@ -146,21 +147,78 @@ function subscribeToBrowserFocus(onChange: () => void) {
   return () => window.removeEventListener('focus', onChange);
 }
 
-function readWebMcpSupport(): true | string {
+type WebMcpSupportState = true | WebMcpCapabilityIssue | 'chrome_flag_required';
+
+function readWebMcpSupport(): WebMcpSupportState {
   const capability = getWebMcpCapability();
   // A primitive snapshot stays stable between reads of the browser capability.
-  return capability.supported ? true : capability.reason ?? 'WebMCP is unavailable in this browser.';
+  if (capability.supported) return true;
+  if (capability.issue === 'api_unavailable' && capability.canEnableWithChromeFlag) return 'chrome_flag_required';
+  return capability.issue;
+}
+
+const WEBMCP_FLAG_ADDRESS = 'chrome://flags/#enable-webmcp-testing';
+const COPY_CONFETTI_PARTICLES = Array.from({ length: 8 }, (_, index) => index);
+
+function WebMcpSetupHint() {
+  const [copied, setCopied] = useState(false);
+  const [celebrating, setCelebrating] = useState(false);
+  const [copySequence, setCopySequence] = useState(0);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
+  }, []);
+  const copyAddress = async () => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
+    try {
+      await navigator.clipboard.writeText(WEBMCP_FLAG_ADDRESS);
+      setCopied(true);
+      setCelebrating(true);
+      setCopySequence((sequence) => sequence + 1);
+      celebrationTimer.current = setTimeout(() => setCelebrating(false), 600);
+      resetTimer.current = setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      setCopied(false);
+      setCelebrating(false);
+    }
+  };
+
+  return <span className="webmcp-setup-hint">
+    <strong><a href="https://developer.chrome.com/docs/ai/webmcp" target="_blank" rel="noopener noreferrer" title="Official documentation (opens in a new tab)">WebMCP</a> isn’t enabled</strong>
+    <span>Paste this into Chrome’s address bar, then set WebMCP Testing to Enabled.</span>
+    <span className="webmcp-setup-address">
+      <code>{WEBMCP_FLAG_ADDRESS}</code>
+      <button className="webmcp-copy-button" type="button" data-copied={copied} data-celebrating={celebrating} disabled={copied} aria-label={copied ? 'Chrome setting copied' : 'Copy Chrome setting'} onClick={() => void copyAddress()}>
+        <span className="webmcp-copy-icons" aria-hidden="true">
+          <span className="webmcp-copy-icon" data-icon="clipboard"><CopyIcon /></span>
+          <span className="webmcp-copy-icon webmcp-success-icon" data-icon="check"><span className="webmcp-success-motion" key={copySequence}><CheckIcon /></span></span>
+        </span>
+        {celebrating ? <span className="webmcp-copy-confetti" key={`confetti-${copySequence}`} aria-hidden="true">{COPY_CONFETTI_PARTICLES.map((particle) => <i key={particle} />)}</span> : null}
+        <span className="visually-hidden webmcp-copy-status" aria-live="polite">{copied ? 'Chrome setting copied.' : ''}</span>
+      </button>
+    </span>
+  </span>;
 }
 
 function Landing({ onCreate, pending, error }: { onCreate(mode: GameMode): void; pending: string | null; error: string | null }) {
   // The server and first hydration render must wait for a browser-side check.
   const support = useSyncExternalStore(subscribeToBrowserFocus, readWebMcpSupport, () => null);
-  const browserUnsupported = support === 'WebMCP is unavailable in this browser.';
-  const supportMessage = typeof support !== 'string' ? null
+  const browserUnsupported = support === 'api_unavailable';
+  const chromeFlagRequired = support === 'chrome_flag_required';
+  const supportMessage = support === true || support === null ? null
+    : chromeFlagRequired ? <WebMcpSetupHint />
     : browserUnsupported ? <>This browser doesn’t support <a href="https://developer.chrome.com/docs/ai/webmcp" target="_blank" rel="noopener noreferrer" title="Official documentation (opens in a new tab)">WebMCP</a></>
-    : support;
+    : ({
+      browser_required: 'WebMCP requires a browser.',
+      https_required: 'Open this game over HTTPS.',
+      origin_isolation_required: 'This host is missing origin isolation.',
+    } as const)[support];
+  const interactiveLabel = chromeFlagRequired ? 'WebMCP setup' : browserUnsupported ? 'Browser support' : undefined;
 
-  return <main id="content" className="game-shell landing-shell" tabIndex={-1}><BrandHeader /><div className="landing-stage"><section className="hero" aria-labelledby="game-title"><p className="eyebrow">2 players · 2 phones · 5–7 min</p><h1 id="game-title">Can you fool the AI Detective?</h1><p className="lede">Two friends team up against an AI Detective. First, it learns your real answers. Then one becomes the Mirror and tries to copy the other.</p><div className="hero-actions"><Tooltip content={supportMessage} interactiveLabel={browserUnsupported ? 'Browser support' : undefined}><button className="button button-primary" type="button" onClick={() => onCreate('standard')} disabled={support !== true || Boolean(pending)}>{pending ?? 'Start a game'}</button></Tooltip></div>{error && <p className="error-banner" role="alert">{error}</p>}</section><HowItWorks /></div><footer><p>Built for the WebMCP Challenge</p></footer></main>;
+  return <main id="content" className="game-shell landing-shell" tabIndex={-1}><BrandHeader /><div className="landing-stage"><section className="hero" aria-labelledby="game-title"><p className="eyebrow">2 players · 2 phones · 5–7 min</p><h1 id="game-title">Can you fool the AI Detective?</h1><p className="lede">Two friends team up against an AI Detective. First, it learns your real answers. Then one becomes the Mirror and tries to copy the other.</p><div className="hero-actions"><Tooltip content={supportMessage} interactiveLabel={interactiveLabel}><button className="button button-primary" type="button" onClick={() => onCreate('standard')} disabled={support !== true || Boolean(pending)}>{pending ?? 'Start a game'}</button></Tooltip></div>{error && <p className="error-banner" role="alert">{error}</p>}</section><HowItWorks /></div><footer><p>Built for the WebMCP Challenge</p></footer></main>;
 }
 
 const TUTORIAL_STEPS = [

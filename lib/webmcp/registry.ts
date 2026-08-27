@@ -15,6 +15,28 @@ let generation = 0;
 let registrationPromise: Promise<void> | null = null;
 let registrationController: AbortController | null = null;
 
+export type WebMcpCapabilityIssue =
+  | 'browser_required'
+  | 'https_required'
+  | 'origin_isolation_required'
+  | 'api_unavailable';
+
+export type WebMcpCapability =
+  | { supported: true }
+  | {
+      supported: false;
+      issue: WebMcpCapabilityIssue;
+      reason: string;
+      canEnableWithChromeFlag?: boolean;
+    };
+
+interface NavigatorWithUserAgentData extends Navigator {
+  userAgentData?: {
+    brands: Array<{ brand: string; version: string }>;
+    mobile: boolean;
+  };
+}
+
 const emptySchema = { type: 'object', properties: {}, additionalProperties: false } as const;
 const checkpointProperties = {
   checkpointId: { type: 'string', description: 'The exact active checkpoint ID returned by get_public_game_state.' },
@@ -198,11 +220,31 @@ const toolDefinitions: WebMcpToolDefinition[] = [
   },
 ];
 
-export function getWebMcpCapability(): { supported: boolean; reason?: string } {
-  if (typeof window === 'undefined') return { supported: false, reason: 'WebMCP requires a browser.' };
-  if (!window.isSecureContext && window.location.hostname !== 'localhost') return { supported: false, reason: 'Open this game over HTTPS.' };
-  if (window.location.hostname !== 'localhost' && window.originAgentCluster !== true) return { supported: false, reason: 'This host is missing origin isolation.' };
-  if (typeof document.modelContext?.registerTool !== 'function') return { supported: false, reason: 'WebMCP is unavailable in this browser.' };
+export function isDesktopChrome149Plus(currentNavigator: Navigator = navigator): boolean {
+  const userAgentData = (currentNavigator as NavigatorWithUserAgentData).userAgentData;
+  if (userAgentData) {
+    const chrome = userAgentData.brands.find(({ brand }) => brand === 'Google Chrome');
+    return !userAgentData.mobile && Number.parseInt(chrome?.version ?? '', 10) >= 149;
+  }
+
+  const userAgent = currentNavigator.userAgent;
+  if (/Android|Mobile|CriOS\//.test(userAgent) || /(?:Edg|OPR)\//.test(userAgent)) return false;
+  const chrome = userAgent.match(/\bChrome\/(\d+)/);
+  return Number.parseInt(chrome?.[1] ?? '', 10) >= 149;
+}
+
+export function getWebMcpCapability(): WebMcpCapability {
+  if (typeof window === 'undefined') return { supported: false, issue: 'browser_required', reason: 'WebMCP requires a browser.' };
+  if (!window.isSecureContext && window.location.hostname !== 'localhost') return { supported: false, issue: 'https_required', reason: 'Open this game over HTTPS.' };
+  if (window.location.hostname !== 'localhost' && window.originAgentCluster !== true) return { supported: false, issue: 'origin_isolation_required', reason: 'This host is missing origin isolation.' };
+  if (typeof document.modelContext?.registerTool !== 'function') {
+    return {
+      supported: false,
+      issue: 'api_unavailable',
+      reason: 'WebMCP is unavailable in this browser.',
+      canEnableWithChromeFlag: isDesktopChrome149Plus(),
+    };
+  }
   return { supported: true };
 }
 
