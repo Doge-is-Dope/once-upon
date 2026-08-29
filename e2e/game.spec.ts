@@ -6,6 +6,7 @@ import {
   EXPERIENCE_DB_VERSION,
   EXPERIENCE_STORE_NAME,
 } from '../lib/runtime/store';
+import { installModelContextMock } from './support/webmcp-mock';
 
 const EXPERIENCE_ID = 'the-last-manuscript';
 const legacyStorageConfig = {
@@ -15,51 +16,11 @@ const legacyStorageConfig = {
   activeKey: 'active',
 };
 
-type BrowserTool = {
-  execute(
-    input: Record<string, unknown>,
-    options?: { signal?: AbortSignal },
-  ): unknown;
-};
-
-declare global {
-  interface Window {
-    __webMCPTools: Map<string, BrowserTool>;
-  }
-}
-
 async function installWebMCPMock(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    if (sessionStorage.getItem('__disableWebMCPMock') === '1') return;
-    const tools = new Map<string, BrowserTool>();
-    const modelContext = new EventTarget() as EventTarget & {
-      registerTool(
-        tool: BrowserTool & { name: string },
-        options?: { signal?: AbortSignal },
-      ): Promise<void>;
-      getTools(): Promise<Array<{ name: string }>>;
-    };
-    modelContext.registerTool = async (tool, options) => {
-      tools.set(tool.name, tool);
-      options?.signal?.addEventListener(
-        'abort',
-        () => {
-          if (tools.get(tool.name) === tool) tools.delete(tool.name);
-        },
-        { once: true },
-      );
-      modelContext.dispatchEvent(new Event('toolchange'));
-    };
-    modelContext.getTools = async () =>
-      [...tools.keys()].map((name) => ({ name }));
-    Object.defineProperty(document, 'modelContext', {
-      configurable: true,
-      value: modelContext,
-    });
-    Object.defineProperty(window, '__webMCPTools', {
-      configurable: true,
-      value: tools,
-    });
+  await installModelContextMock(page, {
+    globalName: '__webMCPTools',
+    dispatchToolChange: true,
+    respectOptOut: true,
   });
 }
 

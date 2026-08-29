@@ -1,52 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
+import { installModelContextMock } from './support/webmcp-mock';
 
 declare global {
   interface Window {
     __clipboardShouldFail: boolean;
-    __connectionTools: Map<string, { name: string }>;
     __copiedText: string;
-    __mcpFailName: string | null;
-    __mcpPermissionDenied: boolean;
   }
 }
 
 async function installRegistrationMock(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    type BrowserTool = {
-      name: string;
-      execute(input: Record<string, unknown>): unknown;
-    };
-    const tools = new Map<string, BrowserTool>();
-    const modelContext = new EventTarget() as EventTarget & {
-      registerTool(
-        tool: BrowserTool,
-        options?: { signal?: AbortSignal },
-      ): Promise<void>;
-      getTools(): Promise<Array<{ name: string }>>;
-    };
-    modelContext.registerTool = async (tool, options) => {
-      if (window.__mcpPermissionDenied)
-        throw new DOMException('site tools are disabled', 'NotAllowedError');
-      if (window.__mcpFailName === tool.name)
-        throw new Error('registration refused');
-      tools.set(tool.name, tool);
-      options?.signal?.addEventListener(
-        'abort',
-        () => {
-          if (tools.get(tool.name) === tool) tools.delete(tool.name);
-        },
-        { once: true },
-      );
-    };
-    modelContext.getTools = async () =>
-      [...tools.keys()].map((name) => ({ name }));
-    window.__connectionTools = tools;
-    window.__mcpFailName = null;
-    window.__mcpPermissionDenied = false;
-    Object.defineProperty(document, 'modelContext', {
-      configurable: true,
-      value: modelContext,
-    });
+  await installModelContextMock(page, {
+    globalName: '__connectionTools',
+    failureInjection: true,
   });
 }
 
