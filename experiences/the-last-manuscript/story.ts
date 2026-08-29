@@ -10,6 +10,7 @@ import type {
 import {
   ABILITY_DESCRIPTIONS,
   ABILITY_LABELS,
+  ATTRIBUTES,
   CLUE_LABELS,
   ENDING_LABELS,
   getAffordances,
@@ -30,9 +31,19 @@ const DYNAMIC_ABILITY_IDS: AbilityId[] = [
   'speak_the_true_name',
 ];
 
+const LIMITS = {
+  maxTurns: 6,
+  maxClock: 6,
+  maxResolve: 3,
+} as const;
+
+// This module is the single narrowing boundary between the runtime's
+// string-based IDs and this story's literal-union IDs; the casts below are
+// deliberate and safe because every ID originates from this story's tables.
 export const lastTavernStory: StoryDefinition = {
   id: 'last-tavern',
-  attributeIds: ['wits', 'nerve', 'grace'],
+  attributes: ATTRIBUTES,
+  limits: LIMITS,
 
   createInitialState(name, specialty, _context) {
     const displayName = name.trim().slice(0, 40) || 'the traveler';
@@ -45,7 +56,7 @@ export const lastTavernStory: StoryDefinition = {
     stats[selected] = 2;
     return {
       clock: 0,
-      resolve: 3,
+      resolve: LIMITS.maxResolve,
       character: { name: displayName, specialty: selected },
       stats,
       locationId: 'main_hall',
@@ -141,7 +152,7 @@ function applyLastTavernAction(
 ): StoryActionResult {
   const events: CanonicalEvent[] = [];
   const newAbilities: RuntimeAbilityId[] = [];
-  session.clock = Math.min(6, session.clock + 1);
+  session.clock = Math.min(LIMITS.maxClock, session.clock + 1);
 
   switch (actionId) {
     case 'search_hearth':
@@ -272,7 +283,8 @@ function applyLastTavernAction(
   if (actionId === 'speak_the_true_name') ending = 'true_name';
   else if (actionId === 'escape_front_door') ending = 'escape';
   else if (actionId === 'enter_cellar_unprepared') ending = 'new_keeper';
-  else if (session.resolve <= 0 || session.clock >= 6) ending = 'new_keeper';
+  else if (session.resolve <= 0 || session.clock >= LIMITS.maxClock)
+    ending = 'new_keeper';
 
   if (ending) {
     addEvent(

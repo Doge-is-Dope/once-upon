@@ -27,7 +27,10 @@ export class ExperienceController {
 
   constructor(
     definition: ExperienceDefinition,
-    store: ExperienceStore = new SessionStore(definition.id),
+    store: ExperienceStore = new SessionStore({
+      experienceId: definition.id,
+      storyId: definition.story.id,
+    }),
   ) {
     this.definition = definition;
     this.store = store;

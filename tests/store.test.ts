@@ -45,8 +45,14 @@ describe('experience session storage isolation', () => {
     const persistence = new MemoryPersistence();
     const alphaDefinition = fixtureExperience('fixture-alpha');
     const betaDefinition = fixtureExperience('fixture-beta');
-    const alpha = new SessionStore(alphaDefinition.id, persistence);
-    const beta = new SessionStore(betaDefinition.id, persistence);
+    const alpha = new SessionStore(
+      { experienceId: alphaDefinition.id, storyId: alphaDefinition.story.id },
+      persistence,
+    );
+    const beta = new SessionStore(
+      { experienceId: betaDefinition.id, storyId: betaDefinition.story.id },
+      persistence,
+    );
 
     await alpha.write(
       createExperienceSession(alphaDefinition, 'Alpha', 'focus', testContext()),
@@ -94,7 +100,36 @@ describe('experience session storage isolation', () => {
     );
 
     await expect(
-      new SessionStore(betaDefinition.id, persistence).read(),
+      new SessionStore(
+        { experienceId: betaDefinition.id, storyId: betaDefinition.story.id },
+        persistence,
+      ).read(),
     ).rejects.toThrow('SAVE_CORRUPT');
+  });
+
+  it('rejects a save written by a different story under the same experience', async () => {
+    const persistence = new MemoryPersistence();
+    const definition = fixtureExperience('fixture-alpha');
+    const session = createExperienceSession(
+      definition,
+      'Alpha',
+      'focus',
+      testContext(),
+    );
+    persistence.records.set(activeExperienceKey(definition.id), session);
+
+    const swappedStory = new SessionStore(
+      { experienceId: definition.id, storyId: 'signal-station-v2' },
+      persistence,
+    );
+    await expect(swappedStory.read()).rejects.toThrow(
+      'SAVE_CORRUPT: The saved story belongs to a different story version.',
+    );
+
+    const sameStory = new SessionStore(
+      { experienceId: definition.id, storyId: definition.story.id },
+      persistence,
+    );
+    expect((await sameStory.read())?.character.name).toBe('Alpha');
   });
 });

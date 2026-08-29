@@ -26,29 +26,34 @@ export interface SessionPersistence {
   move(fromKey: string, toKey: string): Promise<void>;
 }
 
+export interface SessionIdentity {
+  experienceId: string;
+  storyId: string;
+}
+
 export class SessionStore implements ExperienceStore {
-  private readonly experienceId: string;
+  private readonly identity: SessionIdentity;
   private readonly persistence: SessionPersistence;
 
   constructor(
-    experienceId: string,
+    identity: SessionIdentity,
     persistence: SessionPersistence = new IndexedDBSessionPersistence(),
   ) {
-    this.experienceId = experienceId;
+    this.identity = identity;
     this.persistence = persistence;
   }
 
   async read(): Promise<ExperienceSession | null> {
     const value = await this.persistence.read(
-      activeExperienceKey(this.experienceId),
+      activeExperienceKey(this.identity.experienceId),
     );
-    return validateSession(value, this.experienceId);
+    return validateSession(value, this.identity);
   }
 
   async write(session: ExperienceSession): Promise<void> {
-    assertExperience(session, this.experienceId);
+    assertExperience(session, this.identity.experienceId);
     await this.persistence.write(
-      activeExperienceKey(this.experienceId),
+      activeExperienceKey(this.identity.experienceId),
       session,
     );
   }
@@ -57,26 +62,27 @@ export class SessionStore implements ExperienceStore {
     transform: (session: ExperienceSession | null) => ExperienceSession | null,
   ): Promise<ExperienceSession | null> {
     const next = await this.persistence.mutate(
-      activeExperienceKey(this.experienceId),
+      activeExperienceKey(this.identity.experienceId),
       (value) => {
-        const transformed = transform(
-          validateSession(value, this.experienceId),
-        );
-        if (transformed) assertExperience(transformed, this.experienceId);
+        const transformed = transform(validateSession(value, this.identity));
+        if (transformed)
+          assertExperience(transformed, this.identity.experienceId);
         return transformed;
       },
     );
-    return validateSession(next, this.experienceId);
+    return validateSession(next, this.identity);
   }
 
   async clear(): Promise<void> {
-    await this.persistence.delete(activeExperienceKey(this.experienceId));
+    await this.persistence.delete(
+      activeExperienceKey(this.identity.experienceId),
+    );
   }
 
   async quarantineCorrupt(): Promise<void> {
     await this.persistence.move(
-      activeExperienceKey(this.experienceId),
-      `corrupt:${this.experienceId}:${Date.now()}`,
+      activeExperienceKey(this.identity.experienceId),
+      `corrupt:${this.identity.experienceId}:${Date.now()}`,
     );
   }
 }
@@ -189,7 +195,7 @@ function openDatabase(): Promise<IDBDatabase> {
 
 export function validateSession(
   value: unknown,
-  expectedExperienceId: string,
+  expected: SessionIdentity,
 ): ExperienceSession | null {
   if (value == null) return null;
   if (typeof value !== 'object')
@@ -197,8 +203,7 @@ export function validateSession(
   const session = value as Partial<ExperienceSession>;
   if (
     session.schemaVersion !== 2 ||
-    session.experienceId !== expectedExperienceId ||
-    typeof session.storyId !== 'string' ||
+    session.experienceId !== expected.experienceId ||
     typeof session.sessionId !== 'string' ||
     typeof session.revision !== 'number' ||
     !Array.isArray(session.narrationEntries) ||
@@ -206,6 +211,14 @@ export function validateSession(
   ) {
     throw new Error(
       'SAVE_CORRUPT: The saved story does not match schema version 2.',
+    );
+  }
+  // A save written by a different story (a swapped or reworked one under the
+  // same experience) must not feed the current story stale IDs — quarantine
+  // it through the same corrupt-save path instead of loading it.
+  if (session.storyId !== expected.storyId) {
+    throw new Error(
+      'SAVE_CORRUPT: The saved story belongs to a different story version.',
     );
   }
   return value as ExperienceSession;

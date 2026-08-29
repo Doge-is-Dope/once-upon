@@ -20,7 +20,11 @@ export function testContext(): EngineContext {
 
 const fixtureStory: StoryDefinition = {
   id: 'signal-station',
-  attributeIds: ['focus', 'composure'],
+  attributes: [
+    { id: 'focus', label: 'Focus', description: 'Hold the signal steady.' },
+    { id: 'composure', label: 'Composure', description: 'Stay calm.' },
+  ],
+  limits: { maxTurns: 6, maxClock: 6, maxResolve: 3 },
   createInitialState(name, specialty) {
     return {
       clock: 0,
@@ -39,7 +43,7 @@ const fixtureStory: StoryDefinition = {
     };
   },
   isAttribute(value) {
-    return this.attributeIds.includes(value);
+    return this.attributes.some((attribute) => attribute.id === value);
   },
   getAffordances() {
     return [

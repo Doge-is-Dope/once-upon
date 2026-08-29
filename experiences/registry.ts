@@ -16,9 +16,34 @@ export function createExperienceRegistry(
     }
     if (registry.has(definition.id))
       throw new Error(`Duplicate experience ID: ${definition.id}`);
+    validateStoryDefinition(definition);
     registry.set(definition.id, definition);
   }
   return registry;
+}
+
+function validateStoryDefinition(definition: ExperienceDefinition): void {
+  const { story } = definition;
+  if (story.attributes.length === 0)
+    throw new Error(`Experience ${definition.id} declares no attributes.`);
+  const attributeIds = new Set(
+    story.attributes.map((attribute) => attribute.id),
+  );
+  if (attributeIds.size !== story.attributes.length)
+    throw new Error(
+      `Experience ${definition.id} declares duplicate attribute IDs.`,
+    );
+  const { maxTurns, maxClock, maxResolve } = story.limits;
+  for (const [name, value] of Object.entries({
+    maxTurns,
+    maxClock,
+    maxResolve,
+  })) {
+    if (!Number.isInteger(value) || value <= 0)
+      throw new Error(
+        `Experience ${definition.id} has an invalid limit ${name}: ${value}.`,
+      );
+  }
 }
 
 const registry = createExperienceRegistry(experienceDefinitions);

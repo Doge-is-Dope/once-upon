@@ -74,7 +74,7 @@ export async function registerExperienceTools(
   const abilityLeases = new Map<AbilityId, AbortController>();
   const approachSchema = {
     type: 'string',
-    enum: controller.definition.story.attributeIds,
+    enum: controller.definition.story.attributes.map((attribute) => attribute.id),
     description:
       "Which character attribute best matches the player's described approach.",
   };
@@ -266,7 +266,7 @@ async function registerAbility(
             expectedRevision: REVISION_SCHEMA,
             approach: {
               type: 'string',
-              enum: controller.definition.story.attributeIds,
+              enum: controller.definition.story.attributes.map((attribute) => attribute.id),
               description:
                 "Which character attribute best matches the player's described approach.",
             },

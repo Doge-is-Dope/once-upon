@@ -205,9 +205,22 @@ export interface StoryActionResult {
   mustNotClaim?: string[];
 }
 
+export interface AttributeDescriptor {
+  id: AttributeId;
+  label: string;
+  description: string;
+}
+
+export interface StoryLimits {
+  maxTurns: number;
+  maxClock: number;
+  maxResolve: number;
+}
+
 export interface StoryDefinition {
   id: string;
-  attributeIds: AttributeId[];
+  attributes: readonly AttributeDescriptor[];
+  limits: StoryLimits;
   createInitialState(
     name: string,
     specialty: AttributeId,

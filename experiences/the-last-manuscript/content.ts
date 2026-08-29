@@ -1,5 +1,15 @@
-import type { Affordance, ExperienceSession } from '@/lib/runtime/types';
+import type {
+  Affordance,
+  AttributeDescriptor,
+  ExperienceSession,
+} from '@/lib/runtime/types';
 import type { AbilityId, EndingId, LocationId } from './types';
+
+export const ATTRIBUTES: readonly AttributeDescriptor[] = [
+  { id: 'wits', label: 'Wits', description: 'Notice what others miss.' },
+  { id: 'nerve', label: 'Nerve', description: 'Stand firm when fear closes in.' },
+  { id: 'grace', label: 'Grace', description: 'Move softly and win trust.' },
+];
 
 export const LOCATION_LABELS: Record<LocationId, string> = {
   main_hall: 'The Common Room',
