@@ -1,4 +1,5 @@
 import { sites } from '@openai/sites-vite-plugin';
+import { wgslVitePlugin } from '@vgpu/wgsl/loader-vite';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json' with { type: 'json' };
@@ -48,6 +49,7 @@ export default defineConfig(async () => {
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
     plugins: [
+      wgslVitePlugin(),
       vinext(),
       sites(),
       cloudflare({
