@@ -8,6 +8,7 @@ test('shows an honest page-turning preview without a fake chat', async ({
 
   const startButton = page.getByRole('button', { name: 'Start' });
   await expect(startButton).toBeVisible();
+  await expect(page.getByText('Once Upon presents')).toBeVisible();
   await expect(startButton).toBeDisabled();
   await expect(
     page.getByText("WebMCP isn't available in this browser."),

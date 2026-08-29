@@ -1,12 +1,12 @@
 import type {
   CanonicalEvent,
   EndingId,
-  GameSession,
-  ManuscriptEntry,
+  ExperienceSession,
+  NarrationEntry,
   TurnResolution,
-} from './types';
+} from '@/lib/runtime/types';
 
-export const MAX_MANUSCRIPT_TURNS = 6;
+export const MAX_NARRATION_TURNS = 6;
 const ROMAN_PAGE_NUMBERS = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'] as const;
 
 export type BookLeafKind =
@@ -22,16 +22,17 @@ export interface BookLeaf {
   turn: number | null;
   kind: BookLeafKind;
   title: string;
-  entry: ManuscriptEntry | null;
+  entry: NarrationEntry | null;
   resolution: TurnResolution | null;
   notes: CanonicalEvent[];
   endingId: EndingId | null;
 }
 
-export function buildBookLeaves(session: GameSession): BookLeaf[] {
-  const opening = session.manuscript.find((entry) => entry.turn === 0) ?? null;
+export function buildBookLeaves(session: ExperienceSession): BookLeaf[] {
+  const opening =
+    session.narrationEntries.find((entry) => entry.turn === 0) ?? null;
   const entriesByTurn = new Map(
-    session.manuscript
+    session.narrationEntries
       .filter((entry) => entry.turn > 0)
       .map((entry) => [entry.turn, entry]),
   );
@@ -61,7 +62,7 @@ export function buildBookLeaves(session: GameSession): BookLeaf[] {
     },
   ];
 
-  for (let turn = 1; turn <= MAX_MANUSCRIPT_TURNS; turn += 1) {
+  for (let turn = 1; turn <= MAX_NARRATION_TURNS; turn += 1) {
     const entry = entriesByTurn.get(turn) ?? null;
     const pending =
       session.pendingResolution?.turn === turn
@@ -95,10 +96,12 @@ export function formatPageNumber(turn: number): string {
   return ROMAN_PAGE_NUMBERS[turn] ?? String(turn);
 }
 
-export function latestBookLeafIndex(session: GameSession): number {
+export function latestBookLeafIndex(session: ExperienceSession): number {
   const turn =
-    session.pendingResolution?.turn ?? session.manuscript.at(-1)?.turn ?? 0;
-  return Math.min(MAX_MANUSCRIPT_TURNS + 1, turn + 1);
+    session.pendingResolution?.turn ??
+    session.narrationEntries.at(-1)?.turn ??
+    0;
+  return Math.min(MAX_NARRATION_TURNS + 1, turn + 1);
 }
 
 export function resolutionHeading(resolution: TurnResolution): string {
@@ -109,4 +112,8 @@ export function resolutionHeading(resolution: TurnResolution): string {
       ?.label ??
     'The tavern answers'
   );
+}
+
+export function narrationText(entry: NarrationEntry): string {
+  return entry.payload.format === 'prose' ? entry.payload.text : '';
 }

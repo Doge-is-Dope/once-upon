@@ -3,13 +3,14 @@ import {
   buildBookLeaves,
   formatPageNumber,
   latestBookLeafIndex,
-} from '../lib/game/book';
+} from '../components/frames/book/model';
 import {
-  createSession,
+  commitNarration,
+  createExperienceSession,
   resolveAction,
-  writeManuscript,
-  type EngineContext,
-} from '../lib/game/engine';
+} from '../lib/runtime/engine';
+import type { EngineContext } from '../lib/runtime/types';
+import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
 
 function context(): EngineContext {
   let sequence = 0;
@@ -26,7 +27,12 @@ describe('book view model', () => {
     ).toEqual(['I', 'II', 'III', 'IV', 'V', 'VI']);
   });
   it('always creates the bookplate, prologue, and six story leaves', () => {
-    const session = createSession('Mara', 'nerve', context());
+    const session = createExperienceSession(
+      experienceDefinition,
+      'Mara',
+      'nerve',
+      context(),
+    );
     const leaves = buildBookLeaves(session);
     expect(leaves).toHaveLength(8);
     expect(leaves.map((leaf) => leaf.kind)).toEqual([
@@ -43,8 +49,14 @@ describe('book view model', () => {
   });
 
   it('places a saved resolution on its own draft page', () => {
-    const session = createSession('Mara', 'wits', context());
+    const session = createExperienceSession(
+      experienceDefinition,
+      'Mara',
+      'wits',
+      context(),
+    );
     const rolled = resolveAction(
+      experienceDefinition,
       session,
       {
         operationId: 'book_action',
@@ -65,8 +77,14 @@ describe('book view model', () => {
   });
 
   it('turns the draft into a completed page at the same leaf', () => {
-    const initial = createSession('Mara', 'wits', context());
+    const initial = createExperienceSession(
+      experienceDefinition,
+      'Mara',
+      'wits',
+      context(),
+    );
     const rolled = resolveAction(
+      experienceDefinition,
       initial,
       {
         operationId: 'book_action_commit',
@@ -79,26 +97,37 @@ describe('book view model', () => {
       context(),
     ).session;
     const pending = rolled.pendingResolution!;
-    const written = writeManuscript(
+    const written = commitNarration(
+      experienceDefinition,
       rolled,
       {
         operationId: 'book_write',
         expectedRevision: rolled.revision,
         resolutionId: pending.resolutionId,
         representedEventIds: pending.representedEventIds,
-        prose:
-          'Mara searched beneath the hearth and found the warm Charred Key while the raven counted the first bell from the rafters above.',
+        payload: {
+          format: 'prose',
+          text: 'Mara searched beneath the hearth and found the warm Charred Key while the raven counted the first bell from the rafters above.',
+        },
       },
       context(),
     ).session;
     const leaf = buildBookLeaves(written)[2];
     expect(leaf.kind).toBe('completed');
-    expect(leaf.entry?.prose).toContain('Charred Key');
+    expect(leaf.entry?.payload).toMatchObject({
+      format: 'prose',
+      text: expect.stringContaining('Charred Key'),
+    });
     expect(latestBookLeafIndex(written)).toBe(2);
   });
 
   it('marks the final committed leaf as the ending page', () => {
-    const session = createSession('Vera', 'wits', context());
+    const session = createExperienceSession(
+      experienceDefinition,
+      'Vera',
+      'wits',
+      context(),
+    );
     const finalResolution = {
       resolutionId: 'resolution_final',
       actionId: 'speak_the_true_name',
@@ -130,10 +159,13 @@ describe('book view model', () => {
     session.clock = 6;
     session.phase = 'COMPLETE';
     session.endingId = 'true_name';
-    session.manuscript.push({
+    session.narrationEntries.push({
       id: 'entry_final',
       turn: 6,
-      prose: 'Vera spoke the true name, and the locked house opened at last.',
+      payload: {
+        format: 'prose',
+        text: 'Vera spoke the true name, and the locked house opened at last.',
+      },
       createdAt: 1_700_000_000_001,
       resolution: finalResolution,
     });

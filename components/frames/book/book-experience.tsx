@@ -11,22 +11,24 @@ import {
   ITEM_LABELS,
   LOCATION_LABELS,
   START_MESSAGE,
-} from '@/lib/game/content';
+} from '@/experiences/the-last-manuscript/content';
 import {
   buildBookLeaves,
   formatPageNumber,
   latestBookLeafIndex,
+  narrationText,
   type BookLeaf,
-} from '@/lib/game/book';
-import { gameController } from '@/lib/game/controller';
+} from '@/components/frames/book/model';
+import type { ExperienceController } from '@/lib/runtime/controller';
 import type {
   Affordance,
-  AttributeId,
   CanonicalEvent,
-  GameSession,
+  ExperienceDefinition,
+  ExperienceSession,
   TurnResolution,
-} from '@/lib/game/types';
-import { registerAdventureTools, type WebMCPStatus } from '@/lib/webmcp/tools';
+} from '@/lib/runtime/types';
+import type { AttributeId } from '@/experiences/the-last-manuscript/types';
+import { registerExperienceTools, type WebMCPStatus } from '@/lib/webmcp/tools';
 
 const strengths = [
   ['wits', 'Wits', 'Notice what others miss.'],
@@ -40,10 +42,10 @@ type MotionCues = {
   resolutionId: string | null;
   clock: number | null;
   resolve: number | null;
-  locationId: GameSession['locationId'] | null;
+  locationId: ExperienceSession['locationId'] | null;
   inventoryIds: string[];
   clueIds: string[];
-  abilityIds: GameSession['unlockedAbilityIds'];
+  abilityIds: ExperienceSession['unlockedAbilityIds'];
 };
 
 const EMPTY_MOTION_CUES: MotionCues = {
@@ -60,7 +62,7 @@ type UnseenLedger = {
   clock: number | null;
   inventoryIds: string[];
   clueIds: string[];
-  abilityIds: GameSession['unlockedAbilityIds'];
+  abilityIds: ExperienceSession['unlockedAbilityIds'];
 };
 
 const EMPTY_UNSEEN: UnseenLedger = {
@@ -70,8 +72,14 @@ const EMPTY_UNSEEN: UnseenLedger = {
   abilityIds: [],
 };
 
-export function GameApp() {
-  const [session, setSession] = useState<GameSession | null>(null);
+export function BookExperience({
+  controller,
+  experience,
+}: {
+  controller: ExperienceController;
+  experience: ExperienceDefinition;
+}) {
+  const [session, setSession] = useState<ExperienceSession | null>(null);
   const [ready, setReady] = useState(false);
   const [webMCPStatus, setWebMCPStatus] = useState<WebMCPStatus>('connecting');
   const [error, setError] = useState('');
@@ -85,15 +93,17 @@ export function GameApp() {
   const [focusReaderToken, setFocusReaderToken] = useState(0);
   const [restartCount, setRestartCount] = useState(0);
   const lastRevision = useRef<number | null>(null);
-  const lastManuscriptLength = useRef<number | null>(null);
-  const previousSession = useRef<GameSession | null | undefined>(undefined);
+  const lastNarrationLength = useRef<number | null>(null);
+  const previousSession = useRef<ExperienceSession | null | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
     let disposed = false;
-    const unsubscribeFaults = gameController.subscribeToFaults((message) => {
+    const unsubscribeFaults = controller.subscribeToFaults((message) => {
       if (!disposed) setFault(message);
     });
-    const unsubscribe = gameController.subscribe((next) => {
+    const unsubscribe = controller.subscribe((next) => {
       if (disposed) return;
       const previous = previousSession.current;
       setSession(next ? structuredClone(next) : null);
@@ -152,17 +162,17 @@ export function GameApp() {
       } else {
         setMotionCues(EMPTY_MOTION_CUES);
       }
-      const nextManuscriptLength = next?.manuscript.length ?? 0;
-      const newestEntry = next?.manuscript.at(-1);
+      const nextNarrationLength = next?.narrationEntries.length ?? 0;
+      const newestEntry = next?.narrationEntries.at(-1);
       if (
-        lastManuscriptLength.current !== null &&
-        nextManuscriptLength > lastManuscriptLength.current &&
+        lastNarrationLength.current !== null &&
+        nextNarrationLength > lastNarrationLength.current &&
         newestEntry &&
         newestEntry.turn > 0
       ) {
         setStreamingEntryId(newestEntry.id);
       }
-      lastManuscriptLength.current = nextManuscriptLength;
+      lastNarrationLength.current = nextNarrationLength;
       if (!next?.pendingResolution) setRecoveryReady(false);
       if (
         next &&
@@ -175,7 +185,7 @@ export function GameApp() {
       lastRevision.current = next?.revision ?? null;
       previousSession.current = next ? structuredClone(next) : null;
     });
-    void gameController
+    void controller
       .initialize()
       .then((saved) => {
         if (disposed) return;
@@ -198,13 +208,13 @@ export function GameApp() {
       unsubscribe();
       unsubscribeFaults();
     };
-  }, []);
+  }, [controller]);
 
   useEffect(() => {
     if (!ready || error) return;
     let disposed = false;
     let unregisterTools: (() => void) | undefined;
-    void registerAdventureTools(gameController, (status) => {
+    void registerExperienceTools(controller, (status) => {
       if (!disposed) setWebMCPStatus(status);
     }).then((cleanup) => {
       if (disposed) cleanup();
@@ -214,7 +224,7 @@ export function GameApp() {
       disposed = true;
       unregisterTools?.();
     };
-  }, [ready, error, connectAttempt]);
+  }, [controller, ready, error, connectAttempt]);
 
   useEffect(() => {
     if (!session?.pendingResolution || recoveryReady) return;
@@ -232,18 +242,21 @@ export function GameApp() {
   if (error)
     return (
       <ErrorScreen
+        title={experience.title}
         message={error}
         onRecover={async () => {
-          await gameController.recoverCorruptSave();
+          await controller.recoverCorruptSave();
           window.location.reload();
         }}
       />
     );
-  if (!session && webMCPStatus === 'unsupported') return <BrowserPreview />;
+  if (!session && webMCPStatus === 'unsupported')
+    return <BrowserPreview title={experience.title} />;
   if (!session)
     return (
       <SetupScreen
-        onBegin={(name, specialty) => gameController.begin(name, specialty)}
+        title={experience.title}
+        onBegin={(name, specialty) => controller.begin(name, specialty)}
         webMCPStatus={webMCPStatus}
         onRetryConnection={retryConnection}
         autoFocusName={restartCount > 0}
@@ -255,6 +268,7 @@ export function GameApp() {
         {announcement}
       </p>
       <GameScreen
+        title={experience.title}
         session={session}
         webMCPStatus={webMCPStatus}
         recoveryReady={recoveryReady}
@@ -274,6 +288,7 @@ export function GameApp() {
             abilityIds: [],
           }))
         }
+        onRestart={() => controller.restart()}
       />
     </>
   );
@@ -290,9 +305,11 @@ function LoadingScreen() {
   );
 }
 function ErrorScreen({
+  title,
   message,
   onRecover,
 }: {
+  title: string;
   message: string;
   onRecover: () => Promise<void>;
 }) {
@@ -301,7 +318,7 @@ function ErrorScreen({
   return (
     <main className="message-screen">
       <p className="eyebrow">The manuscript stayed closed</p>
-      <h1>The Last Manuscript</h1>
+      <h1>{title}</h1>
       <p>{message}</p>
       <button
         className="copy-button recovery-button"
@@ -329,11 +346,13 @@ function ErrorScreen({
 }
 
 function SetupScreen({
+  title,
   onBegin,
   webMCPStatus,
   onRetryConnection,
   autoFocusName,
 }: {
+  title: string;
   onBegin: (name: string, specialty: AttributeId) => Promise<unknown>;
   webMCPStatus: WebMCPStatus;
   onRetryConnection: () => void;
@@ -348,8 +367,9 @@ function SetupScreen({
   return (
     <main className="cover-shell">
       <section className="cover-panel" aria-labelledby="game-title">
+        <p className="platform-mark">Once Upon presents</p>
         <p className="eyebrow">Six pages before midnight</p>
-        <h1 id="game-title">The Last Manuscript</h1>
+        <h1 id="game-title">{title}</h1>
         <p className="lede">A mystery you play with your AI.</p>
         <p className="sublede">
           You choose. The book rolls the dice. Your AI writes what happens.
@@ -431,12 +451,13 @@ function SetupScreen({
   );
 }
 
-function BrowserPreview() {
+function BrowserPreview({ title }: { title: string }) {
   return (
     <main className="cover-shell preview-mode">
       <section className="cover-panel" aria-labelledby="preview-title">
+        <p className="platform-mark">Once Upon presents</p>
         <p className="eyebrow">Six pages before midnight</p>
-        <h1 id="preview-title">The Last Manuscript</h1>
+        <h1 id="preview-title">{title}</h1>
         <p className="lede">A mystery you play with your AI.</p>
         <p className="sublede">
           Open this page in a WebMCP-enabled AI browser to play.
@@ -570,6 +591,7 @@ function PreviewStoryPage({ turn }: { turn: number }) {
 }
 
 function GameScreen({
+  title,
   session,
   webMCPStatus,
   recoveryReady,
@@ -583,8 +605,10 @@ function GameScreen({
   onRetryConnection,
   onStreamed,
   onConsumeMotion,
+  onRestart,
 }: {
-  session: GameSession;
+  title: string;
+  session: ExperienceSession;
   webMCPStatus: WebMCPStatus;
   recoveryReady: boolean;
   streamingEntryId: string | null;
@@ -597,6 +621,7 @@ function GameScreen({
   onRetryConnection: () => void;
   onStreamed: () => void;
   onConsumeMotion: () => void;
+  onRestart: () => Promise<void>;
 }) {
   const ledgerRef = useRef<HTMLDialogElement>(null);
   const unseenCount =
@@ -618,7 +643,7 @@ function GameScreen({
       ) : null}
       <header className="game-header">
         <div>
-          <p className="eyebrow">The Last Manuscript</p>
+          <p className="eyebrow">{title}</p>
           <h1>
             {session.character.name === 'the traveler'
               ? "The traveler's manuscript"
@@ -635,7 +660,7 @@ function GameScreen({
         <div className="status-strip" aria-label="Adventure status">
           <StatusValue
             label="Location"
-            value={LOCATION_LABELS[session.locationId]}
+            value={locationLabel(session.locationId)}
             emphasize={motionCues.locationId === session.locationId}
           />
           <StatusValue
@@ -675,12 +700,14 @@ function GameScreen({
         focusReaderToken={focusReaderToken}
         onStreamed={onStreamed}
         onConsumeMotion={onConsumeMotion}
+        onRestart={onRestart}
       />
       <LedgerDialog
         ref={ledgerRef}
         session={session}
         unseen={unseen}
         onSeen={onLedgerSeen}
+        onRestart={onRestart}
       />
     </main>
   );
@@ -694,14 +721,16 @@ function ManuscriptBook({
   focusReaderToken,
   onStreamed,
   onConsumeMotion,
+  onRestart,
 }: {
-  session: GameSession;
+  session: ExperienceSession;
   recoveryReady: boolean;
   streamingEntryId: string | null;
   motionCues: MotionCues;
   focusReaderToken: number;
   onStreamed: () => void;
   onConsumeMotion: () => void;
+  onRestart: () => Promise<void>;
 }) {
   const leaves = buildBookLeaves(session);
   const latestLeaf = latestBookLeafIndex(session);
@@ -894,6 +923,7 @@ function ManuscriptBook({
                 isLatest={index === latestLeaf}
                 onReadBeginning={() => turnTo(0, 'back')}
                 onStreamed={onStreamed}
+                onRestart={onRestart}
               />
             </BookSurface>
           ))}
@@ -932,6 +962,7 @@ function ManuscriptBook({
                         isLatest={index === latestLeaf}
                         onReadBeginning={() => {}}
                         onStreamed={() => {}}
+                        onRestart={onRestart}
                       />
                     </div>
                     <div className="overlay-face back">
@@ -945,6 +976,7 @@ function ManuscriptBook({
                           isLatest={turnOverlay.backIndex === latestLeaf}
                           onReadBeginning={() => {}}
                           onStreamed={() => {}}
+                          onRestart={onRestart}
                         />
                       ) : null}
                     </div>
@@ -1002,15 +1034,17 @@ function BookLeafPage({
   isLatest,
   onReadBeginning,
   onStreamed,
+  onRestart,
 }: {
   leaf: BookLeaf;
-  session: GameSession;
+  session: ExperienceSession;
   recoveryReady: boolean;
   streamingEntryId: string | null;
   motionCues: MotionCues;
   isLatest: boolean;
   onReadBeginning: () => void;
   onStreamed: () => void;
+  onRestart: () => Promise<void>;
 }) {
   if (leaf.kind === 'bookplate')
     return (
@@ -1052,7 +1086,7 @@ function BookLeafPage({
         <p className="entry-number">Prologue</p>
         <h2>{leaf.title}</h2>
         {leaf.entry ? (
-          <p className="manuscript-prose">{leaf.entry.prose}</p>
+          <p className="manuscript-prose">{narrationText(leaf.entry)}</p>
         ) : null}
         {isLatest && session.turn === 0 ? <StartCard /> : null}
       </div>
@@ -1072,7 +1106,7 @@ function BookLeafPage({
       {leaf.endingId ? (
         <div className="ending-banner">
           <span>Manuscript sealed</span>
-          <strong>{ENDING_LABELS[leaf.endingId]}</strong>
+          <strong>{endingLabel(leaf.endingId)}</strong>
         </div>
       ) : null}
       <p className="entry-number">
@@ -1088,7 +1122,7 @@ function BookLeafPage({
         </blockquote>
       ) : leaf.entry ? (
         <StreamingProse
-          prose={leaf.entry.prose}
+          prose={narrationText(leaf.entry)}
           animate={isNewEntry}
           onStreamed={isNewEntry ? onStreamed : undefined}
         />
@@ -1128,7 +1162,10 @@ function BookLeafPage({
             <button type="button" onClick={onReadBeginning}>
               Read from the beginning
             </button>
-            <RestartButton idleLabel="Begin a new manuscript" />
+            <RestartButton
+              idleLabel="Begin a new manuscript"
+              onRestart={onRestart}
+            />
           </div>
         </div>
       ) : null}
@@ -1158,11 +1195,13 @@ const LedgerDialog = function LedgerDialog({
   session,
   unseen,
   onSeen,
+  onRestart,
 }: {
   ref: React.Ref<HTMLDialogElement>;
-  session: GameSession;
+  session: ExperienceSession;
   unseen: UnseenLedger;
   onSeen: () => void;
+  onRestart: () => Promise<void>;
 }) {
   const newInventoryLabels = unseen.inventoryIds.map(
     (id) => ITEM_LABELS[id] ?? id,
@@ -1258,8 +1297,8 @@ const LedgerDialog = function LedgerDialog({
                 >
                   <span aria-hidden="true">✦</span>
                   <div>
-                    <strong>{ABILITY_LABELS[id]}</strong>
-                    <p>{ABILITY_DESCRIPTIONS[id]}</p>
+                    <strong>{abilityLabel(id)}</strong>
+                    <p>{abilityDescription(id)}</p>
                     <small>
                       {session.usedAbilityIds.includes(id)
                         ? 'Used'
@@ -1298,7 +1337,10 @@ const LedgerDialog = function LedgerDialog({
         {session.phase !== 'COMPLETE' ? (
           <section className="ledger-section ledger-restart">
             <h2>Start over</h2>
-            <RestartButton idleLabel="Start a new manuscript" />
+            <RestartButton
+              idleLabel="Start a new manuscript"
+              onRestart={onRestart}
+            />
           </section>
         ) : null}
       </div>
@@ -1422,7 +1464,13 @@ function ConnectionErrorNotice({ onRetry }: { onRetry: () => void }) {
     </div>
   );
 }
-function RestartButton({ idleLabel }: { idleLabel: string }) {
+function RestartButton({
+  idleLabel,
+  onRestart,
+}: {
+  idleLabel: string;
+  onRestart: () => Promise<void>;
+}) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -1442,7 +1490,7 @@ function RestartButton({ idleLabel }: { idleLabel: string }) {
           return;
         }
         setBusy(true);
-        void gameController.restart().catch(() => setBusy(false));
+        void onRestart().catch(() => setBusy(false));
       }}
     >
       {busy
@@ -1473,7 +1521,7 @@ function PendingCard({
   recoveryReady,
   fresh,
 }: {
-  session: GameSession;
+  session: ExperienceSession;
   recoveryReady: boolean;
   fresh: boolean;
 }) {
@@ -1670,7 +1718,7 @@ function AbilityCard({
   abilityId,
   celebrate = false,
 }: {
-  abilityId: keyof typeof ABILITY_LABELS;
+  abilityId: string;
   celebrate?: boolean;
 }) {
   return (
@@ -1683,8 +1731,8 @@ function AbilityCard({
       </span>
       <div>
         <small>The book learns a spell</small>
-        <strong>{ABILITY_LABELS[abilityId]}</strong>
-        <p>{ABILITY_DESCRIPTIONS[abilityId]}</p>
+        <strong>{abilityLabel(abilityId)}</strong>
+        <p>{abilityDescription(abilityId)}</p>
       </div>
     </div>
   );
@@ -1934,11 +1982,27 @@ function tierLabel(tier: TurnResolution['roll']['tier']): string {
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
-function statusAnnouncement(session: GameSession): string {
+function statusAnnouncement(session: ExperienceSession): string {
   if (session.pendingResolution)
     return `Roll saved: ${session.pendingResolution.roll.total} against ${session.pendingResolution.roll.dc}. ChatGPT is writing the manuscript.`;
   if (session.phase === 'COMPLETE')
-    return `The manuscript is complete: ${session.endingId ? ENDING_LABELS[session.endingId] : 'ending saved'}.`;
+    return `The manuscript is complete: ${session.endingId ? endingLabel(session.endingId) : 'ending saved'}.`;
   const remaining = 6 - session.clock;
   return `Page ${session.turn} is saved. ${remaining === 1 ? 'One page remains' : `${remaining} pages remain`} before midnight. It is your turn.`;
+}
+
+function locationLabel(id: string): string {
+  return (LOCATION_LABELS as Record<string, string>)[id] ?? id;
+}
+
+function endingLabel(id: string): string {
+  return (ENDING_LABELS as Record<string, string>)[id] ?? id;
+}
+
+function abilityLabel(id: string): string {
+  return (ABILITY_LABELS as Record<string, string>)[id] ?? id;
+}
+
+function abilityDescription(id: string): string {
+  return (ABILITY_DESCRIPTIONS as Record<string, string>)[id] ?? '';
 }

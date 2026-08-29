@@ -1,188 +1,251 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createSession,
+  commitNarration,
+  createExperienceSession,
   resolveAction,
-  toAdventureState,
-  writeManuscript,
-  type EngineContext,
-} from '../lib/game/engine';
-import type { ActionInput, GameSession, ToolSuccess } from '../lib/game/types';
+  toStoryState,
+} from '../lib/runtime/engine';
+import { TERMINAL_NARRATION_CONTRACT } from '../lib/runtime/narration';
+import type {
+  ActionInput,
+  ExperienceSession,
+  ToolSuccess,
+} from '../lib/runtime/types';
+import { fixtureExperience, testContext, validProse } from './fixtures';
 
-function context(): EngineContext {
-  let sequence = 0;
-  return {
-    now: () => 1_700_000_000_000 + sequence,
-    id: (prefix) => `${prefix}_test_${++sequence}`,
-  };
-}
+const definition = fixtureExperience();
 
-function action(
-  session: GameSession,
-  targetId: string,
-  operationId: string,
-  die = 18,
-) {
+function action(session: ExperienceSession, operationId: string, die = 18) {
   const input: ActionInput = {
     operationId,
     expectedRevision: session.revision,
-    targetId,
-    approach: 'wits',
-    intent: `I choose to ${targetId}.`,
+    targetId: 'inspect_signal',
+    approach: 'focus',
+    intent: 'I trace the signal.',
   };
-  return resolveAction(session, input, die, context());
+  return resolveAction(definition, session, input, die, testContext());
 }
 
-function narrate(session: GameSession, operationId: string) {
+function narrate(session: ExperienceSession, operationId: string) {
   const pending = session.pendingResolution!;
-  return writeManuscript(
+  return commitNarration(
+    definition,
     session,
     {
       operationId,
       expectedRevision: session.revision,
       resolutionId: pending.resolutionId,
       representedEventIds: pending.representedEventIds,
-      prose:
-        'The traveler followed the saved truth through the darkened tavern, accepting every consequence exactly as the page recorded it while the clock moved closer to its final bell.',
+      payload: validProse(),
     },
-    context(),
+    testContext(),
   );
 }
 
-describe('The Last Manuscript engine', () => {
-  it('starts with the chosen strength and two authored items', () => {
-    const session = createSession('Mara', 'nerve', context());
-    expect(session.stats).toEqual({ wits: 1, nerve: 2, grace: 1 });
-    expect(session.inventoryIds).toEqual([
-      'lit_tin_lantern',
-      'half_burnt_letter',
-    ]);
-    expect(session.phase).toBe('READY_FOR_ACTION');
-    expect(toAdventureState(session).requiredNextTool).toBe(
+describe('shared experience engine', () => {
+  it('creates a versioned session with the selected experience identity', () => {
+    const session = createExperienceSession(
+      definition,
+      'Mara',
+      'focus',
+      testContext(),
+    );
+    expect(session).toMatchObject({
+      schemaVersion: 2,
+      experienceId: 'fixture-alpha',
+      storyId: 'signal-station',
+      phase: 'READY_FOR_ACTION',
+    });
+    expect(toStoryState(definition, session).requiredNextTool).toBe(
       'perform_action_or_unlocked_ability',
     );
   });
 
-  it('saves one roll and blocks every new action until narration', () => {
-    const initial = createSession('', 'wits', context());
-    const first = action(initial, 'search_hearth', 'action_0001', 14);
-    expect(first.session.phase).toBe('AWAITING_MANUSCRIPT');
-    expect(first.session.inventoryIds).toContain('charred_key');
+  it('saves one result and blocks every new action until narration', () => {
+    const initial = createExperienceSession(
+      definition,
+      '',
+      'focus',
+      testContext(),
+    );
+    const first = action(initial, 'action_0001', 14);
+    expect(first.session.phase).toBe('AWAITING_NARRATION');
     expect(first.session.pendingResolution?.roll.die).toBe(14);
 
-    const blocked = resolveAction(
-      first.session,
-      {
-        operationId: 'action_0002',
-        expectedRevision: first.session.revision,
-        targetId: 'search_upstairs_room',
-        approach: 'wits',
-        intent: 'Search upstairs.',
-      },
-      20,
-      context(),
-    );
+    const blocked = action(first.session, 'action_0002', 20);
     expect(blocked.response).toMatchObject({
       ok: false,
       code: 'NARRATION_REQUIRED',
     });
     expect(blocked.session.revision).toBe(first.session.revision);
-    expect(blocked.session.pendingResolution?.roll.die).toBe(14);
   });
 
   it('replays an identical operation without advancing or changing the roll', () => {
-    const initial = createSession('', 'wits', context());
-    const input = {
+    const initial = createExperienceSession(
+      definition,
+      '',
+      'focus',
+      testContext(),
+    );
+    const input: ActionInput = {
       operationId: 'action_repeat',
       expectedRevision: initial.revision,
-      targetId: 'search_hearth',
-      approach: 'wits' as const,
-      intent: 'Search the hearth.',
+      targetId: 'inspect_signal',
+      approach: 'focus',
+      intent: 'Trace the signal.',
     };
-    const first = resolveAction(initial, input, 9, context());
-    const retry = resolveAction(first.session, input, 20, context());
+    const first = resolveAction(definition, initial, input, 9, testContext());
+    const retry = resolveAction(
+      definition,
+      first.session,
+      input,
+      20,
+      testContext(),
+    );
     expect(retry.response).toMatchObject({ ok: true, idempotentReplay: true });
     expect((retry.response as ToolSuccess).resolution?.roll.die).toBe(9);
     expect(retry.session.revision).toBe(first.session.revision);
-    expect(retry.session.clock).toBe(1);
   });
 
-  it('commits only the exact pending receipt and returns the next state', () => {
-    const rolled = action(
-      createSession('', 'wits', context()),
-      'search_hearth',
-      'action_0003',
+  it('commits only the exact pending receipt', () => {
+    const initial = createExperienceSession(
+      definition,
+      '',
+      'focus',
+      testContext(),
     );
-    const written = narrate(rolled.session, 'write_0003');
+    const rolled = action(initial, 'action_0003');
+    const written = narrate(rolled.session, 'narration_0003');
     expect(written.response).toMatchObject({ ok: true });
     expect(written.session.phase).toBe('READY_FOR_ACTION');
     expect(written.session.pendingResolution).toBeNull();
-    expect(written.session.manuscript).toHaveLength(2);
-    expect((written.response as ToolSuccess).state.revision).toBe(
-      written.session.revision,
-    );
+    expect(written.session.narrationEntries).toHaveLength(2);
+    expect(written.session.operationLedger.at(-1)?.kind).toBe('narration');
   });
 
-  it('keeps critical progress on a low roll while applying its cost', () => {
-    const rolled = action(
-      createSession('', 'wits', context()),
-      'search_upstairs_room',
-      'action_lowroll',
-      1,
+  it('validates both payload variants and does not write a mismatched format', () => {
+    const proseInitial = createExperienceSession(
+      definition,
+      '',
+      'focus',
+      testContext(),
     );
-    expect(rolled.session.inventoryIds).toContain('black_mirror_shard');
-    expect(rolled.session.unlockedAbilityIds).toContain('reveal_hidden_ink');
-    expect(rolled.session.resolve).toBe(2);
-    expect(rolled.session.pendingResolution?.roll.tier).toBe(
-      'critical_setback',
+    const proseRolled = action(proseInitial, 'action_format');
+    const rejected = commitNarration(
+      definition,
+      proseRolled.session,
+      {
+        operationId: 'narration_wrong_format',
+        expectedRevision: proseRolled.session.revision,
+        resolutionId: proseRolled.session.pendingResolution!.resolutionId,
+        representedEventIds:
+          proseRolled.session.pendingResolution!.representedEventIds,
+        payload: {
+          format: 'terminal',
+          lines: [{ kind: 'system', text: 'signal confirmed' }],
+        },
+      },
+      testContext(),
     );
-  });
-
-  it('completes the six-turn True Name route and gives that ending priority', () => {
-    let session = createSession('Vera', 'wits', context());
-    const route = [
-      'search_hearth',
-      'search_upstairs_room',
-      'reveal_hidden_ink',
-      'offer_charred_key_to_raven',
-      'ask_the_raven',
-      'speak_the_true_name',
-    ];
-    route.forEach((targetId, index) => {
-      const rolled = action(session, targetId, `action_route_${index}`, 18);
-      expect(rolled.response).toMatchObject({ ok: true });
-      const written = narrate(rolled.session, `write_route_${index}`);
-      session = written.session;
+    expect(rejected.response).toMatchObject({
+      ok: false,
+      code: 'INVALID_INPUT',
     });
-    expect(session.turn).toBe(6);
-    expect(session.clock).toBe(6);
-    expect(session.endingId).toBe('true_name');
-    expect(session.phase).toBe('COMPLETE');
-    expect(session.clueIds).toEqual(
-      expect.arrayContaining(['first_name_fragment', 'second_name_fragment']),
+    expect(rejected.session.narrationEntries).toHaveLength(1);
+
+    expect(
+      TERMINAL_NARRATION_CONTRACT.normalize({
+        format: 'terminal',
+        lines: [
+          { kind: 'command', text: 'scan --frequency' },
+          { kind: 'output', text: 'repeating signal confirmed' },
+        ],
+      }),
+    ).toEqual({
+      format: 'terminal',
+      lines: [
+        { kind: 'command', text: 'scan --frequency' },
+        { kind: 'output', text: 'repeating signal confirmed' },
+      ],
+    });
+
+    const terminalDefinition = fixtureExperience(
+      'fixture-terminal',
+      'terminal',
     );
+    const terminalInitial = createExperienceSession(
+      terminalDefinition,
+      '',
+      'focus',
+      testContext(),
+    );
+    const terminalRolled = resolveAction(
+      terminalDefinition,
+      terminalInitial,
+      {
+        operationId: 'action_terminal',
+        expectedRevision: terminalInitial.revision,
+        targetId: 'inspect_signal',
+        approach: 'focus',
+        intent: 'Scan the signal.',
+      },
+      15,
+      testContext(),
+    ).session;
+    const terminalWritten = commitNarration(
+      terminalDefinition,
+      terminalRolled,
+      {
+        operationId: 'narration_terminal',
+        expectedRevision: terminalRolled.revision,
+        resolutionId: terminalRolled.pendingResolution!.resolutionId,
+        representedEventIds:
+          terminalRolled.pendingResolution!.representedEventIds,
+        payload: {
+          format: 'terminal',
+          lines: [
+            { kind: 'command', text: 'scan --frequency' },
+            { kind: 'output', text: 'repeating signal confirmed' },
+          ],
+        },
+      },
+      testContext(),
+    );
+    expect(terminalWritten.session.narrationEntries.at(-1)?.payload).toEqual({
+      format: 'terminal',
+      lines: [
+        { kind: 'command', text: 'scan --frequency' },
+        { kind: 'output', text: 'repeating signal confirmed' },
+      ],
+    });
   });
 
   it('rejects stale revisions without rolling or advancing', () => {
-    const session = createSession('', 'grace', context());
+    const session = createExperienceSession(
+      definition,
+      '',
+      'composure',
+      testContext(),
+    );
     let rolls = 0;
     const result = resolveAction(
+      definition,
       session,
       {
         operationId: 'action_stale',
         expectedRevision: 999,
-        targetId: 'search_hearth',
-        approach: 'grace',
-        intent: 'Search.',
+        targetId: 'inspect_signal',
+        approach: 'composure',
+        intent: 'Inspect.',
       },
       () => {
         rolls += 1;
         return 20;
       },
-      context(),
+      testContext(),
     );
     expect(result.response).toMatchObject({ ok: false, code: 'STALE_STATE' });
     expect(result.session).toBe(session);
-    expect(result.session.clock).toBe(0);
     expect(rolls).toBe(0);
   });
 });

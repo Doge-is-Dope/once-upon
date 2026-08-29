@@ -1,12 +1,12 @@
-import { ABILITY_DESCRIPTIONS, ABILITY_LABELS } from '../game/content';
-import type { GameController } from '../game/controller';
+import { isNarrationPayload } from '../runtime/narration';
+import type { ExperienceController } from '../runtime/controller';
 import type {
   AbilityId,
   ActionInput,
   AttributeId,
-  ManuscriptInput,
+  NarrationInput,
   ToolResponse,
-} from '../game/types';
+} from '../runtime/types';
 
 export type WebMCPStatus =
   | 'connecting'
@@ -57,17 +57,10 @@ const REVISION_SCHEMA = {
   type: 'integer',
   minimum: 1,
   description:
-    'The exact revision returned by the most recent game tool result.',
+    'The exact revision returned by the most recent experience tool result.',
 };
-const APPROACH_SCHEMA = {
-  type: 'string',
-  enum: ['wits', 'nerve', 'grace'],
-  description:
-    "Which character attribute best matches the player's described approach.",
-};
-
-export async function registerAdventureTools(
-  controller: GameController,
+export async function registerExperienceTools(
+  controller: ExperienceController,
   onStatus: (status: WebMCPStatus) => void,
 ): Promise<() => void> {
   const modelContext = document.modelContext;
@@ -79,14 +72,19 @@ export async function registerAdventureTools(
   onStatus('connecting');
   const lifetime = new AbortController();
   const abilityLeases = new Map<AbilityId, AbortController>();
+  const approachSchema = {
+    type: 'string',
+    enum: controller.definition.story.attributeIds,
+    description:
+      "Which character attribute best matches the player's described approach.",
+  };
 
   try {
     await Promise.all([
       modelContext.registerTool(
         {
-          name: 'get_adventure_state',
-          description:
-            'Read the authoritative local state of The Last Manuscript. Always call this at the start, after interruption, after stale-state errors, or when a saved turn may need narration.',
+          name: 'get_story_state',
+          description: `Read the authoritative local state of ${controller.definition.title}. Always call this at the start, after interruption, after stale-state errors, or when a saved turn may need narration.`,
           inputSchema: EMPTY_SCHEMA,
           annotations: {
             readOnlyHint: true,
@@ -107,7 +105,7 @@ export async function registerAdventureTools(
         {
           name: 'perform_action',
           description:
-            "Resolve one player action using the page's D20 and canonical rules. Use only an affordance targetId currently returned by the page. The saved result must be followed by write_manuscript_entry in the same turn.",
+            "Resolve one player action using the experience's D20 and canonical rules. Use only an affordance targetId currently returned by get_story_state. Follow a saved result with commit_narration before any new action.",
           inputSchema: {
             type: 'object',
             properties: {
@@ -116,9 +114,9 @@ export async function registerAdventureTools(
               targetId: {
                 type: 'string',
                 description:
-                  'An exact current affordance ID from get_adventure_state.',
+                  'An exact current affordance ID from get_story_state.',
               },
-              approach: APPROACH_SCHEMA,
+              approach: approachSchema,
               intent: {
                 type: 'string',
                 minLength: 1,
@@ -153,9 +151,8 @@ export async function registerAdventureTools(
       ),
       modelContext.registerTool(
         {
-          name: 'write_manuscript_entry',
-          description:
-            'Write the exact pending saved result into the manuscript. Write one natural 35–60 word paragraph, acknowledge every canonical event ID, and do not invent facts. This is the only legal mutation while narration is pending.',
+          name: 'commit_narration',
+          description: `Commit narration for the exact pending saved result. ${controller.definition.narration.instruction} Acknowledge every canonical event ID and do not invent facts. This is the only legal mutation while narration is pending.`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -170,22 +167,16 @@ export async function registerAdventureTools(
                 items: { type: 'string' },
                 minItems: 1,
                 description:
-                  'Every canonical event ID represented in the prose.',
+                  'Every canonical event ID represented in the narration payload.',
               },
-              prose: {
-                type: 'string',
-                minLength: 80,
-                maxLength: 700,
-                description:
-                  'One natural 35–60 word manuscript paragraph grounded only in the saved facts.',
-              },
+              payload: controller.definition.narration.inputSchema,
             },
             required: [
               'operationId',
               'expectedRevision',
               'resolutionId',
               'representedEventIds',
-              'prose',
+              'payload',
             ],
             additionalProperties: false,
           },
@@ -197,7 +188,7 @@ export async function registerAdventureTools(
           execute: async (raw, options) => {
             assertNotAborted(options?.signal);
             return webMCPResult(
-              await controller.writeManuscript(readManuscript(raw)),
+              await controller.commitNarration(readNarration(raw)),
               Boolean(options?.signal),
             );
           },
@@ -256,7 +247,7 @@ export async function registerAdventureTools(
 
 async function registerAbility(
   modelContext: WebMCPModelContext,
-  controller: GameController,
+  controller: ExperienceController,
   abilityId: AbilityId,
   leases: Map<AbilityId, AbortController>,
   onStatus: (status: WebMCPStatus) => void,
@@ -267,13 +258,18 @@ async function registerAbility(
     await modelContext.registerTool(
       {
         name: abilityId,
-        description: `${ABILITY_LABELS[abilityId]} — ${ABILITY_DESCRIPTIONS[abilityId]} Use only when unlocked in the saved state, then write the returned pending manuscript entry.`,
+        description: `${controller.definition.story.abilityLabel(abilityId)} — ${controller.definition.story.abilityDescription(abilityId)} Use only when unlocked in the saved state, then commit narration for the returned pending result.`,
         inputSchema: {
           type: 'object',
           properties: {
             operationId: OPERATION_SCHEMA,
             expectedRevision: REVISION_SCHEMA,
-            approach: APPROACH_SCHEMA,
+            approach: {
+              type: 'string',
+              enum: controller.definition.story.attributeIds,
+              description:
+                "Which character attribute best matches the player's described approach.",
+            },
             intent: {
               type: 'string',
               minLength: 1,
@@ -346,7 +342,7 @@ function readAbility(
   };
 }
 
-function readManuscript(raw: Record<string, unknown>): ManuscriptInput {
+function readNarration(raw: Record<string, unknown>): NarrationInput {
   return {
     operationId: stringValue(raw.operationId),
     expectedRevision: numberValue(raw.expectedRevision),
@@ -356,7 +352,9 @@ function readManuscript(raw: Record<string, unknown>): ManuscriptInput {
           (value): value is string => typeof value === 'string',
         )
       : [],
-    prose: stringValue(raw.prose),
+    payload: isNarrationPayload(raw.payload)
+      ? raw.payload
+      : { format: 'prose', text: '' },
   };
 }
 
@@ -369,10 +367,10 @@ function webMCPResult(
 } {
   const text = result.ok
     ? result.resolution
-      ? `Roll saved as ${result.resolution.resolutionId}. You must now call write_manuscript_entry for this exact result before any new action.`
-      : result.manuscriptEntry
-        ? `Manuscript page ${result.manuscriptEntry.turn} saved. Revision is now ${result.state.revision}.`
-        : `Adventure state read. Required next tool: ${result.state.requiredNextTool}.`
+      ? `Roll saved as ${result.resolution.resolutionId}. You must now call commit_narration for this exact result before any new action.`
+      : result.narrationEntry
+        ? `Narration for turn ${result.narrationEntry.turn} saved. Revision is now ${result.state.revision}.`
+        : `Story state read. Required next tool: ${result.state.requiredNextTool}.`
     : `${result.code}: ${result.message}`;
   const structuredContent = {
     ...result,
@@ -394,7 +392,7 @@ function webMCPResult(
 function assertNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted)
     throw new DOMException(
-      'The tool call was cancelled before it changed the manuscript.',
+      'The tool call was cancelled before it changed the story.',
       'AbortError',
     );
 }
@@ -406,7 +404,5 @@ function numberValue(value: unknown): number {
   return typeof value === 'number' ? value : Number.NaN;
 }
 function attributeValue(value: unknown): AttributeId {
-  return typeof value === 'string'
-    ? (value as AttributeId)
-    : ('' as AttributeId);
+  return typeof value === 'string' ? value : '';
 }

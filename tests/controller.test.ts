@@ -1,28 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { GameController } from '../lib/game/controller';
-import type { SessionStore } from '../lib/game/store';
+import { ExperienceController } from '../lib/runtime/controller';
+import type { ExperienceStore } from '../lib/runtime/store';
+import { fixtureExperience } from './fixtures';
 
-function failingStore(): SessionStore {
+function failingStore(): ExperienceStore {
   return {
     read: () => Promise.resolve(null),
     write: () => Promise.reject(new Error('IDB_WRITE_FAILED')),
     mutate: () => Promise.reject(new Error('IDB_WRITE_FAILED')),
     clear: () => Promise.reject(new Error('IDB_WRITE_FAILED')),
     quarantineCorrupt: () => Promise.reject(new Error('IDB_WRITE_FAILED')),
-  } as unknown as SessionStore;
+  };
 }
 
 const actionInput = {
   operationId: 'op_fault_1',
   expectedRevision: 1,
-  targetId: 'search_hearth',
-  approach: 'wits' as const,
-  intent: 'I search the hearth.',
+  targetId: 'inspect_signal',
+  approach: 'focus',
+  intent: 'I inspect the signal.',
 };
 
-describe('GameController fault reporting', () => {
+describe('ExperienceController fault reporting', () => {
   it('notifies fault listeners when a persisted action cannot be saved', async () => {
-    const controller = new GameController(failingStore());
+    const controller = new ExperienceController(
+      fixtureExperience(),
+      failingStore(),
+    );
     const faults: string[] = [];
     controller.subscribeToFaults((message) => faults.push(message));
 
@@ -34,36 +38,45 @@ describe('GameController fault reporting', () => {
     ]);
   });
 
-  it('notifies fault listeners when a manuscript write cannot be saved', async () => {
-    const controller = new GameController(failingStore());
+  it('notifies fault listeners when narration cannot be saved', async () => {
+    const controller = new ExperienceController(
+      fixtureExperience(),
+      failingStore(),
+    );
     const faults: string[] = [];
     controller.subscribeToFaults((message) => faults.push(message));
 
     await expect(
-      controller.writeManuscript({
+      controller.commitNarration({
         operationId: 'op_fault_2',
         expectedRevision: 1,
         resolutionId: 'res_x',
         representedEventIds: ['event_x'],
-        prose: 'x'.repeat(100),
+        payload: { format: 'prose', text: 'x'.repeat(100) },
       }),
     ).rejects.toThrow('IDB_WRITE_FAILED');
     expect(faults).toHaveLength(1);
   });
 
   it('notifies fault listeners when restart cannot clear the store', async () => {
-    const controller = new GameController(failingStore());
+    const controller = new ExperienceController(
+      fixtureExperience(),
+      failingStore(),
+    );
     const faults: string[] = [];
     controller.subscribeToFaults((message) => faults.push(message));
 
     await expect(controller.restart()).rejects.toThrow('IDB_WRITE_FAILED');
     expect(faults).toEqual([
-      'The old manuscript could not be cleared from this device.',
+      'The old story could not be cleared from this device.',
     ]);
   });
 
   it('stops notifying after unsubscribe', async () => {
-    const controller = new GameController(failingStore());
+    const controller = new ExperienceController(
+      fixtureExperience(),
+      failingStore(),
+    );
     const faults: string[] = [];
     const unsubscribe = controller.subscribeToFaults((message) =>
       faults.push(message),

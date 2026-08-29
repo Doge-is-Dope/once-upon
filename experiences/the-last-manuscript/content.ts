@@ -1,4 +1,5 @@
-import type { AbilityId, Affordance, EndingId, LocationId } from './types';
+import type { Affordance, ExperienceSession } from '@/lib/runtime/types';
+import type { AbilityId, EndingId, LocationId } from './types';
 
 export const LOCATION_LABELS: Record<LocationId, string> = {
   main_hall: 'The Common Room',
@@ -39,17 +40,17 @@ export const ENDING_LABELS: Record<EndingId, string> = {
 };
 
 export const START_MESSAGE =
-  'Play this mystery with me using the tools on the open manuscript page: get_adventure_state, perform_action, and write_manuscript_entry. Start by calling get_adventure_state, set the opening scene from the state it returns, and ask what I do first. For each action I describe, resolve it with perform_action, write the pending manuscript entry from the saved result, then tell me what happened and ask what I do next. Do not reroll, skip a pending entry, or invent items, clues, characters, exits, or endings.';
+  'Play this mystery with me using the tools on the open page: get_story_state, perform_action, and commit_narration. Start by calling get_story_state, set the opening scene from the state it returns, and ask what I do first. For each action I describe, resolve it with perform_action, commit the pending result as a prose narration payload, then tell me what happened and ask what I do next. Do not reroll, skip pending narration, or invent items, clues, characters, exits, or endings.';
 
 export const CONTINUE_MESSAGE =
-  'Continue this game from the open page; you may have stopped mid-turn. Call get_adventure_state first. If a turn is waiting to be written, call write_manuscript_entry for that exact saved result before taking a new action. Do not reroll or change the saved facts.';
+  'Continue this story from the open page; you may have stopped mid-turn. Call get_story_state first. If a turn is waiting for narration, call commit_narration for that exact saved result before taking a new action. Do not reroll or change the saved facts.';
 
-export function getAffordances(input: {
-  inventoryIds: string[];
-  clueIds: string[];
-  unlockedAbilityIds: AbilityId[];
-  usedAbilityIds: AbilityId[];
-}): Affordance[] {
+export function getAffordances(
+  input: Pick<
+    ExperienceSession,
+    'inventoryIds' | 'clueIds' | 'unlockedAbilityIds' | 'usedAbilityIds'
+  >,
+): Affordance[] {
   const affordances: Affordance[] = [];
 
   if (!input.inventoryIds.includes('charred_key')) {

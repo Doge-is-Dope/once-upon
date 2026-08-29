@@ -1,5 +1,19 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import {
+  activeExperienceKey,
+  EXPERIENCE_DB_NAME,
+  EXPERIENCE_DB_VERSION,
+  EXPERIENCE_STORE_NAME,
+} from '../lib/runtime/store';
+
+const EXPERIENCE_ID = 'the-last-manuscript';
+const legacyStorageConfig = {
+  databaseName: 'the-last-manuscript',
+  databaseVersion: 1,
+  storeName: 'sessions',
+  activeKey: 'active',
+};
 
 type BrowserTool = {
   execute(
@@ -10,7 +24,7 @@ type BrowserTool = {
 
 declare global {
   interface Window {
-    __lastManuscriptTools: Map<string, BrowserTool>;
+    __webMCPTools: Map<string, BrowserTool>;
   }
 }
 
@@ -42,7 +56,7 @@ async function installWebMCPMock(page: Page): Promise<void> {
       configurable: true,
       value: modelContext,
     });
-    Object.defineProperty(window, '__lastManuscriptTools', {
+    Object.defineProperty(window, '__webMCPTools', {
       configurable: true,
       value: tools,
     });
@@ -56,7 +70,7 @@ async function callTool<T>(
 ): Promise<T> {
   return page.evaluate(
     async ({ toolName, toolInput }) => {
-      const tools = window.__lastManuscriptTools;
+      const tools = window.__webMCPTools;
       const tool = tools.get(toolName);
       if (!tool) throw new Error(`Tool ${toolName} is not registered.`);
       return await tool.execute(toolInput);
@@ -65,10 +79,148 @@ async function callTool<T>(
   ) as Promise<T>;
 }
 
+const storageConfig = {
+  databaseName: EXPERIENCE_DB_NAME,
+  databaseVersion: EXPERIENCE_DB_VERSION,
+  storeName: EXPERIENCE_STORE_NAME,
+  activeKey: activeExperienceKey(EXPERIENCE_ID),
+};
+
+async function writeExperienceRecord(
+  page: Page,
+  value: unknown,
+): Promise<void> {
+  await page.evaluate(
+    async ({ config, record }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(
+          config.databaseName,
+          config.databaseVersion,
+        );
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains(config.storeName))
+            request.result.createObjectStore(config.storeName);
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(config.storeName, 'readwrite');
+        transaction.objectStore(config.storeName).put(record, config.activeKey);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    },
+    { config: storageConfig, record: value },
+  );
+}
+
+async function readExperienceKeys(page: Page): Promise<IDBValidKey[]> {
+  return page.evaluate(async (config) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(
+        config.databaseName,
+        config.databaseVersion,
+      );
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return new Promise<IDBValidKey[]>((resolve, reject) => {
+      const request = db
+        .transaction(config.storeName, 'readonly')
+        .objectStore(config.storeName)
+        .getAllKeys();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }, storageConfig);
+}
+
 test.beforeEach(async ({ page }) => {
   await installWebMCPMock(page);
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
+});
+
+test('shares one save between the default and formal experience routes', async ({
+  page,
+}) => {
+  await page.getByLabel("Your character's name").fill('Mara');
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByText("Mara's manuscript")).toBeVisible();
+
+  await page.goto(`/experiences/${EXPERIENCE_ID}`);
+  await expect(page.getByText("Mara's manuscript")).toBeVisible();
+  await page.goto('/');
+  await expect(page.getByText("Mara's manuscript")).toBeVisible();
+});
+
+test('serves experience metadata and returns 404 for an unknown ID', async ({
+  page,
+}) => {
+  await expect(page).toHaveTitle('The Last Manuscript | Once Upon');
+  await expect(page.locator('meta[name="application-name"]')).toHaveAttribute(
+    'content',
+    'Once Upon',
+  );
+  await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute(
+    'content',
+    'Once Upon',
+  );
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+    'content',
+    /og\.png$/,
+  );
+
+  const response = await page.goto('/experiences/not-registered');
+  expect(response?.status()).toBe(404);
+});
+
+test('leaves the legacy database untouched and starts with a clean session', async ({
+  page,
+}) => {
+  await page.evaluate(async (config) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(
+        config.databaseName,
+        config.databaseVersion,
+      );
+      request.onupgradeneeded = () =>
+        request.result.createObjectStore(config.storeName);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(config.storeName, 'readwrite');
+      transaction
+        .objectStore(config.storeName)
+        .put({ broken: true }, config.activeKey);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }, legacyStorageConfig);
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
+  const legacyRecord = await page.evaluate(async (config) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(
+        config.databaseName,
+        config.databaseVersion,
+      );
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return new Promise<unknown>((resolve, reject) => {
+      const request = db
+        .transaction(config.storeName, 'readonly')
+        .objectStore(config.storeName)
+        .get(config.activeKey);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }, legacyStorageConfig);
+  expect(legacyRecord).toEqual({ broken: true });
 });
 
 test('keeps a saved manuscript readable when WebMCP becomes unavailable', async ({
@@ -104,7 +256,7 @@ test('preserves a saved roll across interruption and forces exact narration', as
 
   const initial = await callTool<{
     structuredContent: { state: { revision: number } };
-  }>(page, 'get_adventure_state', {});
+  }>(page, 'get_story_state', {});
   expect(initial.structuredContent.state.revision).toBe(1);
 
   const rolled = await callTool<{
@@ -197,14 +349,16 @@ test('preserves a saved roll across interruption and forces exact narration', as
   expect(blocked.structuredContent.code).toBe('NARRATION_REQUIRED');
   expect(blocked.structuredContent.pendingResolution.roll.die).toBe(savedDie);
 
-  await callTool(page, 'write_manuscript_entry', {
+  await callTool(page, 'commit_narration', {
     operationId: 'e2e_write_001',
     expectedRevision: rolled.structuredContent.state.revision,
     resolutionId: rolled.structuredContent.resolution.resolutionId,
     representedEventIds:
       rolled.structuredContent.resolution.representedEventIds,
-    prose:
-      'Mara searched beneath the dying hearth and found the Charred Key where the saved roll said it waited. The clock answered with one low chime, and the raven watched her close her hand around the warm metal.',
+    payload: {
+      format: 'prose',
+      text: 'Mara searched beneath the dying hearth and found the Charred Key where the saved roll said it waited. The clock answered with one low chime, and the raven watched her close her hand around the warm metal.',
+    },
   });
   const completed = page.locator(
     '.book-spread > .book-leaf [data-leaf-kind="completed"]',
@@ -305,19 +459,19 @@ test('registers the mirror ability only after the artifact is found', async ({
     'animation-name',
     'reduced-pulse',
   );
-  const names = await page.evaluate(() => [
-    ...window.__lastManuscriptTools.keys(),
-  ]);
+  const names = await page.evaluate(() => [...window.__webMCPTools.keys()]);
   expect(names).toContain('reveal_hidden_ink');
 
-  await callTool(page, 'write_manuscript_entry', {
+  await callTool(page, 'commit_narration', {
     operationId: 'e2e_write_mirror',
     expectedRevision: rolled.structuredContent.state.revision,
     resolutionId: rolled.structuredContent.resolution.resolutionId,
     representedEventIds:
       rolled.structuredContent.resolution.representedEventIds,
-    prose:
-      'Upstairs, the traveler found a Black Mirror Shard inside the empty frame. Its surface reflected the room a heartbeat late, and the page granted ChatGPT a new way to reveal writing hidden from ordinary sight.',
+    payload: {
+      format: 'prose',
+      text: 'Upstairs, the traveler found a Black Mirror Shard inside the empty frame. Its surface reflected the room a heartbeat late, and the page granted ChatGPT a new way to reveal writing hidden from ordinary sight.',
+    },
   });
   await expect(page.getByTestId('streaming-prose').first()).toHaveAttribute(
     'data-streaming',
@@ -368,13 +522,15 @@ test('supports history, bookmark follow-up, keyboard, and touch paging', async (
     approach: 'wits',
     intent: 'Search the hearth.',
   });
-  await callTool(page, 'write_manuscript_entry', {
+  await callTool(page, 'commit_narration', {
     operationId: 'e2e_history_write_1',
     expectedRevision: first.structuredContent.state.revision,
     resolutionId: first.structuredContent.resolution.resolutionId,
     representedEventIds: first.structuredContent.resolution.representedEventIds,
-    prose:
-      'The traveler searched through the silent hearth and lifted a Charred Key from the ashes while the first bell moved through the empty tavern.',
+    payload: {
+      format: 'prose',
+      text: 'The traveler searched through the silent hearth and lifted a Charred Key from the ashes while the first bell moved through the empty tavern.',
+    },
   });
 
   const reader = page.getByRole('region', { name: /Book pages/ });
@@ -458,44 +614,19 @@ test('supports history, bookmark follow-up, keyboard, and touch paging', async (
 test('preserves a corrupt save before explicitly starting over', async ({
   page,
 }) => {
-  await page.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('the-last-manuscript', 1);
-      request.onupgradeneeded = () =>
-        request.result.createObjectStore('sessions');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction('sessions', 'readwrite');
-      transaction.objectStore('sessions').put({ broken: true }, 'active');
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
-  });
+  await writeExperienceRecord(page, { broken: true });
   await page.reload();
   await expect(page.getByText('The manuscript stayed closed')).toBeVisible();
   await page.getByRole('button', { name: 'Begin a new manuscript' }).click();
   await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
-  const keys = await page.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('the-last-manuscript', 1);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    return await new Promise<IDBValidKey[]>((resolve, reject) => {
-      const request = db
-        .transaction('sessions', 'readonly')
-        .objectStore('sessions')
-        .getAllKeys();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  });
+  const keys = await readExperienceKeys(page);
   expect(
-    keys.some((key) => typeof key === 'string' && key.startsWith('corrupt_')),
+    keys.some(
+      (key) =>
+        typeof key === 'string' && key.startsWith(`corrupt:${EXPERIENCE_ID}:`),
+    ),
   ).toBe(true);
-  expect(keys).not.toContain('active');
+  expect(keys).not.toContain(storageConfig.activeKey);
 });
 
 test('shows an error when the manuscript cannot be saved at setup', async ({
@@ -528,20 +659,6 @@ test('restarts the story from the ledger after confirmation', async ({
     .getByRole('button', { name: 'This erases this manuscript. Start anyway?' })
     .click();
   await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
-  const keys = await page.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('the-last-manuscript', 1);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    return await new Promise<IDBValidKey[]>((resolve, reject) => {
-      const request = db
-        .transaction('sessions', 'readonly')
-        .objectStore('sessions')
-        .getAllKeys();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  });
-  expect(keys).not.toContain('active');
+  const keys = await readExperienceKeys(page);
+  expect(keys).not.toContain(storageConfig.activeKey);
 });

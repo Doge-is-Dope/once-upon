@@ -1,40 +1,45 @@
 import {
-  createSession,
+  commitNarration,
+  createExperienceSession,
   defaultEngineContext,
   getStateResponse,
   resolveAction,
-  writeManuscript,
 } from './engine';
-import { SessionStore } from './store';
+import { SessionStore, type ExperienceStore } from './store';
 import type {
   ActionInput,
-  AttributeId,
-  GameSession,
-  ManuscriptInput,
+  ExperienceDefinition,
+  ExperienceSession,
+  NarrationInput,
   ToolResponse,
 } from './types';
 
-type Listener = (session: GameSession | null) => void;
+type Listener = (session: ExperienceSession | null) => void;
 type FaultListener = (message: string) => void;
 
-export class GameController {
-  private readonly store: SessionStore;
-  private session: GameSession | null = null;
+export class ExperienceController {
+  readonly definition: ExperienceDefinition;
+  private readonly store: ExperienceStore;
+  private session: ExperienceSession | null = null;
   private listeners = new Set<Listener>();
   private faultListeners = new Set<FaultListener>();
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(store = new SessionStore()) {
+  constructor(
+    definition: ExperienceDefinition,
+    store: ExperienceStore = new SessionStore(definition.id),
+  ) {
+    this.definition = definition;
     this.store = store;
   }
 
-  async initialize(): Promise<GameSession | null> {
+  async initialize(): Promise<ExperienceSession | null> {
     this.session = await this.store.read();
     this.emit();
     return this.session;
   }
 
-  getSnapshot(): GameSession | null {
+  getSnapshot(): ExperienceSession | null {
     return this.session;
   }
 
@@ -48,9 +53,9 @@ export class GameController {
     return () => this.faultListeners.delete(listener);
   }
 
-  async begin(name: string, specialty: AttributeId): Promise<GameSession> {
+  async begin(name: string, specialty: string): Promise<ExperienceSession> {
     return this.serial(async () => {
-      const session = createSession(name, specialty);
+      const session = createExperienceSession(this.definition, name, specialty);
       await this.store.write(session);
       this.session = session;
       this.emit();
@@ -60,7 +65,7 @@ export class GameController {
 
   async getState(): Promise<ToolResponse> {
     if (!this.session) this.session = await this.store.read();
-    return getStateResponse(this.session);
+    return getStateResponse(this.definition, this.session);
   }
 
   async performAction(
@@ -76,8 +81,13 @@ export class GameController {
       try {
         const next = await this.store.mutate((saved) => {
           if (!saved) return null;
-          const die = forcedDie ?? secureD20;
-          const outcome = resolveAction(saved, input, die, defaultEngineContext);
+          const outcome = resolveAction(
+            this.definition,
+            saved,
+            input,
+            forcedDie ?? secureD20,
+            defaultEngineContext,
+          );
           response = outcome.response;
           return outcome.session;
         });
@@ -87,11 +97,11 @@ export class GameController {
         throw error;
       }
       this.emit();
-      return this.session ? response : getStateResponse(null);
+      return this.session ? response : getStateResponse(this.definition, null);
     });
   }
 
-  async writeManuscript(input: ManuscriptInput): Promise<ToolResponse> {
+  async commitNarration(input: NarrationInput): Promise<ToolResponse> {
     return this.serial(async () => {
       let response: ToolResponse = {
         ok: false,
@@ -101,7 +111,12 @@ export class GameController {
       try {
         const next = await this.store.mutate((saved) => {
           if (!saved) return null;
-          const outcome = writeManuscript(saved, input, defaultEngineContext);
+          const outcome = commitNarration(
+            this.definition,
+            saved,
+            input,
+            defaultEngineContext,
+          );
           response = outcome.response;
           return outcome.session;
         });
@@ -111,7 +126,7 @@ export class GameController {
         throw error;
       }
       this.emit();
-      return this.session ? response : getStateResponse(null);
+      return this.session ? response : getStateResponse(this.definition, null);
     });
   }
 
@@ -120,7 +135,7 @@ export class GameController {
       try {
         await this.store.clear();
       } catch (error) {
-        this.emitFault('The old manuscript could not be cleared from this device.');
+        this.emitFault('The old story could not be cleared from this device.');
         throw error;
       }
       this.session = null;
@@ -157,5 +172,3 @@ function secureD20(): number {
   crypto.getRandomValues(values);
   return (values[0] % 20) + 1;
 }
-
-export const gameController = new GameController();
