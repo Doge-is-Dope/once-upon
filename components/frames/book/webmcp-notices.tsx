@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import type { WebMCPStatus } from '@/lib/webmcp/tools';
+import {
+  CHROME_WEBMCP_FLAG,
+  WEBMCP_CLIENT_NAME,
+  type WebMCPStatus,
+} from '@/lib/webmcp/tools';
 import { copyText, CopyTooltip } from './copy-button';
-
-const CHROME_WEBMCP_FLAG = 'chrome://flags/#enable-webmcp-testing';
 
 export function ConnectionIssueNotice({
   status,
@@ -45,7 +47,7 @@ function WebMCPDisabledNotice({
     >
       <strong>Turn on WebMCP</strong>
       <p>
-        <b>ChatGPT</b>
+        <b>{WEBMCP_CLIENT_NAME}</b>
         <span>Browser settings → Permissions → Enable site tools</span>
       </p>
       <ChromeFlagRow />

@@ -16,6 +16,8 @@ export type WebMCPStatus =
   | 'error';
 
 export const CHROME_WEBMCP_MIN_VERSION = 149;
+export const CHROME_WEBMCP_FLAG = 'chrome://flags/#enable-webmcp-testing';
+export const WEBMCP_CLIENT_NAME = 'ChatGPT';
 
 type BrowserBrand = {
   brand: string;

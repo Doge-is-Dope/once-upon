@@ -1,6 +1,7 @@
 'use client';
 
 import type { ExperienceSession } from '@/lib/runtime/types';
+import { WEBMCP_CLIENT_NAME } from '@/lib/webmcp/tools';
 import { RestartButton } from './book-leaf-page';
 import { CopyButton } from './copy-button';
 import { useExperience } from './experience-context';
@@ -123,7 +124,7 @@ export const LedgerDialog = function LedgerDialog({
                     <small>
                       {session.usedAbilityIds.includes(id)
                         ? 'Used'
-                        : 'Ready for ChatGPT'}
+                        : `Ready for ${WEBMCP_CLIENT_NAME}`}
                     </small>
                   </div>
                 </li>

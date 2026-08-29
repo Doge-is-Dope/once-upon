@@ -5,6 +5,7 @@ import type {
   StoryDefinition,
   TurnResolution,
 } from '@/lib/runtime/types';
+import { WEBMCP_CLIENT_NAME } from '@/lib/webmcp/tools';
 
 export function tierLabel(tier: TurnResolution['roll']['tier']): string {
   return {
@@ -42,7 +43,7 @@ export function statusAnnouncement(
   story: StoryDefinition,
 ): string {
   if (session.pendingResolution)
-    return `Roll saved: ${session.pendingResolution.roll.total} against ${session.pendingResolution.roll.dc}. ChatGPT is writing the manuscript.`;
+    return `Roll saved: ${session.pendingResolution.roll.total} against ${session.pendingResolution.roll.dc}. ${WEBMCP_CLIENT_NAME} is writing the manuscript.`;
   if (session.phase === 'COMPLETE')
     return `The manuscript is complete: ${session.endingId ? story.endingLabel(session.endingId) : 'ending saved'}.`;
   const remaining = story.limits.maxClock - session.clock;

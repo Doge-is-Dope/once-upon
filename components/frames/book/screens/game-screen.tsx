@@ -3,7 +3,8 @@
 import { useRef } from 'react';
 import type { ExperienceSession } from '@/lib/runtime/types';
 import type { WebMCPStatus } from '@/lib/webmcp/tools';
-import { useExperience } from '../experience-context';
+import { useBookFrameCopy, useExperience } from '../experience-context';
+import { titleCase } from '../formatters';
 import { LedgerDialog } from '../ledger-dialog';
 import { ManuscriptBook } from '../manuscript-book';
 import type { MotionCues, UnseenLedger } from '../session-cues';
@@ -43,6 +44,7 @@ export function GameScreen({
   onRestart: () => Promise<void>;
 }) {
   const { story } = useExperience();
+  const copy = useBookFrameCopy();
   const ledgerRef = useRef<HTMLDialogElement>(null);
   const unseenCount =
     unseen.inventoryIds.length +
@@ -69,8 +71,8 @@ export function GameScreen({
         <div>
           <p className="eyebrow">{title}</p>
           <h1>
-            {session.character.name === 'the traveler'
-              ? "The traveler's manuscript"
+            {session.character.name === copy.defaultProtagonist
+              ? `${titleCase(copy.defaultProtagonist)}'s manuscript`
               : `${session.character.name}'s manuscript`}
           </h1>
         </div>

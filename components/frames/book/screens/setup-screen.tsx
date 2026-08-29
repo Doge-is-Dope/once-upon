@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import type { WebMCPStatus } from '@/lib/webmcp/tools';
-import { useExperience } from '../experience-context';
+import { useBookFrameCopy, useExperience } from '../experience-context';
 import { ConnectionIssueNotice } from '../webmcp-notices';
 import { StoryPreview } from './story-preview';
 
@@ -20,6 +20,7 @@ export function SetupScreen({
   autoFocusName: boolean;
 }) {
   const { story } = useExperience();
+  const copy = useBookFrameCopy();
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const nameRef = useRef<HTMLInputElement>(null);
@@ -30,7 +31,7 @@ export function SetupScreen({
     <main className="cover-shell">
       <section className="cover-panel" aria-labelledby="game-title">
         <p className="platform-mark">Once Upon presents</p>
-        <p className="eyebrow">Six pages before midnight</p>
+        <p className="eyebrow">{copy.tagline}</p>
         <h1 id="game-title">{title}</h1>
         <p className="lede">A mystery you play with your AI.</p>
         <p className="sublede">
@@ -70,7 +71,9 @@ export function SetupScreen({
               maxLength={40}
               ref={nameRef}
             />
-            <p className="field-note">Leave blank to play as the traveler.</p>
+            <p className="field-note">
+              Leave blank to play as {copy.defaultProtagonist}.
+            </p>
             <fieldset>
               <legend>Choose one strength</legend>
               <p className="field-note">You can still use the others.</p>
@@ -115,11 +118,12 @@ export function SetupScreen({
 }
 
 export function BrowserPreview({ title }: { title: string }) {
+  const copy = useBookFrameCopy();
   return (
     <main className="cover-shell preview-mode">
       <section className="cover-panel" aria-labelledby="preview-title">
         <p className="platform-mark">Once Upon presents</p>
-        <p className="eyebrow">Six pages before midnight</p>
+        <p className="eyebrow">{copy.tagline}</p>
         <h1 id="preview-title">{title}</h1>
         <p className="lede">A mystery you play with your AI.</p>
         <p className="sublede">

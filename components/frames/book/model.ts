@@ -27,9 +27,15 @@ export interface BookLeaf {
   endingId: EndingId | null;
 }
 
+export interface BookLeafTitles {
+  prologueTitle: string;
+  fallbackPageHeading: string;
+}
+
 export function buildBookLeaves(
   session: ExperienceSession,
   maxTurns: number,
+  titles: BookLeafTitles,
 ): BookLeaf[] {
   const opening =
     session.narrationEntries.find((entry) => entry.turn === 0) ?? null;
@@ -56,7 +62,7 @@ export function buildBookLeaves(
       leafIndex: 1,
       turn: 0,
       kind: 'prologue',
-      title: 'The tavern before dawn',
+      title: titles.prologueTitle,
       entry: opening,
       resolution: null,
       notes: [],
@@ -82,7 +88,7 @@ export function buildBookLeaves(
       turn,
       kind: entry ? 'completed' : pending ? 'draft' : 'unwritten',
       title: resolution
-        ? resolutionHeading(resolution)
+        ? resolutionHeading(resolution, titles.fallbackPageHeading)
         : `Page ${formatPageNumber(turn)}`,
       entry,
       resolution,
@@ -109,13 +115,16 @@ export function latestBookLeafIndex(
   return Math.min(maxTurns + 1, turn + 1);
 }
 
-export function resolutionHeading(resolution: TurnResolution): string {
+export function resolutionHeading(
+  resolution: TurnResolution,
+  fallbackHeading: string,
+): string {
   return (
     resolution.canonicalEvents.find((event) => event.type === 'ending')
       ?.label ??
     resolution.canonicalEvents.find((event) => event.type !== 'location')
       ?.label ??
-    'The tavern answers'
+    fallbackHeading
   );
 }
 

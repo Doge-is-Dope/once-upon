@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import type { CanonicalEvent, ExperienceSession } from '@/lib/runtime/types';
+import { WEBMCP_CLIENT_NAME } from '@/lib/webmcp/tools';
 import { CopyButton } from './copy-button';
-import { useExperience } from './experience-context';
+import { useBookFrameCopy, useExperience } from './experience-context';
 import { eventTypeLabel, titleCase } from './formatters';
 import { formatPageNumber, narrationText, type BookLeaf } from './model';
 import { AbilityCard, RollCard } from './roll-card';
@@ -32,14 +33,15 @@ export function BookLeafPage({
   onRestart: () => Promise<void>;
 }) {
   const { story } = useExperience();
+  const copy = useBookFrameCopy();
   if (leaf.kind === 'bookplate')
     return (
       <div className="bookplate-copy">
         <span className="bookplate-mark">M</span>
         <p>This manuscript belongs to</p>
         <h2>
-          {session.character.name === 'the traveler'
-            ? 'The traveler'
+          {session.character.name === copy.defaultProtagonist
+            ? titleCase(copy.defaultProtagonist)
             : session.character.name}
         </h2>
         <dl>
@@ -49,7 +51,7 @@ export function BookLeafPage({
           </div>
           <div>
             <dt>Rule</dt>
-            <dd>Six pages before midnight</dd>
+            <dd>{copy.tagline}</dd>
           </div>
         </dl>
       </div>
@@ -137,7 +139,7 @@ export function BookLeafPage({
           <span className="turn-mark">→</span>
           <div>
             <strong>Your turn</strong>
-            <p>Tell ChatGPT what you do next.</p>
+            <p>Tell {WEBMCP_CLIENT_NAME} what you do next.</p>
           </div>
         </div>
       ) : null}
@@ -223,7 +225,7 @@ function StartCard() {
       <p>Keep this page open while you play.</p>
       <p>
         Then just say what you do — &ldquo;I search the hearth.&rdquo; The book
-        rolls; ChatGPT writes the page.
+        rolls; {WEBMCP_CLIENT_NAME} writes the page.
       </p>
       <CopyButton text={startMessage} idleLabel="Copy start message" />
     </div>
@@ -257,7 +259,7 @@ function PendingCard({
       <div>
         <strong>Roll saved</strong>
         <p>
-          ChatGPT is adding this turn to the manuscript…
+          {WEBMCP_CLIENT_NAME} is adding this turn to the manuscript…
           {!recoveryReady ? (
             <span className="writing-dots" aria-hidden="true">
               <span />
@@ -269,8 +271,8 @@ function PendingCard({
         <details className="recovery-details" open={recoveryReady}>
           <summary>Taking too long?</summary>
           <p>
-            Your roll is safe. If ChatGPT stopped, copy this message and send it
-            in the same chat.
+            Your roll is safe. If {WEBMCP_CLIENT_NAME} stopped, copy this
+            message and send it in the same chat.
           </p>
           <CopyButton
             text={continueMessage}

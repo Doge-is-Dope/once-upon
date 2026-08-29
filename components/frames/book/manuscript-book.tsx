@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ExperienceSession } from '@/lib/runtime/types';
 import { BookLeafPage } from './book-leaf-page';
-import { useExperience } from './experience-context';
+import { useBookFrameCopy, useExperience } from './experience-context';
 import {
   buildBookLeaves,
   formatPageNumber,
@@ -33,7 +33,8 @@ export function ManuscriptBook({
   onRestart: () => Promise<void>;
 }) {
   const { story } = useExperience();
-  const leaves = buildBookLeaves(session, story.limits.maxTurns);
+  const copy = useBookFrameCopy();
+  const leaves = buildBookLeaves(session, story.limits.maxTurns, copy);
   const latestLeaf = latestBookLeafIndex(session, story.limits.maxTurns);
   const singlePage = useSinglePage();
   const pointerStart = useRef<{ x: number; y: number } | null>(null);

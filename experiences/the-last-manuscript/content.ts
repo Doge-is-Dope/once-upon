@@ -1,3 +1,4 @@
+import type { BookFrameCopy } from '@/components/frames/book/types';
 import type {
   Affordance,
   AttributeDescriptor,
@@ -47,6 +48,46 @@ export const ENDING_LABELS: Record<EndingId, string> = {
   escape: 'Escape',
   new_keeper: 'The New Keeper',
   true_name: 'The True Name',
+};
+
+export const BOOK_FRAME_COPY: BookFrameCopy = {
+  tagline: 'Six pages before midnight',
+  prologueTitle: 'The tavern before dawn',
+  fallbackPageHeading: 'The tavern answers',
+  defaultProtagonist: 'the traveler',
+  preview: {
+    prologueText:
+      'The traveler woke beside a dying hearth. A raven watched from the rafters while something beneath the floor answered the clock.',
+    sampleTitle: 'A key in the ashes',
+    sampleProse:
+      'The traveler sifted the cold hearth. Beneath the ash, a blackened key still held the warmth of a hand that had vanished years ago.',
+    sampleResolution: {
+      resolutionId: 'sample',
+      actionId: 'search_hearth',
+      intent: 'Search the hearth',
+      turn: 1,
+      createdAt: 0,
+      roll: {
+        die: 14,
+        attribute: 'wits',
+        modifier: 2,
+        total: 16,
+        dc: 13,
+        tier: 'success',
+      },
+      canonicalEvents: [],
+      representedEventIds: [],
+      mustInclude: [],
+      mustNotClaim: [],
+      newAbilityIds: [],
+    },
+    sampleEvent: {
+      id: 'sample-key',
+      type: 'item',
+      label: 'Charred Key',
+      detail: 'A warm key surfaced from beneath the hearth.',
+    },
+  },
 };
 
 export const START_MESSAGE =

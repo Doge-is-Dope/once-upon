@@ -10,6 +10,7 @@ import {
   resolveAction,
 } from '../lib/runtime/engine';
 import type { EngineContext } from '../lib/runtime/types';
+import { BOOK_FRAME_COPY } from '../experiences/the-last-manuscript/content';
 import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
 
 const MAX_TURNS = experienceDefinition.story.limits.maxTurns;
@@ -35,7 +36,7 @@ describe('book view model', () => {
       'nerve',
       context(),
     );
-    const leaves = buildBookLeaves(session, MAX_TURNS);
+    const leaves = buildBookLeaves(session, MAX_TURNS, BOOK_FRAME_COPY);
     expect(leaves).toHaveLength(8);
     expect(leaves.map((leaf) => leaf.kind)).toEqual([
       'bookplate',
@@ -70,7 +71,7 @@ describe('book view model', () => {
       14,
       context(),
     ).session;
-    const leaves = buildBookLeaves(rolled, MAX_TURNS);
+    const leaves = buildBookLeaves(rolled, MAX_TURNS, BOOK_FRAME_COPY);
     expect(leaves[1].kind).toBe('prologue');
     expect(leaves[1].resolution).toBeNull();
     expect(leaves[2]).toMatchObject({ kind: 'draft', turn: 1 });
@@ -114,7 +115,7 @@ describe('book view model', () => {
       },
       context(),
     ).session;
-    const leaf = buildBookLeaves(written, MAX_TURNS)[2];
+    const leaf = buildBookLeaves(written, MAX_TURNS, BOOK_FRAME_COPY)[2];
     expect(leaf.kind).toBe('completed');
     expect(leaf.entry?.payload).toMatchObject({
       format: 'prose',
@@ -172,7 +173,7 @@ describe('book view model', () => {
       resolution: finalResolution,
     });
 
-    expect(buildBookLeaves(session, MAX_TURNS)[7]).toMatchObject({
+    expect(buildBookLeaves(session, MAX_TURNS, BOOK_FRAME_COPY)[7]).toMatchObject({
       kind: 'completed',
       turn: 6,
       endingId: 'true_name',
