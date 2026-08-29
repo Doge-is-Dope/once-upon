@@ -6,7 +6,6 @@ import type {
   TurnResolution,
 } from '@/lib/runtime/types';
 
-export const MAX_NARRATION_TURNS = 6;
 const ROMAN_PAGE_NUMBERS = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'] as const;
 
 export type BookLeafKind =
@@ -28,7 +27,10 @@ export interface BookLeaf {
   endingId: EndingId | null;
 }
 
-export function buildBookLeaves(session: ExperienceSession): BookLeaf[] {
+export function buildBookLeaves(
+  session: ExperienceSession,
+  maxTurns: number,
+): BookLeaf[] {
   const opening =
     session.narrationEntries.find((entry) => entry.turn === 0) ?? null;
   const entriesByTurn = new Map(
@@ -62,7 +64,7 @@ export function buildBookLeaves(session: ExperienceSession): BookLeaf[] {
     },
   ];
 
-  for (let turn = 1; turn <= MAX_NARRATION_TURNS; turn += 1) {
+  for (let turn = 1; turn <= maxTurns; turn += 1) {
     const entry = entriesByTurn.get(turn) ?? null;
     const pending =
       session.pendingResolution?.turn === turn
@@ -96,12 +98,15 @@ export function formatPageNumber(turn: number): string {
   return ROMAN_PAGE_NUMBERS[turn] ?? String(turn);
 }
 
-export function latestBookLeafIndex(session: ExperienceSession): number {
+export function latestBookLeafIndex(
+  session: ExperienceSession,
+  maxTurns: number,
+): number {
   const turn =
     session.pendingResolution?.turn ??
     session.narrationEntries.at(-1)?.turn ??
     0;
-  return Math.min(MAX_NARRATION_TURNS + 1, turn + 1);
+  return Math.min(maxTurns + 1, turn + 1);
 }
 
 export function resolutionHeading(resolution: TurnResolution): string {

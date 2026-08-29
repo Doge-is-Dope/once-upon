@@ -12,6 +12,8 @@ import {
 import type { EngineContext } from '../lib/runtime/types';
 import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
 
+const MAX_TURNS = experienceDefinition.story.limits.maxTurns;
+
 function context(): EngineContext {
   let sequence = 0;
   return {
@@ -33,7 +35,7 @@ describe('book view model', () => {
       'nerve',
       context(),
     );
-    const leaves = buildBookLeaves(session);
+    const leaves = buildBookLeaves(session, MAX_TURNS);
     expect(leaves).toHaveLength(8);
     expect(leaves.map((leaf) => leaf.kind)).toEqual([
       'bookplate',
@@ -45,7 +47,7 @@ describe('book view model', () => {
       'unwritten',
       'unwritten',
     ]);
-    expect(latestBookLeafIndex(session)).toBe(1);
+    expect(latestBookLeafIndex(session, MAX_TURNS)).toBe(1);
   });
 
   it('places a saved resolution on its own draft page', () => {
@@ -68,12 +70,12 @@ describe('book view model', () => {
       14,
       context(),
     ).session;
-    const leaves = buildBookLeaves(rolled);
+    const leaves = buildBookLeaves(rolled, MAX_TURNS);
     expect(leaves[1].kind).toBe('prologue');
     expect(leaves[1].resolution).toBeNull();
     expect(leaves[2]).toMatchObject({ kind: 'draft', turn: 1 });
     expect(leaves[2].resolution?.roll.die).toBe(14);
-    expect(latestBookLeafIndex(rolled)).toBe(2);
+    expect(latestBookLeafIndex(rolled, MAX_TURNS)).toBe(2);
   });
 
   it('turns the draft into a completed page at the same leaf', () => {
@@ -112,13 +114,13 @@ describe('book view model', () => {
       },
       context(),
     ).session;
-    const leaf = buildBookLeaves(written)[2];
+    const leaf = buildBookLeaves(written, MAX_TURNS)[2];
     expect(leaf.kind).toBe('completed');
     expect(leaf.entry?.payload).toMatchObject({
       format: 'prose',
       text: expect.stringContaining('Charred Key'),
     });
-    expect(latestBookLeafIndex(written)).toBe(2);
+    expect(latestBookLeafIndex(written, MAX_TURNS)).toBe(2);
   });
 
   it('marks the final committed leaf as the ending page', () => {
@@ -170,7 +172,7 @@ describe('book view model', () => {
       resolution: finalResolution,
     });
 
-    expect(buildBookLeaves(session)[7]).toMatchObject({
+    expect(buildBookLeaves(session, MAX_TURNS)[7]).toMatchObject({
       kind: 'completed',
       turn: 6,
       endingId: 'true_name',

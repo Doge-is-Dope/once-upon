@@ -1,17 +1,13 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
 import {
-  ABILITY_DESCRIPTIONS,
-  ABILITY_LABELS,
-  CLUE_LABELS,
-  CONTINUE_MESSAGE,
-  ENDING_LABELS,
-  getAffordances,
-  ITEM_LABELS,
-  LOCATION_LABELS,
-  START_MESSAGE,
-} from '@/experiences/the-last-manuscript/content';
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import {
   buildBookLeaves,
   formatPageNumber,
@@ -25,18 +21,21 @@ import type {
   CanonicalEvent,
   ExperienceDefinition,
   ExperienceSession,
+  StoryDefinition,
   TurnResolution,
 } from '@/lib/runtime/types';
-import type { AttributeId } from '@/experiences/the-last-manuscript/types';
 import { registerExperienceTools, type WebMCPStatus } from '@/lib/webmcp/tools';
 
-const strengths = [
-  ['wits', 'Wits', 'Notice what others miss.'],
-  ['nerve', 'Nerve', 'Stand firm when fear closes in.'],
-  ['grace', 'Grace', 'Move softly and win trust.'],
-] as const;
-
 const CHROME_WEBMCP_FLAG = 'chrome://flags/#enable-webmcp-testing';
+
+const BookExperienceContext = createContext<ExperienceDefinition | null>(null);
+
+function useExperience(): ExperienceDefinition {
+  const experience = useContext(BookExperienceContext);
+  if (!experience)
+    throw new Error('Book frame components need a BookExperienceContext.');
+  return experience;
+}
 
 type MotionCues = {
   resolutionId: string | null;
@@ -179,7 +178,7 @@ export function BookExperience({
         lastRevision.current !== null &&
         next.revision !== lastRevision.current
       ) {
-        setAnnouncement(statusAnnouncement(next));
+        setAnnouncement(statusAnnouncement(next, experience.story));
         setFault('');
       }
       lastRevision.current = next?.revision ?? null;
@@ -208,7 +207,7 @@ export function BookExperience({
       unsubscribe();
       unsubscribeFaults();
     };
-  }, [controller]);
+  }, [controller, experience.story]);
 
   useEffect(() => {
     if (!ready || error) return;
@@ -238,9 +237,10 @@ export function BookExperience({
 
   const retryConnection = () => setConnectAttempt((attempt) => attempt + 1);
 
-  if (!ready) return <LoadingScreen />;
-  if (error)
-    return (
+  let content: React.ReactNode;
+  if (!ready) content = <LoadingScreen />;
+  else if (error)
+    content = (
       <ErrorScreen
         title={experience.title}
         message={error}
@@ -250,10 +250,10 @@ export function BookExperience({
         }}
       />
     );
-  if (!session && webMCPStatus === 'unsupported')
-    return <BrowserPreview title={experience.title} />;
-  if (!session)
-    return (
+  else if (!session && webMCPStatus === 'unsupported')
+    content = <BrowserPreview title={experience.title} />;
+  else if (!session)
+    content = (
       <SetupScreen
         title={experience.title}
         onBegin={(name, specialty) => controller.begin(name, specialty)}
@@ -262,35 +262,42 @@ export function BookExperience({
         autoFocusName={restartCount > 0}
       />
     );
+  else
+    content = (
+      <>
+        <p className="sr-live" aria-live="polite" aria-atomic="true">
+          {announcement}
+        </p>
+        <GameScreen
+          title={experience.title}
+          session={session}
+          webMCPStatus={webMCPStatus}
+          recoveryReady={recoveryReady}
+          streamingEntryId={streamingEntryId}
+          motionCues={motionCues}
+          unseen={unseen}
+          fault={fault}
+          focusReaderToken={focusReaderToken}
+          onDismissFault={() => setFault('')}
+          onLedgerSeen={() => setUnseen(EMPTY_UNSEEN)}
+          onRetryConnection={retryConnection}
+          onStreamed={() => setStreamingEntryId(null)}
+          onConsumeMotion={() =>
+            setMotionCues((cues) => ({
+              ...cues,
+              resolutionId: null,
+              abilityIds: [],
+            }))
+          }
+          onRestart={() => controller.restart()}
+        />
+      </>
+    );
+
   return (
-    <>
-      <p className="sr-live" aria-live="polite" aria-atomic="true">
-        {announcement}
-      </p>
-      <GameScreen
-        title={experience.title}
-        session={session}
-        webMCPStatus={webMCPStatus}
-        recoveryReady={recoveryReady}
-        streamingEntryId={streamingEntryId}
-        motionCues={motionCues}
-        unseen={unseen}
-        fault={fault}
-        focusReaderToken={focusReaderToken}
-        onDismissFault={() => setFault('')}
-        onLedgerSeen={() => setUnseen(EMPTY_UNSEEN)}
-        onRetryConnection={retryConnection}
-        onStreamed={() => setStreamingEntryId(null)}
-        onConsumeMotion={() =>
-          setMotionCues((cues) => ({
-            ...cues,
-            resolutionId: null,
-            abilityIds: [],
-          }))
-        }
-        onRestart={() => controller.restart()}
-      />
-    </>
+    <BookExperienceContext.Provider value={experience}>
+      {content}
+    </BookExperienceContext.Provider>
   );
 }
 
@@ -353,11 +360,12 @@ function SetupScreen({
   autoFocusName,
 }: {
   title: string;
-  onBegin: (name: string, specialty: AttributeId) => Promise<unknown>;
+  onBegin: (name: string, specialty: string) => Promise<unknown>;
   webMCPStatus: WebMCPStatus;
   onRetryConnection: () => void;
   autoFocusName: boolean;
 }) {
+  const { story } = useExperience();
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const nameRef = useRef<HTMLInputElement>(null);
@@ -385,10 +393,11 @@ function SetupScreen({
               const nameValue = data.get('characterName');
               const strengthValue = data.get('strength');
               const name = typeof nameValue === 'string' ? nameValue : '';
-              const specialty =
-                strengthValue === 'nerve' || strengthValue === 'grace'
-                  ? strengthValue
-                  : 'wits';
+              const specialty = story.attributes.some(
+                (attribute) => attribute.id === strengthValue,
+              )
+                ? (strengthValue as string)
+                : story.attributes[0].id;
               void onBegin(name, specialty)
                 .catch(() =>
                   setFormError(
@@ -412,21 +421,21 @@ function SetupScreen({
               <legend>Choose one strength</legend>
               <p className="field-note">You can still use the others.</p>
               <div className="strength-grid">
-                {strengths.map(([value, name, description], index) => (
+                {story.attributes.map((attribute, index) => (
                   <label
                     className="strength-card"
-                    aria-label={`${name}: ${description}`}
-                    key={value}
+                    aria-label={`${attribute.label}: ${attribute.description}`}
+                    key={attribute.id}
                   >
                     <input
                       type="radio"
                       name="strength"
-                      value={value}
+                      value={attribute.id}
                       defaultChecked={index === 0}
                     />
                     <span className="strength-copy">
-                      <strong>{name}</strong>
-                      <span>{description}</span>
+                      <strong>{attribute.label}</strong>
+                      <span>{attribute.description}</span>
                     </span>
                   </label>
                 ))}
@@ -623,6 +632,7 @@ function GameScreen({
   onConsumeMotion: () => void;
   onRestart: () => Promise<void>;
 }) {
+  const { story } = useExperience();
   const ledgerRef = useRef<HTMLDialogElement>(null);
   const unseenCount =
     unseen.inventoryIds.length +
@@ -631,7 +641,11 @@ function GameScreen({
   return (
     <main
       className="game-shell"
-      style={{ '--midnight': session.clock / 6 } as React.CSSProperties}
+      style={
+        {
+          '--midnight': session.clock / story.limits.maxClock,
+        } as React.CSSProperties
+      }
     >
       {fault ? (
         <output className="fault-banner">
@@ -660,17 +674,17 @@ function GameScreen({
         <div className="status-strip" aria-label="Adventure status">
           <StatusValue
             label="Location"
-            value={locationLabel(session.locationId)}
+            value={story.locationLabel(session.locationId)}
             emphasize={motionCues.locationId === session.locationId}
           />
           <StatusValue
             label="Clock"
-            value={`${session.clock} / 6`}
+            value={`${session.clock} / ${story.limits.maxClock}`}
             emphasize={motionCues.clock === session.clock}
           />
           <StatusValue
             label="Resolve"
-            value={`${session.resolve} / 3`}
+            value={`${session.resolve} / ${story.limits.maxResolve}`}
             emphasize={motionCues.resolve === session.resolve}
           />
         </div>
@@ -732,8 +746,9 @@ function ManuscriptBook({
   onConsumeMotion: () => void;
   onRestart: () => Promise<void>;
 }) {
-  const leaves = buildBookLeaves(session);
-  const latestLeaf = latestBookLeafIndex(session);
+  const { story } = useExperience();
+  const leaves = buildBookLeaves(session, story.limits.maxTurns);
+  const latestLeaf = latestBookLeafIndex(session, story.limits.maxTurns);
   const singlePage = useSinglePage();
   const [activeLeaf, setActiveLeaf] = useState(latestLeaf);
   const [followingLatest, setFollowingLatest] = useState(true);
@@ -1046,6 +1061,7 @@ function BookLeafPage({
   onStreamed: () => void;
   onRestart: () => Promise<void>;
 }) {
+  const { story } = useExperience();
   if (leaf.kind === 'bookplate')
     return (
       <div className="bookplate-copy">
@@ -1106,7 +1122,7 @@ function BookLeafPage({
       {leaf.endingId ? (
         <div className="ending-banner">
           <span>Manuscript sealed</span>
-          <strong>{endingLabel(leaf.endingId)}</strong>
+          <strong>{story.endingLabel(leaf.endingId)}</strong>
         </div>
       ) : null}
       <p className="entry-number">
@@ -1203,10 +1219,12 @@ const LedgerDialog = function LedgerDialog({
   onSeen: () => void;
   onRestart: () => Promise<void>;
 }) {
-  const newInventoryLabels = unseen.inventoryIds.map(
-    (id) => ITEM_LABELS[id] ?? id,
+  const { story } = useExperience();
+  const maxClock = story.limits.maxClock;
+  const newInventoryLabels = unseen.inventoryIds.map((id) =>
+    story.itemLabel(id),
   );
-  const newClueLabels = unseen.clueIds.map((id) => CLUE_LABELS[id] ?? id);
+  const newClueLabels = unseen.clueIds.map((id) => story.clueLabel(id));
   return (
     // Clicking the backdrop targets the dialog element itself; Escape and the
     // close button remain the keyboard equivalents.
@@ -1235,10 +1253,12 @@ const LedgerDialog = function LedgerDialog({
         <section className="ledger-section clock-section">
           <div className="section-heading">
             <h2>Midnight clock</h2>
-            <span>{session.clock} of 6</span>
+            <span>
+              {session.clock} of {maxClock}
+            </span>
           </div>
           <div className="clock-track" aria-hidden="true">
-            {Array.from({ length: 6 }, (_, index) => (
+            {Array.from({ length: maxClock }, (_, index) => (
               <span
                 className={[
                   index < session.clock ? 'filled' : '',
@@ -1253,35 +1273,35 @@ const LedgerDialog = function LedgerDialog({
             ))}
           </div>
           <p>
-            {session.clock < 6
-              ? `${6 - session.clock} ${6 - session.clock === 1 ? 'page remains' : 'pages remain'} before midnight.`
+            {session.clock < maxClock
+              ? `${maxClock - session.clock} ${maxClock - session.clock === 1 ? 'page remains' : 'pages remain'} before midnight.`
               : 'The sixth bell has sounded.'}
           </p>
         </section>
         <LedgerList
           title="Inventory"
           empty="Your hands are empty."
-          items={session.inventoryIds.map((id) => ITEM_LABELS[id] ?? id)}
+          items={session.inventoryIds.map((id) => story.itemLabel(id))}
           emphasizedItems={newInventoryLabels}
         />
         <LedgerList
           title="Clues"
           empty="No certain clues yet."
-          items={session.clueIds.map((id) => CLUE_LABELS[id] ?? id)}
+          items={session.clueIds.map((id) => story.clueLabel(id))}
           emphasizedItems={newClueLabels}
         />
         <section className="ledger-section">
           <h2>Attributes</h2>
           <dl className="attribute-list">
-            {strengths.map(([id, label]) => (
-              <div key={id}>
+            {story.attributes.map((attribute) => (
+              <div key={attribute.id}>
                 <dt>
-                  {label}
-                  {session.character.specialty === id ? (
+                  {attribute.label}
+                  {session.character.specialty === attribute.id ? (
                     <small>Strength</small>
                   ) : null}
                 </dt>
-                <dd>+{session.stats[id]}</dd>
+                <dd>+{session.stats[attribute.id]}</dd>
               </div>
             ))}
           </dl>
@@ -1297,8 +1317,8 @@ const LedgerDialog = function LedgerDialog({
                 >
                   <span aria-hidden="true">✦</span>
                   <div>
-                    <strong>{abilityLabel(id)}</strong>
-                    <p>{abilityDescription(id)}</p>
+                    <strong>{story.abilityLabel(id)}</strong>
+                    <p>{story.abilityDescription(id)}</p>
                     <small>
                       {session.usedAbilityIds.includes(id)
                         ? 'Used'
@@ -1318,7 +1338,7 @@ const LedgerDialog = function LedgerDialog({
           <section className="ledger-section next-actions">
             <h2>What the book will resolve</h2>
             <ul>
-              {getAffordances(session).map((affordance) => (
+              {story.getAffordances(session).map((affordance) => (
                 <li key={affordance.id}>
                   <div>
                     <strong>{affordance.label}</strong>
@@ -1502,6 +1522,7 @@ function RestartButton({
   );
 }
 function StartCard() {
+  const { startMessage } = useExperience();
   return (
     <div className="instruction-card">
       <p className="eyebrow">Start in the chat beside this page</p>
@@ -1511,7 +1532,7 @@ function StartCard() {
         Then just say what you do — &ldquo;I search the hearth.&rdquo; The book
         rolls; ChatGPT writes the page.
       </p>
-      <CopyButton text={START_MESSAGE} idleLabel="Copy start message" />
+      <CopyButton text={startMessage} idleLabel="Copy start message" />
     </div>
   );
 }
@@ -1525,6 +1546,7 @@ function PendingCard({
   recoveryReady: boolean;
   fresh: boolean;
 }) {
+  const { continueMessage } = useExperience();
   return (
     <output
       className={[
@@ -1558,7 +1580,7 @@ function PendingCard({
             in the same chat.
           </p>
           <CopyButton
-            text={CONTINUE_MESSAGE}
+            text={continueMessage}
             idleLabel="Copy continue message"
           />
         </details>
@@ -1721,6 +1743,7 @@ function AbilityCard({
   abilityId: string;
   celebrate?: boolean;
 }) {
+  const { story } = useExperience();
   return (
     <div
       className={`ability-card${celebrate ? ' is-unlocking' : ''}`}
@@ -1731,8 +1754,8 @@ function AbilityCard({
       </span>
       <div>
         <small>The book learns a spell</small>
-        <strong>{abilityLabel(abilityId)}</strong>
-        <p>{abilityDescription(abilityId)}</p>
+        <strong>{story.abilityLabel(abilityId)}</strong>
+        <p>{story.abilityDescription(abilityId)}</p>
       </div>
     </div>
   );
@@ -1982,27 +2005,14 @@ function tierLabel(tier: TurnResolution['roll']['tier']): string {
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
-function statusAnnouncement(session: ExperienceSession): string {
+function statusAnnouncement(
+  session: ExperienceSession,
+  story: StoryDefinition,
+): string {
   if (session.pendingResolution)
     return `Roll saved: ${session.pendingResolution.roll.total} against ${session.pendingResolution.roll.dc}. ChatGPT is writing the manuscript.`;
   if (session.phase === 'COMPLETE')
-    return `The manuscript is complete: ${session.endingId ? endingLabel(session.endingId) : 'ending saved'}.`;
-  const remaining = 6 - session.clock;
+    return `The manuscript is complete: ${session.endingId ? story.endingLabel(session.endingId) : 'ending saved'}.`;
+  const remaining = story.limits.maxClock - session.clock;
   return `Page ${session.turn} is saved. ${remaining === 1 ? 'One page remains' : `${remaining} pages remain`} before midnight. It is your turn.`;
-}
-
-function locationLabel(id: string): string {
-  return (LOCATION_LABELS as Record<string, string>)[id] ?? id;
-}
-
-function endingLabel(id: string): string {
-  return (ENDING_LABELS as Record<string, string>)[id] ?? id;
-}
-
-function abilityLabel(id: string): string {
-  return (ABILITY_LABELS as Record<string, string>)[id] ?? id;
-}
-
-function abilityDescription(id: string): string {
-  return (ABILITY_DESCRIPTIONS as Record<string, string>)[id] ?? '';
 }
