@@ -172,6 +172,172 @@ legend {
   font-size: 0.88rem;
   line-height: 1.45;
 }
+.connection-pending {
+  margin: 28px 0 0;
+  color: #b7aa96;
+  font-size: 0.9rem;
+}
+.capability-notice {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+  padding: 16px;
+  border: 1px solid rgba(214, 167, 94, 0.3);
+  border-radius: 14px;
+  color: #e9decb;
+  background: #1b1813;
+}
+.capability-notice > strong {
+  font-size: 1rem;
+}
+.capability-notice > p {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  color: #c8bda9;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.capability-notice > p b {
+  color: var(--cream);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.capability-notice.is-compact {
+  margin: 0 0 14px;
+}
+.support-action {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(214, 167, 94, 0.38);
+  color: var(--cream);
+  background: transparent;
+  font-size: 0.84rem;
+}
+.support-action:hover {
+  background: rgba(214, 167, 94, 0.1);
+}
+.chrome-flag-row {
+  min-width: 0;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 2px 2px 12px;
+  border: 1px solid #514536;
+  border-radius: 10px;
+  background: #12100d;
+}
+.chrome-flag-row > span:first-child {
+  color: #a99d89;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.chrome-flag-row input {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  outline-offset: 4px;
+  color: #d7c9b3;
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flag-copy-control {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: block;
+}
+.flag-copy-button {
+  width: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 8px;
+  color: #d7c9b3;
+  background: transparent;
+}
+.flag-copy-button:hover:not(:disabled) {
+  color: var(--cream);
+  background: rgba(214, 167, 94, 0.12);
+}
+.flag-copy-button:disabled {
+  cursor: default;
+  filter: none;
+  opacity: 1;
+}
+.flag-copy-icon {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+.flag-copy-icon::before,
+.flag-copy-icon::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+}
+.flag-copy-icon::before {
+  top: 0;
+  right: 0;
+}
+.flag-copy-icon::after {
+  bottom: 0;
+  left: 0;
+  background: #12100d;
+}
+.flag-copy-check {
+  color: #9bc49c;
+  font-size: 1rem;
+}
+.copy-tooltip {
+  position: absolute;
+  right: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+  width: max-content;
+  padding: 5px 8px;
+  border: 1px solid rgba(214, 167, 94, 0.3);
+  border-radius: 6px;
+  color: var(--cream);
+  background: #2a251e;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+  font-size: 0.7rem;
+  font-weight: 700;
+  pointer-events: none;
+  transform: translateX(50%);
+  animation: tooltip-arrive 120ms ease-out both;
+}
+.copy-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  border: 4px solid transparent;
+  border-top-color: #2a251e;
+  transform: translateX(-50%);
+}
+@keyframes tooltip-arrive {
+  from {
+    opacity: 0;
+    transform: translate(50%, 3px);
+  }
+}
 .connection-error-notice {
   display: flex;
   flex-wrap: wrap;
@@ -296,6 +462,45 @@ button {
   color: #20170d;
   background: #dda255;
   box-shadow: none;
+}
+.start-control.is-unavailable {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+}
+.start-control.is-unavailable .primary-button {
+  margin-top: 0;
+}
+.start-control.is-unavailable .primary-button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.2);
+}
+.start-tooltip {
+  position: relative;
+  z-index: 1;
+  width: fit-content;
+  max-width: min(100%, 420px);
+  justify-self: center;
+  padding: 8px 12px;
+  border: 1px solid rgba(214, 167, 94, 0.32);
+  border-radius: 8px;
+  color: var(--cream);
+  background: #2a251e;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.4;
+  pointer-events: none;
+  text-align: center;
+}
+.start-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  border: 5px solid transparent;
+  border-top-color: #2a251e;
+  transform: translateX(-50%);
 }
 button:hover {
   background-color: #e8ad61;
@@ -516,7 +721,6 @@ input:focus-visible {
   /* Reduced motion still needs "something is happening" feedback: an
      opacity-only pulse, with no transform movement. */
   .writing-dots span,
-  .connection-dot:not(.connected):not(.error),
   .stream-caret {
     animation: reduced-pulse 1.4s ease-in-out infinite !important;
   }
@@ -527,37 +731,6 @@ input:focus-visible {
   }
 }
 
-.connection-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 24px;
-  color: #c8bda9;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-.connection-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: #8d7e6a;
-  box-shadow: 0 0 0 4px rgba(141, 126, 106, 0.12);
-  transition:
-    background-color 400ms ease,
-    box-shadow 400ms ease;
-}
-.connection-dot:not(.connected):not(.error) {
-  animation: connection-pulse 1.4s ease-in-out infinite;
-}
-.connection-dot.connected {
-  background: #83b184;
-  box-shadow: 0 0 0 4px rgba(131, 177, 132, 0.13);
-}
-.connection-dot.error {
-  background: #d37b5a;
-}
 .copy-button {
   width: 100%;
   margin-top: 18px;
@@ -569,12 +742,6 @@ input:focus-visible {
 .copy-button.is-copied span {
   display: inline-block;
   animation: copy-confirm 240ms ease-out both;
-}
-@keyframes connection-pulse {
-  50% {
-    opacity: 0.5;
-    transform: scale(0.75);
-  }
 }
 @keyframes copy-confirm {
   0% {
@@ -605,9 +772,6 @@ input:focus-visible {
   background: #fff7e5;
   font: inherit;
   line-height: 1.45;
-}
-.centered {
-  text-align: center;
 }
 .sr-live,
 .sr-only {
@@ -686,10 +850,6 @@ input:focus-visible {
   max-width: none;
   font-size: clamp(2rem, 5vw, 4.2rem);
   line-height: 1;
-}
-.game-header .connection-line {
-  margin: 0 0 5px;
-  white-space: nowrap;
 }
 .status-strip {
   display: grid;
@@ -963,7 +1123,7 @@ input:focus-visible {
   max-width: 100%;
   margin-top: 12px;
   overflow: hidden;
-  color: #88755c;
+  color: #6f5d47;
   font-size: 0.68rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1231,9 +1391,6 @@ input:focus-visible {
     align-items: start;
     flex-direction: column;
     gap: 12px;
-  }
-  .game-header .connection-line {
-    order: -1;
   }
   .status-strip {
     position: relative;

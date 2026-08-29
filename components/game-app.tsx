@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   ABILITY_DESCRIPTIONS,
   ABILITY_LABELS,
-  buildPreviewMessage,
   CLUE_LABELS,
   CONTINUE_MESSAGE,
   ENDING_LABELS,
@@ -34,6 +33,8 @@ const strengths = [
   ['nerve', 'Nerve', 'Stand firm when fear closes in.'],
   ['grace', 'Grace', 'Move softly and win trust.'],
 ] as const;
+
+const CHROME_WEBMCP_FLAG = 'chrome://flags/#enable-webmcp-testing';
 
 type MotionCues = {
   resolutionId: string | null;
@@ -145,9 +146,7 @@ export function GameApp() {
               ...new Set([...current.inventoryIds, ...newInventoryIds]),
             ],
             clueIds: [...new Set([...current.clueIds, ...newClueIds])],
-            abilityIds: [
-              ...new Set([...current.abilityIds, ...newAbilityIds]),
-            ],
+            abilityIds: [...new Set([...current.abilityIds, ...newAbilityIds])],
           }));
         }
       } else {
@@ -240,7 +239,7 @@ export function GameApp() {
         }}
       />
     );
-  if (webMCPStatus === 'unavailable') return <BrowserPreview />;
+  if (!session && webMCPStatus === 'unsupported') return <BrowserPreview />;
   if (!session)
     return (
       <SetupScreen
@@ -349,89 +348,83 @@ function SetupScreen({
   return (
     <main className="cover-shell">
       <section className="cover-panel" aria-labelledby="game-title">
-        <ConnectionLine status={webMCPStatus} />
         <p className="eyebrow">Six pages before midnight</p>
         <h1 id="game-title">The Last Manuscript</h1>
-        <p className="lede">A mystery you play with ChatGPT.</p>
+        <p className="lede">A mystery you play with your AI.</p>
         <p className="sublede">
-          You choose. The book rolls the dice. ChatGPT writes what happens.
+          You choose. The book rolls the dice. Your AI writes what happens.
         </p>
-        {webMCPStatus === 'error' ? (
-          <ConnectionErrorNotice onRetry={onRetryConnection} />
-        ) : null}
-        <form
-          className="character-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const data = new FormData(event.currentTarget);
-            setBusy(true);
-            setFormError('');
-            const nameValue = data.get('characterName');
-            const strengthValue = data.get('strength');
-            const name = typeof nameValue === 'string' ? nameValue : '';
-            const specialty =
-              strengthValue === 'nerve' || strengthValue === 'grace'
-                ? strengthValue
-                : 'wits';
-            void onBegin(name, specialty)
-              .catch(() =>
-                setFormError(
-                  'The manuscript could not be saved on this device. Private browsing or full storage can cause this.',
-                ),
-              )
-              .finally(() => setBusy(false));
-          }}
-        >
-          <label htmlFor="character-name">Your character&apos;s name</label>
-          <input
-            id="character-name"
-            name="characterName"
-            autoComplete="off"
-            placeholder="Optional"
-            maxLength={40}
-            ref={nameRef}
-          />
-          <p className="field-note">Leave blank to play as the traveler.</p>
-          <fieldset>
-            <legend>Choose one strength</legend>
-            <p className="field-note">You can still use the others.</p>
-            <div className="strength-grid">
-              {strengths.map(([value, name, description], index) => (
-                <label
-                  className="strength-card"
-                  aria-label={`${name}: ${description}`}
-                  key={value}
-                >
-                  <input
-                    type="radio"
-                    name="strength"
-                    value={value}
-                    defaultChecked={index === 0}
-                  />
-                  <span className="strength-copy">
-                    <strong>{name}</strong>
-                    <span>{description}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <button
-            className="primary-button"
-            type="submit"
-            disabled={busy || webMCPStatus !== 'connected'}
+        {webMCPStatus === 'connected' ? (
+          <form
+            className="character-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const data = new FormData(event.currentTarget);
+              setBusy(true);
+              setFormError('');
+              const nameValue = data.get('characterName');
+              const strengthValue = data.get('strength');
+              const name = typeof nameValue === 'string' ? nameValue : '';
+              const specialty =
+                strengthValue === 'nerve' || strengthValue === 'grace'
+                  ? strengthValue
+                  : 'wits';
+              void onBegin(name, specialty)
+                .catch(() =>
+                  setFormError(
+                    'The manuscript could not be saved on this device. Private browsing or full storage can cause this.',
+                  ),
+                )
+                .finally(() => setBusy(false));
+            }}
           >
-            {busy ? 'Opening the manuscript…' : 'Begin the manuscript'}
-          </button>
-          {webMCPStatus === 'connecting' ? (
-            <p className="field-note">Waiting for ChatGPT to connect…</p>
-          ) : null}
-          {formError ? (
-            <p className="form-error" role="alert">
-              {formError}
-            </p>
-          ) : null}
-        </form>
+            <label htmlFor="character-name">Your character&apos;s name</label>
+            <input
+              id="character-name"
+              name="characterName"
+              autoComplete="off"
+              placeholder="Optional"
+              maxLength={40}
+              ref={nameRef}
+            />
+            <p className="field-note">Leave blank to play as the traveler.</p>
+            <fieldset>
+              <legend>Choose one strength</legend>
+              <p className="field-note">You can still use the others.</p>
+              <div className="strength-grid">
+                {strengths.map(([value, name, description], index) => (
+                  <label
+                    className="strength-card"
+                    aria-label={`${name}: ${description}`}
+                    key={value}
+                  >
+                    <input
+                      type="radio"
+                      name="strength"
+                      value={value}
+                      defaultChecked={index === 0}
+                    />
+                    <span className="strength-copy">
+                      <strong>{name}</strong>
+                      <span>{description}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <StartButton busy={busy} submit />
+            {formError ? (
+              <p className="form-error" role="alert">
+                {formError}
+              </p>
+            ) : null}
+          </form>
+        ) : (
+          <ConnectionIssueNotice
+            status={webMCPStatus}
+            onRetry={onRetryConnection}
+          />
+        )}
       </section>
       <StoryPreview />
     </main>
@@ -444,18 +437,11 @@ function BrowserPreview() {
       <section className="cover-panel" aria-labelledby="preview-title">
         <p className="eyebrow">Six pages before midnight</p>
         <h1 id="preview-title">The Last Manuscript</h1>
-        <p className="lede">A mystery you play with ChatGPT.</p>
+        <p className="lede">A mystery you play with your AI.</p>
         <p className="sublede">
-          Open this page in ChatGPT&apos;s built-in browser. Your chat chooses
-          the actions; this book keeps the dice and truth.
+          Open this page in a WebMCP-enabled AI browser to play.
         </p>
-        <CopyButton
-          text={buildPreviewMessage(window.location.href)}
-          idleLabel="Copy link and message"
-        />
-        <p className="field-note centered">
-          In this browser, the page is a reading preview.
-        </p>
+        <StartButton unavailableMessage="WebMCP isn't available in this browser." />
       </section>
       <StoryPreview />
     </main>
@@ -519,6 +505,42 @@ function StoryPreview() {
         </button>
       </nav>
     </aside>
+  );
+}
+
+function StartButton({
+  busy = false,
+  submit = false,
+  unavailableMessage,
+}: {
+  busy?: boolean;
+  submit?: boolean;
+  unavailableMessage?: string;
+}) {
+  const tooltipId = useId();
+  const unavailable = Boolean(unavailableMessage);
+  return (
+    <div className={`start-control${unavailable ? ' is-unavailable' : ''}`}>
+      {unavailableMessage ? (
+        <StartTooltip id={tooltipId} message={unavailableMessage} />
+      ) : null}
+      <button
+        aria-describedby={unavailable ? tooltipId : undefined}
+        className="primary-button"
+        disabled={busy || unavailable}
+        type={submit ? 'submit' : 'button'}
+      >
+        {busy ? 'Opening the manuscript…' : 'Start'}
+      </button>
+    </div>
+  );
+}
+
+function StartTooltip({ id, message }: { id: string; message: string }) {
+  return (
+    <span className="start-tooltip" id={id} role="tooltip">
+      {message}
+    </span>
   );
 }
 
@@ -603,11 +625,12 @@ function GameScreen({
               : `${session.character.name}'s manuscript`}
           </h1>
         </div>
-        <ConnectionLine status={webMCPStatus} />
       </header>
-      {webMCPStatus === 'error' ? (
-        <ConnectionErrorNotice onRetry={onRetryConnection} />
-      ) : null}
+      <ConnectionIssueNotice
+        status={webMCPStatus}
+        onRetry={onRetryConnection}
+        compact
+      />
       <div className="book-toolbar">
         <div className="status-strip" aria-label="Adventure status">
           <StatusValue
@@ -1100,9 +1123,7 @@ function BookLeafPage({
       ) : null}
       {leaf.endingId ? (
         <div className="ending-actions">
-          <p>
-            The ink has dried. Your six pages rest safely on this device.
-          </p>
+          <p>The ink has dried. Your six pages rest safely on this device.</p>
           <div className="ending-buttons">
             <button type="button" onClick={onReadBeginning}>
               Read from the beginning
@@ -1341,27 +1362,62 @@ function eventTypeLabel(type: CanonicalEvent['type']): string {
   }[type];
 }
 
-function ConnectionLine({ status }: { status: WebMCPStatus }) {
+function ConnectionIssueNotice({
+  status,
+  onRetry,
+  compact = false,
+}: {
+  status: WebMCPStatus;
+  onRetry: () => void;
+  compact?: boolean;
+}) {
+  if (status === 'connected') return null;
+  if (status === 'connecting')
+    return (
+      <output className="connection-pending">Checking browser support…</output>
+    );
+  if (status === 'disabled')
+    return <WebMCPDisabledNotice onRetry={onRetry} compact={compact} />;
+  if (status === 'unsupported')
+    return (
+      <div className="capability-notice" role="alert">
+        <strong>WebMCP isn&apos;t available in this browser.</strong>
+      </div>
+    );
+  return <ConnectionErrorNotice onRetry={onRetry} />;
+}
+
+function WebMCPDisabledNotice({
+  onRetry,
+  compact,
+}: {
+  onRetry: () => void;
+  compact: boolean;
+}) {
   return (
-    <div className="connection-line">
-      <span className={`connection-dot ${status}`} />
-      {status === 'connected'
-        ? 'ChatGPT connected'
-        : status === 'error'
-          ? 'Lost the connection to ChatGPT'
-          : 'Connecting to ChatGPT…'}
+    <div
+      className={`capability-notice${compact ? ' is-compact' : ''}`}
+      role="alert"
+    >
+      <strong>Turn on WebMCP</strong>
+      <p>
+        <b>ChatGPT</b>
+        <span>Browser settings → Permissions → Enable site tools</span>
+      </p>
+      <ChromeFlagRow />
+      <button className="support-action" type="button" onClick={onRetry}>
+        Check again
+      </button>
     </div>
   );
 }
+
 function ConnectionErrorNotice({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="connection-error-notice" role="alert">
-      <p>
-        The page could not offer its tools to ChatGPT. Reload this page inside
-        ChatGPT&apos;s browser, or try again.
-      </p>
+      <p>WebMCP couldn&apos;t start.</p>
       <button type="button" onClick={onRetry}>
-        Try connecting again
+        Try again
       </button>
     </div>
   );
@@ -1450,8 +1506,8 @@ function PendingCard({
         <details className="recovery-details" open={recoveryReady}>
           <summary>Taking too long?</summary>
           <p>
-            Your roll is safe. If ChatGPT stopped, copy this message and send
-            it in the same chat.
+            Your roll is safe. If ChatGPT stopped, copy this message and send it
+            in the same chat.
           </p>
           <CopyButton
             text={CONTINUE_MESSAGE}
@@ -1501,7 +1557,10 @@ function StreamingProse({
     const reveal = (now: number) => {
       const progress = Math.min(1, (now - startedAt) / duration);
       setVisibleLength((current) =>
-        Math.max(current, wordBoundary(prose, Math.ceil(prose.length * progress))),
+        Math.max(
+          current,
+          wordBoundary(prose, Math.ceil(prose.length * progress)),
+        ),
       );
       if (progress < 1) frame = window.requestAnimationFrame(reveal);
       else notifyDone();
@@ -1677,6 +1736,112 @@ function LedgerList({
     </section>
   );
 }
+
+function ChromeFlagRow() {
+  const flagRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="chrome-flag-row">
+      <span>Chrome</span>
+      <input
+        aria-label="Chrome WebMCP flag URL"
+        readOnly
+        ref={flagRef}
+        value={CHROME_WEBMCP_FLAG}
+        onFocus={(event) => event.currentTarget.select()}
+      />
+      <FlagCopyButton
+        text={CHROME_WEBMCP_FLAG}
+        onCopyFailure={() => {
+          flagRef.current?.focus();
+          flagRef.current?.select();
+        }}
+      />
+    </div>
+  );
+}
+
+type CopyFeedback = 'copied' | 'failed' | null;
+
+function FlagCopyButton({
+  text,
+  onCopyFailure,
+}: {
+  text: string;
+  onCopyFailure: () => void;
+}) {
+  const [feedback, setFeedback] = useState<CopyFeedback>(null);
+  const [copying, setCopying] = useState(false);
+  const timer = useRef<number | null>(null);
+  const tooltipId = useId();
+
+  const showFeedback = (next: Exclude<CopyFeedback, null>): void => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    setFeedback(next);
+    timer.current = window.setTimeout(() => {
+      setFeedback(null);
+      timer.current = null;
+    }, 5_000);
+  };
+
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const copied = feedback === 'copied';
+  return (
+    <span className="flag-copy-control">
+      <CopyTooltip
+        id={tooltipId}
+        message={
+          feedback === 'copied'
+            ? 'Copied'
+            : feedback === 'failed'
+              ? 'Copy failed'
+              : null
+        }
+      />
+      <button
+        aria-describedby={feedback ? tooltipId : undefined}
+        aria-label={copied ? 'Chrome flag URL copied' : 'Copy Chrome flag URL'}
+        className="flag-copy-button"
+        disabled={copying || copied}
+        type="button"
+        onClick={() => {
+          setCopying(true);
+          setFeedback(null);
+          void copyText(text)
+            .then(() => showFeedback('copied'))
+            .catch(() => {
+              showFeedback('failed');
+              onCopyFailure();
+            })
+            .finally(() => setCopying(false));
+        }}
+      >
+        {copied ? (
+          <span className="flag-copy-check" aria-hidden="true">
+            ✓
+          </span>
+        ) : (
+          <span className="flag-copy-icon" aria-hidden="true" />
+        )}
+      </button>
+    </span>
+  );
+}
+
+function CopyTooltip({ id, message }: { id: string; message: string | null }) {
+  if (!message) return null;
+  return (
+    <output aria-live="polite" className="copy-tooltip" id={id}>
+      {message}
+    </output>
+  );
+}
+
 function CopyButton({
   text,
   idleLabel,

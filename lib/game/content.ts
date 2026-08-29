@@ -44,10 +44,6 @@ export const START_MESSAGE =
 export const CONTINUE_MESSAGE =
   'Continue this game from the open page; you may have stopped mid-turn. Call get_adventure_state first. If a turn is waiting to be written, call write_manuscript_entry for that exact saved result before taking a new action. Do not reroll or change the saved facts.';
 
-export function buildPreviewMessage(url: string): string {
-  return `Open ${url} in your built-in browser and play The Last Manuscript with me. Use the page tools to resolve every action and preserve the manuscript.`;
-}
-
 export function getAffordances(input: {
   inventoryIds: string[];
   clueIds: string[];

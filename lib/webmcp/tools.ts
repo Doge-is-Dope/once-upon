@@ -8,7 +8,39 @@ import type {
   ToolResponse,
 } from '../game/types';
 
-export type WebMCPStatus = 'connecting' | 'connected' | 'unavailable' | 'error';
+export type WebMCPStatus =
+  | 'connecting'
+  | 'connected'
+  | 'disabled'
+  | 'unsupported'
+  | 'error';
+
+export const CHROME_WEBMCP_MIN_VERSION = 149;
+
+type BrowserBrand = {
+  brand: string;
+  version: string;
+};
+
+export type WebMCPNavigator = Navigator & {
+  userAgentData?: {
+    brands: BrowserBrand[];
+  };
+};
+
+export function classifyMissingWebMCP(
+  navigatorLike: WebMCPNavigator,
+): Extract<WebMCPStatus, 'disabled' | 'unsupported'> {
+  const chrome = navigatorLike.userAgentData?.brands.find(
+    ({ brand }) => brand === 'Google Chrome',
+  );
+  if (!chrome) return 'unsupported';
+  const majorVersion = Number.parseInt(chrome.version, 10);
+  return Number.isInteger(majorVersion) &&
+    majorVersion >= CHROME_WEBMCP_MIN_VERSION
+    ? 'disabled'
+    : 'unsupported';
+}
 
 const EMPTY_SCHEMA = {
   type: 'object',
@@ -40,7 +72,7 @@ export async function registerAdventureTools(
 ): Promise<() => void> {
   const modelContext = document.modelContext;
   if (!modelContext) {
-    onStatus('unavailable');
+    onStatus(classifyMissingWebMCP(navigator as WebMCPNavigator));
     return () => undefined;
   }
 
@@ -175,8 +207,15 @@ export async function registerAdventureTools(
     ]);
     onStatus('connected');
   } catch (error) {
-    console.error('WebMCP registration failed', error);
-    onStatus('error');
+    lifetime.abort();
+    for (const lease of abilityLeases.values()) lease.abort();
+    abilityLeases.clear();
+    if (isPermissionDenied(error)) onStatus('disabled');
+    else {
+      console.error('WebMCP registration failed', error);
+      onStatus('error');
+    }
+    return () => undefined;
   }
 
   const syncAbilities = (): void => {
@@ -266,10 +305,24 @@ async function registerAbility(
     );
   } catch (error) {
     if (!lease.signal.aborted) {
-      console.error(`Could not register ${abilityId}`, error);
-      onStatus('error');
+      lease.abort();
+      leases.delete(abilityId);
+      if (isPermissionDenied(error)) onStatus('disabled');
+      else {
+        console.error(`Could not register ${abilityId}`, error);
+        onStatus('error');
+      }
     }
   }
+}
+
+function isPermissionDenied(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    error.name === 'NotAllowedError'
+  );
 }
 
 function readAction(raw: Record<string, unknown>): ActionInput {

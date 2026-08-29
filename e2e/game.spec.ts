@@ -16,6 +16,7 @@ declare global {
 
 async function installWebMCPMock(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    if (sessionStorage.getItem('__disableWebMCPMock') === '1') return;
     const tools = new Map<string, BrowserTool>();
     const modelContext = new EventTarget() as EventTarget & {
       registerTool(
@@ -67,7 +68,26 @@ async function callTool<T>(
 test.beforeEach(async ({ page }) => {
   await installWebMCPMock(page);
   await page.goto('/');
-  await expect(page.getByText('ChatGPT connected')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
+});
+
+test('keeps a saved manuscript readable when WebMCP becomes unavailable', async ({
+  page,
+}) => {
+  await page.getByLabel("Your character's name").fill('Mara');
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByText("Mara's manuscript")).toBeVisible();
+
+  await page.evaluate(() => {
+    sessionStorage.setItem('__disableWebMCPMock', '1');
+  });
+  await page.reload();
+
+  await expect(page.getByText("Mara's manuscript")).toBeVisible();
+  await expect(
+    page.getByText("WebMCP isn't available in this browser."),
+  ).toBeVisible();
+  await expect(page.getByText('Sample leaves')).toHaveCount(0);
 });
 
 test('preserves a saved roll across interruption and forces exact narration', async ({
@@ -75,7 +95,7 @@ test('preserves a saved roll across interruption and forces exact narration', as
 }) => {
   await page.getByLabel("Your character's name").fill('Mara');
   await page.getByLabel('Nerve: Stand firm when fear closes in.').check();
-  await page.getByRole('button', { name: 'Begin the manuscript' }).click();
+  await page.getByRole('button', { name: 'Start' }).click();
   await expect(
     page.getByRole('button', { name: 'Copy start message' }),
   ).toBeVisible();
@@ -109,9 +129,7 @@ test('preserves a saved roll across interruption and forces exact narration', as
     draft.getByText('Draft Page I', { exact: true }).first(),
   ).toBeVisible();
   await expect(
-    draft
-      .getByText('I search the dying hearth for anything hidden.')
-      .first(),
+    draft.getByText('I search the dying hearth for anything hidden.').first(),
   ).toBeVisible();
   await expect(
     page.locator(
@@ -217,9 +235,7 @@ test('preserves a saved roll across interruption and forces exact narration', as
       .first(),
   ).toHaveAttribute('data-streaming', 'false');
   await expect(
-    page.locator(
-      '.book-spread > .book-leaf [data-leaf-kind="completed"]',
-    ),
+    page.locator('.book-spread > .book-leaf [data-leaf-kind="completed"]'),
   ).toHaveAttribute('data-new', 'false');
 
   await ledgerButton.click();
@@ -255,7 +271,7 @@ test('registers the mirror ability only after the artifact is found', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.getByRole('button', { name: 'Begin the manuscript' }).click();
+  await page.getByRole('button', { name: 'Start' }).click();
   const rolled = await callTool<{
     structuredContent: {
       resolution: { resolutionId: string; representedEventIds: string[] };
@@ -323,12 +339,8 @@ test('keeps setup accessible and usable at a 320px viewport', async ({
     page.getByRole('heading', { name: 'The Last Manuscript' }),
   ).toBeVisible();
   await page.getByLabel('Grace: Move softly and win trust.').check();
-  await page
-    .getByRole('button', { name: 'Begin the manuscript' })
-    .scrollIntoViewIfNeeded();
-  await expect(
-    page.getByRole('button', { name: 'Begin the manuscript' }),
-  ).toBeVisible();
+  await page.getByRole('button', { name: 'Start' }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
   const overflow = await page.evaluate(
     () =>
       document.documentElement.scrollWidth >
@@ -343,7 +355,7 @@ test('supports history, bookmark follow-up, keyboard, and touch paging', async (
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 820 });
-  await page.getByRole('button', { name: 'Begin the manuscript' }).click();
+  await page.getByRole('button', { name: 'Start' }).click();
   const first = await callTool<{
     structuredContent: {
       resolution: { resolutionId: string; representedEventIds: string[] };
@@ -464,9 +476,7 @@ test('preserves a corrupt save before explicitly starting over', async ({
   await page.reload();
   await expect(page.getByText('The manuscript stayed closed')).toBeVisible();
   await page.getByRole('button', { name: 'Begin a new manuscript' }).click();
-  await expect(
-    page.getByRole('button', { name: 'Begin the manuscript' }),
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
   const keys = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('the-last-manuscript', 1);
@@ -496,17 +506,15 @@ test('shows an error when the manuscript cannot be saved at setup', async ({
       throw new DOMException('Quota exceeded', 'QuotaExceededError');
     };
   });
-  await page.getByRole('button', { name: 'Begin the manuscript' }).click();
+  await page.getByRole('button', { name: 'Start' }).click();
   await expect(page.getByRole('alert')).toContainText('could not be saved');
-  await expect(
-    page.getByRole('button', { name: 'Begin the manuscript' }),
-  ).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
 });
 
 test('restarts the story from the ledger after confirmation', async ({
   page,
 }) => {
-  await page.getByRole('button', { name: 'Begin the manuscript' }).click();
+  await page.getByRole('button', { name: 'Start' }).click();
   await callTool(page, 'perform_action', {
     operationId: 'e2e_restart_action',
     expectedRevision: 1,
@@ -519,9 +527,7 @@ test('restarts the story from the ledger after confirmation', async ({
   await page
     .getByRole('button', { name: 'This erases this manuscript. Start anyway?' })
     .click();
-  await expect(
-    page.getByRole('button', { name: 'Begin the manuscript' }),
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
   const keys = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('the-last-manuscript', 1);
