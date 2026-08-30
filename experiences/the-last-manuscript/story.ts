@@ -354,8 +354,10 @@ function loseResolve(
     events,
     resolutionId,
     'resolve',
-    'Resolve lost',
-    `${detail} Resolve falls to ${session.resolve}.`,
+    'The night takes its toll',
+    session.resolve <= 1
+      ? `${detail} The traveler is close to breaking.`
+      : detail,
   );
 }
 

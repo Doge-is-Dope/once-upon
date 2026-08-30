@@ -27,7 +27,7 @@ export function eventTypeLabel(type: CanonicalEvent['type']): string {
     item: 'Item',
     clue: 'Clue',
     ability: 'Ability',
-    resolve: 'Resolve',
+    resolve: 'Toll',
     story: 'Story',
     ending: 'Ending',
   }[type];

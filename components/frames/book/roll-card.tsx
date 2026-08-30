@@ -50,12 +50,10 @@ export function RollCard({
     >
       <span className="die">{shownDie ?? roll.die}</span>
       <div>
-        <strong>
+        <strong>{tierLabel(roll.tier)}</strong>
+        <span className="roll-math">
           {roll.die} + {titleCase(roll.attribute)} {roll.modifier} ={' '}
-          {roll.total}
-        </strong>
-        <span>
-          vs {roll.dc} — {tierLabel(roll.tier)}
+          {roll.total} vs {roll.dc}
         </span>
       </div>
     </div>

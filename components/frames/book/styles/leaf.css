@@ -65,6 +65,25 @@
       color: var(--muted-ink);
       font-size: 0.9rem;
     }
+    .roll-card .roll-math {
+      opacity: 0.75;
+      font-size: 0.8rem;
+    }
+    .pages-remaining {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted-ink);
+      font-size: 0.78rem;
+      letter-spacing: 0.02em;
+    }
+    .strain-warning {
+      position: relative;
+      z-index: 2;
+      margin: 12px 0 0;
+      color: #7d3a24;
+      font-size: 0.9rem;
+      font-style: italic;
+    }
     .ability-card {
       margin-top: 12px;
       padding: 16px;

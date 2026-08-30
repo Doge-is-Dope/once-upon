@@ -145,8 +145,16 @@ export function BookLeafPage({
             <div>
               <strong>Your turn</strong>
               <p>Tell {WEBMCP_CLIENT_NAME} what you do next.</p>
+              <small className="pages-remaining">
+                {pagesRemainingLine(session, story.limits.maxTurns)}
+              </small>
             </div>
           </div>
+          {session.resolve === 1 ? (
+            <p className="strain-warning">
+              The traveler is close to breaking. Choose gently.
+            </p>
+          ) : null}
           <NextMoves session={session} />
         </>
       ) : null}
@@ -166,6 +174,16 @@ export function BookLeafPage({
       ) : null}
     </div>
   );
+}
+
+function pagesRemainingLine(
+  session: ExperienceSession,
+  maxTurns: number,
+): string {
+  const remaining = maxTurns - session.turn;
+  return remaining === 1
+    ? 'One page remains in this manuscript.'
+    : `${remaining} pages remain in this manuscript.`;
 }
 
 export function MarginNotes({ events }: { events: CanonicalEvent[] }) {

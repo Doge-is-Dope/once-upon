@@ -8,6 +8,7 @@ import { useBookFrameCopy, useExperience } from '../experience-context';
 import { titleCase } from '../formatters';
 import { LedgerDialog } from '../ledger-dialog';
 import { ManuscriptBook } from '../manuscript-book';
+import { formatPageNumber } from '../model';
 import type { MotionCues, UnseenLedger } from '../session-cues';
 import { ConnectionIssueNotice } from '../webmcp-notices';
 
@@ -65,7 +66,7 @@ export function GameScreen({
       className="game-shell"
       style={
         {
-          '--midnight': session.clock / story.limits.maxClock,
+          '--midnight': session.turn / story.limits.maxTurns,
         } as React.CSSProperties
       }
     >
@@ -100,14 +101,13 @@ export function GameScreen({
             emphasize={motionCues.locationId === session.locationId}
           />
           <StatusValue
-            label="Clock"
-            value={`${session.clock} / ${story.limits.maxClock}`}
+            label="Page"
+            value={
+              session.turn === 0
+                ? 'Prologue'
+                : `${formatPageNumber(session.turn)} of ${formatPageNumber(story.limits.maxTurns)}`
+            }
             emphasize={motionCues.clock === session.clock}
-          />
-          <StatusValue
-            label="Resolve"
-            value={`${session.resolve} / ${story.limits.maxResolve}`}
-            emphasize={motionCues.resolve === session.resolve}
           />
         </div>
         <button

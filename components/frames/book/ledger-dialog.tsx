@@ -6,6 +6,7 @@ import { RestartButton } from './book-leaf-page';
 import { CopyButton } from './copy-button';
 import { useExperience } from './experience-context';
 import { affordanceMessage } from './formatters';
+import { formatPageNumber } from './model';
 import type { UnseenLedger } from './session-cues';
 
 export const LedgerDialog = function LedgerDialog({
@@ -22,7 +23,6 @@ export const LedgerDialog = function LedgerDialog({
   onRestart: () => Promise<void>;
 }) {
   const { story } = useExperience();
-  const maxClock = story.limits.maxClock;
   const newInventoryLabels = unseen.inventoryIds.map((id) =>
     story.itemLabel(id),
   );
@@ -54,31 +54,24 @@ export const LedgerDialog = function LedgerDialog({
       <div className="ledger-dialog-content">
         <section className="ledger-section clock-section">
           <div className="section-heading">
-            <h2>Midnight clock</h2>
-            <span>
-              {session.clock} of {maxClock}
+            <h2>The manuscript</h2>
+            <span
+              className={`ledger-page-line${unseen.clock === session.clock ? ' is-new' : ''}`}
+            >
+              {session.turn === 0
+                ? 'Prologue'
+                : `Page ${formatPageNumber(session.turn)} of ${formatPageNumber(story.limits.maxTurns)}`}
             </span>
           </div>
-          <div className="clock-track" aria-hidden="true">
-            {Array.from({ length: maxClock }, (_, index) => (
-              <span
-                className={[
-                  index < session.clock ? 'filled' : '',
-                  unseen.clock === session.clock && index === session.clock - 1
-                    ? 'is-new'
-                    : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                key={index}
-              />
-            ))}
-          </div>
-          <p>
-            {session.clock < maxClock
-              ? `${maxClock - session.clock} ${maxClock - session.clock === 1 ? 'page remains' : 'pages remain'} before midnight.`
-              : 'The sixth bell has sounded.'}
-          </p>
+          <p>The story ends when the book is full.</p>
+          {session.resolve < story.limits.maxResolve &&
+          session.phase !== 'COMPLETE' ? (
+            <p className="strain-line">
+              {session.resolve === 1
+                ? 'The traveler is near breaking.'
+                : 'The traveler is shaken.'}
+            </p>
+          ) : null}
         </section>
         <LedgerList
           title="Inventory"

@@ -212,7 +212,9 @@ test('preserves a saved roll across interruption and forces exact narration', as
   await expect(
     page.getByRole('button', { name: 'Copy the opening message' }),
   ).toBeVisible();
-  await expect(page.getByText('Prologue', { exact: true })).toBeVisible();
+  await expect(
+    page.locator('.entry-number', { hasText: 'Prologue' }),
+  ).toBeVisible();
   await expect(page.locator('.book-reader')).toBeFocused();
 
   const initial = await callTool<{
@@ -267,7 +269,7 @@ test('preserves a saved roll across interruption and forces exact narration', as
   const ledgerButton = page.getByRole('button', { name: 'Open ledger' });
   await expect(page.locator('.ledger-badge')).toBeVisible();
   await ledgerButton.click();
-  await expect(page.locator('.clock-track .is-new')).toHaveCount(1);
+  await expect(page.locator('.ledger-page-line.is-new')).toHaveCount(1);
   await page.getByRole('button', { name: 'Close ledger' }).click();
   await expect(page.locator('.ledger-badge')).toHaveCount(0);
   await expect(page.locator('.pending-card').first()).toHaveAttribute(

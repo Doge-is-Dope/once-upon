@@ -29,23 +29,16 @@
       font-size: 0.75rem;
       font-weight: 800;
     }
-    .clock-track {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 7px;
+    .ledger-page-line {
+      color: #87502d;
+      font-weight: 700;
     }
-    .clock-track span {
-      height: 9px;
-      border: 1px solid rgba(76, 51, 26, 0.3);
-      border-radius: 99px;
-      background: rgba(255, 255, 255, 0.2);
-    }
-    .clock-track span.filled {
-      border-color: #87502d;
-      background: #9e6036;
-    }
-    .clock-track span.is-new {
+    .ledger-page-line.is-new {
       animation: clock-fill 380ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+    }
+    .strain-line {
+      color: #7d3a24;
+      font-style: italic;
     }
     .clock-section > p,
     .empty-copy {
