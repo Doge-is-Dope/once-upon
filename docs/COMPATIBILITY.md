@@ -1,6 +1,6 @@
 # Dependency Compatibility Record
 
-Verified locally on 2026-08-28 with Node 24.15.0 and pnpm 11.24.0.
+Verified locally on 2026-08-30 with Node 24.15.0 and pnpm 11.24.0.
 
 ## Frozen candidate group
 

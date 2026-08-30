@@ -73,6 +73,8 @@ export const PROSE_NARRATION_CONTRACT: NarrationContract = {
   },
 };
 
+// Not yet used by a shipped frame; kept as the second format that proves the
+// narration abstraction and keeps the contract tests honest.
 export const TERMINAL_NARRATION_CONTRACT: NarrationContract = {
   format: 'terminal',
   inputSchema: terminalSchema,
