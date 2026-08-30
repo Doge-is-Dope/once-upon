@@ -4,6 +4,7 @@
 @import '../components/frames/book/styles/leaf.css';
 @import '../components/frames/book/styles/ledger.css';
 @import '../components/frames/book/styles/notices.css';
+@import '../components/frames/book/styles/onboarding.css';
 @import '../components/frames/book/styles/motion.css';
 @layer base {
   :root {

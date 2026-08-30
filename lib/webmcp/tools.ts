@@ -61,9 +61,15 @@ const REVISION_SCHEMA = {
   description:
     'The exact revision returned by the most recent experience tool result.',
 };
+export type ExperienceToolName =
+  | 'get_story_state'
+  | 'perform_action'
+  | 'commit_narration';
+
 export async function registerExperienceTools(
   controller: ExperienceController,
   onStatus: (status: WebMCPStatus) => void,
+  onToolActivity?: (tool: ExperienceToolName) => void,
 ): Promise<() => void> {
   const modelContext = document.modelContext;
   if (!modelContext) {
@@ -95,6 +101,7 @@ export async function registerExperienceTools(
           },
           execute: async (_input, options) => {
             assertNotAborted(options?.signal);
+            onToolActivity?.('get_story_state');
             return webMCPResult(
               await controller.getState(),
               Boolean(options?.signal),
@@ -143,6 +150,7 @@ export async function registerExperienceTools(
           },
           execute: async (raw, options) => {
             assertNotAborted(options?.signal);
+            onToolActivity?.('perform_action');
             return webMCPResult(
               await controller.performAction(readAction(raw)),
               Boolean(options?.signal),
@@ -189,6 +197,7 @@ export async function registerExperienceTools(
           },
           execute: async (raw, options) => {
             assertNotAborted(options?.signal);
+            onToolActivity?.('commit_narration');
             return webMCPResult(
               await controller.commitNarration(readNarration(raw)),
               Boolean(options?.signal),
@@ -234,6 +243,7 @@ export async function registerExperienceTools(
           abilityId,
           abilityLeases,
           onStatus,
+          onToolActivity,
         );
     }
   };
@@ -253,6 +263,7 @@ async function registerAbility(
   abilityId: AbilityId,
   leases: Map<AbilityId, AbortController>,
   onStatus: (status: WebMCPStatus) => void,
+  onToolActivity?: (tool: ExperienceToolName) => void,
 ): Promise<void> {
   const lease = new AbortController();
   leases.set(abilityId, lease);
@@ -290,6 +301,7 @@ async function registerAbility(
         },
         execute: async (raw, options) => {
           assertNotAborted(options?.signal);
+          onToolActivity?.('perform_action');
           return webMCPResult(
             await controller.performAction({
               ...readAbility(raw),

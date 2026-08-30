@@ -7,8 +7,10 @@ import { CopyButton } from './copy-button';
 import { useBookFrameCopy, useExperience } from './experience-context';
 import { eventTypeLabel, titleCase } from './formatters';
 import { formatPageNumber, narrationText, type BookLeaf } from './model';
+import { NextMoves } from './next-moves';
 import { AbilityCard, RollCard } from './roll-card';
 import type { MotionCues } from './session-cues';
+import { StartCard } from './start-card';
 import { StreamingProse } from './streaming-prose';
 
 export function BookLeafPage({
@@ -76,7 +78,9 @@ export function BookLeafPage({
         {leaf.entry ? (
           <p className="manuscript-prose">{narrationText(leaf.entry)}</p>
         ) : null}
-        {isLatest && session.turn === 0 ? <StartCard /> : null}
+        {isLatest && session.turn === 0 ? (
+          <StartCard session={session} />
+        ) : null}
       </div>
     );
 
@@ -135,13 +139,16 @@ export function BookLeafPage({
         />
       ) : null}
       {leaf.kind === 'completed' && isLatest && !leaf.endingId ? (
-        <div className="turn-card">
-          <span className="turn-mark">→</span>
-          <div>
-            <strong>Your turn</strong>
-            <p>Tell {WEBMCP_CLIENT_NAME} what you do next.</p>
+        <>
+          <div className="turn-card">
+            <span className="turn-mark">→</span>
+            <div>
+              <strong>Your turn</strong>
+              <p>Tell {WEBMCP_CLIENT_NAME} what you do next.</p>
+            </div>
           </div>
-        </div>
+          <NextMoves session={session} />
+        </>
       ) : null}
       {leaf.endingId ? (
         <div className="ending-actions">
@@ -213,22 +220,6 @@ export function RestartButton({
           ? 'This erases this manuscript. Start anyway?'
           : idleLabel}
     </button>
-  );
-}
-
-function StartCard() {
-  const { startMessage } = useExperience();
-  return (
-    <div className="instruction-card">
-      <p className="eyebrow">Start in the chat beside this page</p>
-      <h3>Copy this message into the chat</h3>
-      <p>Keep this page open while you play.</p>
-      <p>
-        Then just say what you do — &ldquo;I search the hearth.&rdquo; The book
-        rolls; {WEBMCP_CLIENT_NAME} writes the page.
-      </p>
-      <CopyButton text={startMessage} idleLabel="Copy start message" />
-    </div>
   );
 }
 

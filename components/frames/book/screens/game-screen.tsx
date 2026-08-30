@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import type { ExperienceSession } from '@/lib/runtime/types';
 import type { WebMCPStatus } from '@/lib/webmcp/tools';
+import { BookUiContext } from '../book-ui-context';
 import { useBookFrameCopy, useExperience } from '../experience-context';
 import { titleCase } from '../formatters';
 import { LedgerDialog } from '../ledger-dialog';
@@ -14,6 +15,7 @@ export function GameScreen({
   title,
   session,
   webMCPStatus,
+  agentActive,
   recoveryReady,
   streamingEntryId,
   motionCues,
@@ -30,6 +32,7 @@ export function GameScreen({
   title: string;
   session: ExperienceSession;
   webMCPStatus: WebMCPStatus;
+  agentActive: boolean;
   recoveryReady: boolean;
   streamingEntryId: string | null;
   motionCues: MotionCues;
@@ -46,6 +49,13 @@ export function GameScreen({
   const { story } = useExperience();
   const copy = useBookFrameCopy();
   const ledgerRef = useRef<HTMLDialogElement>(null);
+  const bookUi = useMemo(
+    () => ({
+      agentActive,
+      openLedger: () => ledgerRef.current?.showModal(),
+    }),
+    [agentActive],
+  );
   const unseenCount =
     unseen.inventoryIds.length +
     unseen.clueIds.length +
@@ -118,23 +128,25 @@ export function GameScreen({
           ) : null}
         </button>
       </div>
-      <ManuscriptBook
-        session={session}
-        recoveryReady={recoveryReady}
-        streamingEntryId={streamingEntryId}
-        motionCues={motionCues}
-        focusReaderToken={focusReaderToken}
-        onStreamed={onStreamed}
-        onConsumeMotion={onConsumeMotion}
-        onRestart={onRestart}
-      />
-      <LedgerDialog
-        ref={ledgerRef}
-        session={session}
-        unseen={unseen}
-        onSeen={onLedgerSeen}
-        onRestart={onRestart}
-      />
+      <BookUiContext.Provider value={bookUi}>
+        <ManuscriptBook
+          session={session}
+          recoveryReady={recoveryReady}
+          streamingEntryId={streamingEntryId}
+          motionCues={motionCues}
+          focusReaderToken={focusReaderToken}
+          onStreamed={onStreamed}
+          onConsumeMotion={onConsumeMotion}
+          onRestart={onRestart}
+        />
+        <LedgerDialog
+          ref={ledgerRef}
+          session={session}
+          unseen={unseen}
+          onSeen={onLedgerSeen}
+          onRestart={onRestart}
+        />
+      </BookUiContext.Provider>
     </main>
   );
 }

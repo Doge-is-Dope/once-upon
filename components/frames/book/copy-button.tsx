@@ -27,10 +27,12 @@ export function CopyButton({
   text,
   idleLabel,
   className = '',
+  onCopied,
 }: {
   text: string;
   idleLabel: string;
   className?: string;
+  onCopied?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
@@ -43,6 +45,7 @@ export function CopyButton({
           void copyText(text)
             .then(() => {
               setCopied(true);
+              onCopied?.();
               window.setTimeout(() => setCopied(false), 1800);
             })
             .catch(() => setShowFallback(true))
@@ -62,7 +65,10 @@ export function CopyButton({
           <textarea
             readOnly
             value={text}
-            onFocus={(event) => event.currentTarget.select()}
+            onFocus={(event) => {
+              event.currentTarget.select();
+              onCopied?.();
+            }}
           />
         </label>
       ) : null}

@@ -17,7 +17,7 @@ export function BookExperience({
   experience: ExperienceDefinition;
 }) {
   const view = useSessionView(controller, experience.story);
-  const { webMCPStatus, retryConnection } = useWebMCPConnection(
+  const { webMCPStatus, agentActive, retryConnection } = useWebMCPConnection(
     controller,
     view.ready,
     view.error,
@@ -58,6 +58,7 @@ export function BookExperience({
           title={experience.title}
           session={view.session}
           webMCPStatus={webMCPStatus}
+          agentActive={agentActive}
           recoveryReady={view.recoveryReady}
           streamingEntryId={view.streamingEntryId}
           motionCues={view.motionCues}

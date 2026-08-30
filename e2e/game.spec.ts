@@ -210,7 +210,7 @@ test('preserves a saved roll across interruption and forces exact narration', as
   await page.getByLabel('Nerve: Stand firm when fear closes in.').check();
   await page.getByRole('button', { name: 'Start' }).click();
   await expect(
-    page.getByRole('button', { name: 'Copy start message' }),
+    page.getByRole('button', { name: 'Copy the opening message' }),
   ).toBeVisible();
   await expect(page.getByText('Prologue', { exact: true })).toBeVisible();
   await expect(page.locator('.book-reader')).toBeFocused();
@@ -363,7 +363,9 @@ test('preserves a saved roll across interruption and forces exact narration', as
       .getByText('Charred Key', { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText('Return what the bird has been waiting for.'),
+    page
+      .getByRole('dialog', { name: 'Adventure ledger' })
+      .getByText('Return what the bird has been waiting for.'),
   ).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(

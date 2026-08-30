@@ -91,7 +91,7 @@ export const BOOK_FRAME_COPY: BookFrameCopy = {
 };
 
 export const START_MESSAGE =
-  'Play this mystery with me using the tools on the open page: get_story_state, perform_action, and commit_narration. Start by calling get_story_state, set the opening scene from the state it returns, and ask what I do first. For each action I describe, resolve it with perform_action, commit the pending result as a prose narration payload, then tell me what happened and ask what I do next. Do not reroll, skip pending narration, or invent items, clues, characters, exits, or endings.';
+  'Play this mystery with me using the tools on the open page: get_story_state, perform_action, and commit_narration. Start by calling get_story_state, set the opening scene from the state it returns, and ask what I do first. For each action I describe, resolve it with perform_action, commit the pending result as a prose narration payload, then tell me what happened and ask what I do next. Do not reroll, skip pending narration, or invent items, clues, characters, exits, or endings. End every reply by asking what I do next, and if I seem unsure, suggest two of the currently available actions from the state.';
 
 export const CONTINUE_MESSAGE =
   'Continue this story from the open page; you may have stopped mid-turn. Call get_story_state first. If a turn is waiting for narration, call commit_narration for that exact saved result before taking a new action. Do not reroll or change the saved facts.';
@@ -141,14 +141,14 @@ export function getAffordances(
     id: 'enter_cellar_unprepared',
     label: 'Descend into the cellar',
     description:
-      'Face what is breathing beneath the floor, whether you know its name or not.',
+      'Face what is breathing beneath the floor, whether you know its name or not. Safer once you know what waits below.',
     suggestedApproaches: ['nerve'],
   });
   affordances.push({
     id: 'improvise',
     label: 'Try something else',
     description:
-      'Describe anything else you might try with what you can see around you.',
+      'Describe anything else you can see yourself trying. Improvising still spends one of your six pages and rarely uncovers a clue on its own.',
     suggestedApproaches: ['wits', 'nerve', 'grace'],
   });
 
