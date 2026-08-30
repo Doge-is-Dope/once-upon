@@ -6,7 +6,7 @@ import {
   EXPERIENCE_DB_VERSION,
   EXPERIENCE_STORE_NAME,
 } from '../lib/runtime/store';
-import { installModelContextMock } from './support/webmcp-mock';
+import { callTool, installModelContextMock } from './support/webmcp-mock';
 
 const EXPERIENCE_ID = 'the-last-manuscript';
 const legacyStorageConfig = {
@@ -22,22 +22,6 @@ async function installWebMCPMock(page: Page): Promise<void> {
     dispatchToolChange: true,
     respectOptOut: true,
   });
-}
-
-async function callTool<T>(
-  page: Page,
-  name: string,
-  input: Record<string, unknown>,
-): Promise<T> {
-  return page.evaluate(
-    async ({ toolName, toolInput }) => {
-      const tools = window.__webMCPTools;
-      const tool = tools.get(toolName);
-      if (!tool) throw new Error(`Tool ${toolName} is not registered.`);
-      return await tool.execute(toolInput);
-    },
-    { toolName: name, toolInput: input },
-  ) as Promise<T>;
 }
 
 const storageConfig = {

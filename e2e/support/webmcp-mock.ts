@@ -17,6 +17,22 @@ declare global {
   }
 }
 
+export async function callTool<T>(
+  page: Page,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<T> {
+  return page.evaluate(
+    async ({ toolName, toolInput }) => {
+      const tools = window.__webMCPTools;
+      const tool = tools.get(toolName);
+      if (!tool) throw new Error(`Tool ${toolName} is not registered.`);
+      return await tool.execute(toolInput);
+    },
+    { toolName: name, toolInput: input },
+  ) as Promise<T>;
+}
+
 export interface ModelContextMockOptions {
   globalName: '__webMCPTools' | '__connectionTools';
   dispatchToolChange?: boolean;

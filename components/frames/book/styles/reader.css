@@ -61,7 +61,7 @@
     }
     .status-strip {
       display: grid;
-      grid-template-columns: 1.4fr 1fr 1fr;
+      grid-template-columns: 1.4fr 1fr;
       gap: 1px;
       overflow: hidden;
       margin-bottom: 12px;
@@ -106,7 +106,7 @@
       .status-strip {
         position: relative;
         z-index: 4;
-        grid-template-columns: 1.3fr 1fr 1fr;
+        grid-template-columns: 1.3fr 1fr;
       }
       .status-strip > div {
         padding: 10px 12px;
