@@ -232,12 +232,15 @@ export function BookSurface({
   return <article className={`book-leaf ${side}`}>{children}</article>;
 }
 
+// Must stay in sync with the single-page breakpoint in styles/reader.css.
+export const BOOK_SINGLE_PAGE_MEDIA_QUERY = '(max-width: 900px)';
+
 function useSinglePage(): boolean {
   const [singlePage, setSinglePage] = useState(
-    () => window.matchMedia('(max-width: 900px)').matches,
+    () => window.matchMedia(BOOK_SINGLE_PAGE_MEDIA_QUERY).matches,
   );
   useEffect(() => {
-    const query = window.matchMedia('(max-width: 900px)');
+    const query = window.matchMedia(BOOK_SINGLE_PAGE_MEDIA_QUERY);
     const update = () => setSinglePage(query.matches);
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);

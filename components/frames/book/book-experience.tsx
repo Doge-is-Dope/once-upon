@@ -76,7 +76,7 @@ export function BookExperience({
 
   return (
     <BookExperienceContext.Provider value={experience}>
-      {content}
+      <div className="frame-book">{content}</div>
     </BookExperienceContext.Provider>
   );
 }

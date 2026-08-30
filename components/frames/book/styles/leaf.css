@@ -1,0 +1,577 @@
+@layer frame {
+  .frame-book {
+    .roll-card,
+    .ability-card {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border: 1px solid rgba(86, 60, 30, 0.24);
+      background: rgba(255, 250, 235, 0.52);
+    }
+    .roll-card {
+      padding: 14px;
+      border-radius: 14px;
+    }
+    .roll-card.is-settling {
+      animation: roll-card-settle 520ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+    }
+    .roll-card.is-settling .die {
+      animation: die-settle 520ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+    }
+    /* A natural 20 blooms; a critical setback shudders and blots. */
+    .roll-card.is-settling[data-tier='critical_success'] .die {
+      animation:
+        die-settle 520ms cubic-bezier(0.2, 0.85, 0.25, 1) both,
+        die-bloom 900ms 520ms ease-out both;
+    }
+    .roll-card.is-settling[data-tier='critical_setback'] .die {
+      animation:
+        die-settle 520ms cubic-bezier(0.2, 0.85, 0.25, 1) both,
+        die-shudder 360ms 520ms ease-in-out both;
+    }
+    .roll-card[data-tier='critical_success'] .die {
+      background: #5d4423;
+      box-shadow: 0 0 0 1px rgba(214, 167, 94, 0.55);
+    }
+    .roll-card[data-tier='critical_setback'] .die {
+      background: #4a2118;
+    }
+    /* Stagger the new-page cadence: prose first, then the die, then any spell. */
+    .leaf-copy .roll-card.is-settling,
+    .leaf-copy .roll-card.is-settling .die {
+      animation-delay: 360ms;
+    }
+    .die {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 10px;
+      color: #fff6df;
+      background: #3f3021;
+      font-family: Georgia, serif;
+      font-size: 1.35rem;
+    }
+    .roll-card div,
+    .ability-card div {
+      display: grid;
+      gap: 3px;
+    }
+    .roll-card span:last-child,
+    .ability-card p {
+      color: var(--muted-ink);
+      font-size: 0.9rem;
+    }
+    .ability-card {
+      margin-top: 12px;
+      padding: 16px;
+      border-radius: 14px;
+    }
+    .ability-card.is-unlocking {
+      animation: ability-unlock 560ms cubic-bezier(0.16, 0.8, 0.25, 1) both;
+    }
+    .ability-card.is-unlocking .ability-sigil {
+      animation: ability-sigil 560ms cubic-bezier(0.16, 0.8, 0.25, 1) both;
+    }
+    .leaf-copy .ability-card.is-unlocking,
+    .leaf-copy .ability-card.is-unlocking .ability-sigil {
+      animation-delay: 760ms;
+    }
+    .ability-card > span {
+      color: #8f552d;
+      font-size: 1.6rem;
+    }
+    .ability-card small {
+      color: #8f552d;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .ability-card p {
+      margin: 5px 0 0;
+      line-height: 1.45;
+    }
+    .manuscript-prose {
+      max-width: 37rem;
+      margin: 0 0 34px;
+      font-family:
+        Iowan Old Style,
+        Palatino Linotype,
+        Georgia,
+        serif;
+      font-size: clamp(1.08rem, 1.8vw, 1.28rem);
+      line-height: 1.82;
+    }
+    /* An ink dot rather than a terminal caret, to stay inside the fiction. */
+    .stream-caret {
+      display: inline-block;
+      width: 0.14em;
+      height: 0.14em;
+      margin-left: 0.1em;
+      border-radius: 50%;
+      vertical-align: 0.04em;
+      background: currentColor;
+      animation: stream-caret 700ms steps(1, end) infinite;
+    }
+    .ending-banner {
+      position: relative;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin: -20px 0 42px;
+      padding: 12px 52px 12px 16px;
+      border-block: 1px solid rgba(107, 68, 34, 0.3);
+      color: #7b4525;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      font-size: 0.72rem;
+    }
+    .ending-banner strong {
+      font-size: 0.78rem;
+    }
+    .ending-banner::after {
+      content: 'M';
+      position: absolute;
+      top: 50%;
+      right: 4px;
+      width: 40px;
+      height: 40px;
+      margin-top: -20px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #f8ead0;
+      background: radial-gradient(circle at 35% 30%, #a2542c, #7b3c1d 72%);
+      box-shadow:
+        0 4px 10px rgba(0, 0, 0, 0.25),
+        inset 0 0 0 2px rgba(255, 240, 214, 0.28);
+      font-family: Georgia, serif;
+      font-size: 1.1rem;
+      transform: rotate(-6deg);
+      animation: seal-stamp 520ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+    }
+    .turn-card,
+    .pending-card,
+    .instruction-card {
+      position: relative;
+      z-index: 2;
+      margin-top: 14px;
+      border: 1px solid rgba(86, 60, 30, 0.24);
+      border-radius: 16px;
+      background: rgba(255, 250, 235, 0.55);
+    }
+    .turn-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 17px;
+    }
+    .turn-card p,
+    .pending-card p,
+    .instruction-card p {
+      margin: 4px 0 0;
+      color: var(--muted-ink);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+    .turn-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      color: #fff7e7;
+      background: #735034;
+    }
+    .turn-card.complete .turn-mark {
+      background: #537052;
+    }
+    .instruction-card {
+      padding: 22px;
+    }
+    .instruction-card .eyebrow {
+      margin-bottom: 8px;
+      color: #8e542f;
+    }
+    .instruction-card h3 {
+      margin: 0;
+      font-family:
+        Iowan Old Style,
+        Palatino Linotype,
+        Georgia,
+        serif;
+      font-size: 1.35rem;
+    }
+    .pending-card {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 15px;
+      padding: 18px;
+      border-color: rgba(144, 83, 42, 0.36);
+      background: #f5e5c1;
+    }
+    .pending-card.is-fresh {
+      animation: pending-arrive 320ms ease-out both;
+    }
+    .pending-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #f8ead0;
+      background: #8b5835;
+      font-size: 1.15rem;
+    }
+    .pending-nib {
+      display: inline-block;
+    }
+    .pending-card.is-writing .pending-nib {
+      animation: pen-writing 1.1s ease-in-out infinite;
+    }
+    .writing-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: 5px;
+      vertical-align: 0.12em;
+    }
+    .writing-dots span {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: writing-dot 1.1s ease-in-out infinite;
+    }
+    .writing-dots span:nth-child(2) {
+      animation-delay: 140ms;
+    }
+    .writing-dots span:nth-child(3) {
+      animation-delay: 280ms;
+    }
+    .pending-card > div:last-child > small {
+      display: block;
+      max-width: 100%;
+      margin-top: 12px;
+      overflow: hidden;
+      color: #6f5d47;
+      font-size: 0.68rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .recovery-details {
+      margin-top: 14px;
+      border-top: 1px solid rgba(107, 73, 39, 0.22);
+    }
+    .recovery-details summary {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      color: #7d4b28;
+      font-size: 0.9rem;
+      font-weight: 750;
+    }
+    .recovery-details .copy-button {
+      width: auto;
+      min-width: 210px;
+    }
+    .ending-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .ending-buttons .restart-button {
+      border: 1px solid rgba(112, 73, 47, 0.5);
+      color: #70492f;
+      background: transparent;
+    }
+    .ending-buttons .restart-button:hover {
+      background-color: rgba(112, 73, 47, 0.12);
+    }
+    .ending-buttons .restart-button.is-confirming,
+    .ending-buttons .restart-button.is-confirming:hover {
+      color: #fff6df;
+      background-color: #8a3b24;
+    }
+    @media (max-width: 480px) {
+      .manuscript-prose {
+        font-size: 1.06rem;
+      }
+      .pending-card {
+        grid-template-columns: 1fr;
+      }
+      .recovery-details .copy-button {
+        width: 100%;
+        min-width: 0;
+      }
+    }
+    .book-leaf {
+      position: relative;
+      min-width: 0;
+      min-height: 720px;
+      padding: clamp(28px, 4vw, 54px);
+      overflow: hidden;
+      color: var(--ink);
+      background-color: var(--paper);
+      background-image:
+        radial-gradient(
+          circle at 34% 10%,
+          rgba(255, 255, 255, 0.46),
+          transparent 34%
+        ),
+        repeating-linear-gradient(
+          0deg,
+          rgba(81, 55, 28, 0.018) 0 1px,
+          transparent 1px 5px
+        );
+      box-shadow: inset 0 0 70px rgba(91, 59, 25, 0.1);
+      backface-visibility: hidden;
+    }
+    .book-leaf.left {
+      border-radius: 22px 3px 3px 22px;
+      box-shadow:
+        inset -18px 0 28px rgba(72, 48, 25, 0.08),
+        inset 0 0 70px rgba(91, 59, 25, 0.08);
+    }
+    .book-leaf.right {
+      border-radius: 3px 22px 22px 3px;
+      box-shadow:
+        inset 18px 0 28px rgba(72, 48, 25, 0.1),
+        inset 0 0 70px rgba(91, 59, 25, 0.08);
+    }
+    .book-leaf.single {
+      border-radius: 18px;
+    }
+    .leaf-copy {
+      max-width: 38rem;
+      margin: 0 auto;
+    }
+    .leaf-copy > h2 {
+      max-width: 13ch;
+      margin: 0 0 22px;
+      font-size: clamp(2.05rem, 4vw, 3.8rem);
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: -0.025em;
+    }
+    .leaf-copy[data-new='true'] {
+      animation: manuscript-entry-arrive 300ms ease-out both;
+    }
+    .leaf-copy .manuscript-prose {
+      margin-bottom: 26px;
+    }
+    .bookplate-copy {
+      height: 100%;
+      min-height: 600px;
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      text-align: center;
+    }
+    .bookplate-mark {
+      width: 76px;
+      height: 76px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 28px;
+      border: 2px solid #825434;
+      border-radius: 50%;
+      color: #825434;
+      font-family: Georgia, serif;
+      font-size: 2rem;
+    }
+    .bookplate-copy > p {
+      margin: 0 0 9px;
+      color: var(--muted-ink);
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .bookplate-copy h2 {
+      margin: 0;
+      font-size: clamp(2.2rem, 4vw, 4rem);
+      font-weight: 500;
+    }
+    .bookplate-copy dl {
+      width: min(100%, 280px);
+      margin: 36px 0 0;
+      padding-top: 22px;
+      border-top: 1px solid rgba(82, 56, 29, 0.24);
+    }
+    .bookplate-copy dl > div {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      margin-top: 8px;
+    }
+    .bookplate-copy dt {
+      color: var(--muted-ink);
+    }
+    .bookplate-copy dd {
+      margin: 0;
+      font-weight: 750;
+    }
+    .bookplate-copy small {
+      margin-top: 22px;
+      color: var(--muted-ink);
+    }
+    .unwritten-copy {
+      height: 100%;
+      min-height: 600px;
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      color: rgba(79, 59, 38, 0.38);
+      text-align: center;
+    }
+    .unwritten-copy span {
+      font-family: Georgia, serif;
+      font-size: 4rem;
+      opacity: 0.36;
+    }
+    .unwritten-copy p {
+      max-width: 16rem;
+      margin: 16px 0 0;
+      font-family: Georgia, serif;
+      font-style: italic;
+    }
+    .draft-copy::before {
+      content: 'SAVED DRAFT';
+      position: absolute;
+      top: 22px;
+      right: 22px;
+      padding: 6px 9px;
+      border: 1px solid rgba(130, 76, 42, 0.42);
+      border-radius: 4px;
+      color: #8a5030;
+      font-size: 0.62rem;
+      font-weight: 850;
+      letter-spacing: 0.1em;
+      transform: rotate(2deg);
+      animation: stamp-in 420ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+    }
+    .player-intent {
+      margin: 0 0 22px;
+      padding: 14px 16px;
+      border-left: 3px solid #8d5937;
+      background: rgba(255, 250, 235, 0.36);
+    }
+    .player-intent small {
+      color: #855233;
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .player-intent p {
+      margin: 5px 0 0;
+      font-family: Georgia, serif;
+      line-height: 1.55;
+    }
+    .margin-notes {
+      display: grid;
+      gap: 7px;
+      margin-top: 16px;
+    }
+    .margin-note {
+      border: 1px solid rgba(88, 57, 29, 0.22);
+      border-radius: 8px;
+      background: rgba(255, 250, 235, 0.28);
+    }
+    .margin-note summary {
+      min-height: 42px;
+      display: grid;
+      grid-template-columns: 74px 1fr;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+    }
+    .margin-note summary > span {
+      color: #885233;
+      font-size: 0.62rem;
+      font-weight: 850;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+    .margin-note summary strong {
+      font-size: 0.83rem;
+    }
+    .margin-note > p {
+      margin: 0;
+      padding: 0 10px 12px 92px;
+      color: var(--muted-ink);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    /* The turning leaf is a two-sided sheet: real content on the front, blank
+       vellum on the back, so the flip reads as paper instead of vanishing at 90°. */
+    .page-turn-overlay .book-leaf {
+      padding: 0;
+      overflow: visible;
+      background: none;
+      box-shadow: none;
+      backface-visibility: visible;
+      transform-style: preserve-3d;
+      will-change: transform;
+    }
+    .ending-actions {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(86, 60, 30, 0.24);
+    }
+    .ending-actions p {
+      color: var(--muted-ink);
+    }
+    .ending-actions button {
+      padding: 0 18px;
+      color: #fff6df;
+      background: #70492f;
+    }
+    /* Must stay in sync with BOOK_SINGLE_PAGE_MEDIA_QUERY in ../manuscript-book.tsx */
+    @media (max-width: 900px) {
+      .book-leaf {
+        min-height: 670px;
+      }
+    }
+    @media (max-width: 560px) {
+      .book-leaf {
+        min-height: 620px;
+        padding: 28px 20px;
+      }
+      .page-turn-overlay .book-leaf {
+        padding: 0;
+      }
+      .leaf-copy > h2 {
+        font-size: 2.2rem;
+      }
+      .margin-note > p {
+        padding-left: 10px;
+      }
+      .pending-card {
+        grid-template-columns: 1fr;
+      }
+      .draft-copy::before {
+        top: 14px;
+        right: 14px;
+      }
+      .preview-spread {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .preview-spread::after,
+      .preview-spread .book-leaf.right {
+        display: none;
+      }
+      .preview-spread .book-leaf {
+        min-height: 520px;
+        border-radius: 18px;
+      }
+    }
+  }
+}
