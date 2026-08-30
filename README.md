@@ -1,27 +1,63 @@
 # Once Upon
 
-> You choose. The web keeps the truth. Your agent tells the story.
+> Stories shaped by you, told by AI.
 
-Once Upon is a platform for agent-narrated, browser-owned story experiences.
-Each experience binds one story, one presentation frame, and one narration
-contract so the agent can tell the story without owning or rewriting its rules.
+Once Upon is a platform for interactive stories you play with AI. Describe what
+your character does in natural language; the page applies the rules, rolls the
+dice, and saves the exact outcome on your device. AI turns that result into the
+next part of the story without changing what happened.
 
-## First experience
+## The Last Manuscript
 
-**The Last Manuscript** is the first Once Upon experience. It combines:
+**The Last Manuscript** is the first and currently only playable Once Upon
+experience: a dark-fantasy mystery with up to six pages before midnight. Create
+a traveler, choose a strength, and tell ChatGPT what you do. Every saved result
+becomes another page in your manuscript.
 
-- story: `last-tavern`
-- frame: `book`
-- narration: `prose`
+Playing requires a WebMCP-enabled ChatGPT browser with site tools turned on.
+Other browsers can explore the sample manuscript, but cannot start or continue
+the story.
 
-The player chooses actions in natural language. The browser resolves the rules,
-rolls, inventory, clues, abilities, and ending. The connected agent commits
-grounded narration for the exact saved result.
+## How to play
 
-Open it at either `/` or `/experiences/the-last-manuscript`. Both routes use the
-same experience definition and local save.
+1. Open the experience in a WebMCP-enabled ChatGPT browser.
+2. Create your character and choose one strength: Wits, Nerve, or Grace.
+3. Copy the opening message from the manuscript into the chat beside the page.
+4. Describe what you do. The page resolves and saves the outcome, ChatGPT writes
+   it into the manuscript, and you choose what to do next.
+
+Keep the page open while you play. Once started, the same local save is
+available at `/` and `/experiences/the-last-manuscript`.
+
+## How it works
+
+| You                                | The page                                                                        | AI                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Choose actions in natural language | Owns the rules, D20 rolls, inventory, clues, abilities, endings, and local save | Interprets your intent and narrates the exact saved result |
+
+The page saves an action before AI narrates it. It will not accept another
+action until that result has been committed to the story.
+
+## What makes it different
+
+- **The AI's tools become part of the story.** Progress can unlock new
+  page-local abilities that ChatGPT can actually call, then retire after use.
+- **A saved outcome cannot be rewritten.** AI can bring each turn to life, but
+  it cannot change the roll, clues, inventory, abilities, or ending.
+- **Interruptions do not reroll the story.** If ChatGPT stops mid-turn or the
+  page reloads, the exact pending result is restored before play continues.
 
 ## Architecture
+
+Each experience binds a story, presentation frame, and narration contract. The
+current experience uses:
+
+| Contract   | ID                    | Responsibility                                |
+| ---------- | --------------------- | --------------------------------------------- |
+| Experience | `the-last-manuscript` | Binds the compatible contracts below          |
+| Story      | `last-tavern`         | Rules, state, actions, abilities, and endings |
+| Frame      | `book`                | Book-specific interaction and presentation    |
+| Narration  | `prose`               | Validates grounded prose from AI              |
 
 ```text
 app/                              Routes and Once Upon metadata
@@ -40,6 +76,10 @@ current experience has unlocked them.
 Sessions use schema version 2 in the `once-upon` IndexedDB database, under the
 `experience-sessions` store and `active:${experienceId}` keys. The previous
 database is intentionally neither read, migrated, nor deleted.
+
+See [Adding or replacing a story](docs/EXPERIENCES.md) and the
+[interruption and recovery protocol](docs/RECOVERY_PROTOCOL.md) for the full
+contracts.
 
 ## Local development
 
