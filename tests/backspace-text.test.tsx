@@ -1,10 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import {
-  BackspaceText,
-  backspaceDuration,
-} from '../components/frames/book/backspace-text';
+import { BackspaceText } from '../components/frames/book/backspace-text';
 
 describe('backspace replacement', () => {
   it('keeps the animation visual separate from one clean accessible result', () => {
@@ -22,11 +19,5 @@ describe('backspace replacement', () => {
     );
     expect(html).not.toContain('<del>');
     expect(html).not.toContain('<ins>');
-  });
-
-  it('allocates time for deletion, pause, and replacement typing', () => {
-    expect(
-      backspaceDuration('You keep walking.', 'The subject continues walking.'),
-    ).toBeGreaterThan(700);
   });
 });

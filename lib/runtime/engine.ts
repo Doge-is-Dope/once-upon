@@ -16,20 +16,34 @@ import type {
   ToolResponse,
   ToolSuccess,
 } from './types';
-
-export const RUNTIME_LIMITS = {
-  operationIdMinLength: 6,
-  idMaxLength: 160,
-  chapterTitleMaxLength: 80,
-  chapterWordsMax: 500,
-  chapterParagraphsMax: 3,
-  summaryMaxLength: 700,
-  choiceMaxLength: 500,
-  ledgerRecordsMax: 60,
-} as const;
+import {
+  hasSecondPersonPronoun,
+  splitParagraphBlocks,
+} from '../manuscript/prose';
+import {
+  CORE_TOOL_NAMES,
+  LIVING_MANUSCRIPT_PROTOCOL_VERSION,
+  RUNTIME_LIMITS,
+} from './protocol';
 const SNAPSHOT_SUMMARY_LENGTH = 520;
 const SNAPSHOT_EXCERPT_LENGTH = 280;
 const SNAPSHOT_CHOICE_LENGTH = 280;
+
+type MutationEnvelopeInput = {
+  operationId: string;
+  expectedSessionId: string;
+  expectedRevision: number;
+};
+
+type EngineOutcome = {
+  session: ExperienceSession;
+  response: ToolResponse;
+};
+
+type MutationPreflight = {
+  fingerprint: string;
+  outcome: EngineOutcome | null;
+};
 
 export const defaultEngineContext: EngineContext = {
   now: () => Date.now(),
@@ -111,9 +125,9 @@ export function deriveToolSurface(
 ): string[] {
   if (!session) return [];
   return [
-    'get_story_state',
-    'begin_story_turn',
-    'commit_story_chapter',
+    CORE_TOOL_NAMES.getState,
+    CORE_TOOL_NAMES.beginTurn,
+    CORE_TOOL_NAMES.commitChapter,
     ...(session.phase !== 'COMPLETE'
       ? deriveInteractionSurface(definition, session)
           .filter(({ registered }) => registered)
@@ -150,19 +164,24 @@ export function toStoryState(
     revision: session.revision,
     phase: session.phase,
     bootstrap: {
-      protocolVersion: 'living-manuscript-v2',
+      protocolVersion: LIVING_MANUSCRIPT_PROTOCOL_VERSION,
       contractVersion: definition.agentContract.version,
       instructions: definition.agentContract.instructions,
       mode,
     },
     requiredNextTool:
-      session.phase === 'AWAITING_CHAPTER' ? 'commit_story_chapter' : 'none',
+      session.phase === 'AWAITING_CHAPTER'
+        ? CORE_TOOL_NAMES.commitChapter
+        : 'none',
     requiredChapterStatus: requiredChapterStatus(definition, session),
     allowedNextTools:
       session.phase === 'READY'
-        ? ['begin_story_turn', ...interactions.map(({ toolName }) => toolName)]
+        ? [
+            CORE_TOOL_NAMES.beginTurn,
+            ...interactions.map(({ toolName }) => toolName),
+          ]
         : session.phase === 'AWAITING_CHAPTER'
-          ? ['commit_story_chapter']
+          ? [CORE_TOOL_NAMES.commitChapter]
           : [],
     continuitySummary: session.continuitySummary.slice(
       0,
@@ -200,15 +219,16 @@ export function beginStoryTurn(
   session: ExperienceSession,
   input: BeginStoryTurnInput,
   context: EngineContext = defaultEngineContext,
-): { session: ExperienceSession; response: ToolResponse } {
-  const staleSession = validateSessionIdentity(definition, session, input);
-  if (staleSession) return unchanged(session, staleSession);
-  const fingerprint = stableFingerprint('begin_turn', input);
-  const duplicate = findOperation(session, input.operationId);
-  if (duplicate)
-    return replayOrReuseError(definition, session, duplicate, fingerprint);
-  const invalid = validateCommonInput(definition, session, input);
-  if (invalid) return unchanged(session, invalid);
+): EngineOutcome {
+  const preflight = preflightMutation(
+    definition,
+    session,
+    'begin_turn',
+    input,
+    () => validateTurnInput(definition, session, input),
+  );
+  if (preflight.outcome) return preflight.outcome;
+  const { fingerprint } = preflight;
   if (session.phase === 'AWAITING_CHAPTER')
     return unchanged(
       session,
@@ -263,15 +283,16 @@ export function invokeStoryInteraction(
   session: ExperienceSession,
   input: InvokeInteractionInput,
   context: EngineContext = defaultEngineContext,
-): { session: ExperienceSession; response: ToolResponse } {
-  const staleSession = validateSessionIdentity(definition, session, input);
-  if (staleSession) return unchanged(session, staleSession);
-  const fingerprint = stableFingerprint('interaction', input);
-  const duplicate = findOperation(session, input.operationId);
-  if (duplicate)
-    return replayOrReuseError(definition, session, duplicate, fingerprint);
-  const invalid = validateCommonInput(definition, session, input);
-  if (invalid) return unchanged(session, invalid);
+): EngineOutcome {
+  const preflight = preflightMutation(
+    definition,
+    session,
+    'interaction',
+    input,
+    () => validateTurnInput(definition, session, input),
+  );
+  if (preflight.outcome) return preflight.outcome;
+  const { fingerprint } = preflight;
   if (session.phase === 'AWAITING_CHAPTER')
     return unchanged(
       session,
@@ -394,31 +415,16 @@ export function commitStoryChapter(
   session: ExperienceSession,
   input: CommitStoryChapterInput,
   context: EngineContext = defaultEngineContext,
-): { session: ExperienceSession; response: ToolResponse } {
-  const staleSession = validateSessionIdentity(definition, session, input);
-  if (staleSession) return unchanged(session, staleSession);
-  const fingerprint = stableFingerprint('chapter', input);
-  const duplicate = findOperation(session, input.operationId);
-  if (duplicate)
-    return replayOrReuseError(definition, session, duplicate, fingerprint);
-  if (
-    !validOperationId(input.operationId) ||
-    !Number.isInteger(input.expectedRevision)
-  )
-    return unchanged(
-      session,
-      failure(
-        definition,
-        'INVALID_INPUT',
-        'Provide a unique operationId and current revision.',
-        session,
-      ),
-    );
-  if (input.expectedRevision !== session.revision)
-    return unchanged(
-      session,
-      staleFailure(definition, session, input.expectedRevision),
-    );
+): EngineOutcome {
+  const preflight = preflightMutation(
+    definition,
+    session,
+    'chapter',
+    input,
+    () => validateChapterEnvelope(definition, session, input),
+  );
+  if (preflight.outcome) return preflight.outcome;
+  const { fingerprint } = preflight;
   const pending = session.pendingTurn;
   if (!pending || session.phase !== 'AWAITING_CHAPTER')
     return unchanged(
@@ -617,7 +623,44 @@ export function commitStoryChapter(
   return { session: next, response };
 }
 
-function validateCommonInput(
+function preflightMutation(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+  kind: OperationRecord['kind'],
+  input: MutationEnvelopeInput,
+  validateInput: () => ToolFailure | null,
+): MutationPreflight {
+  const staleSession = validateSessionIdentity(definition, session, input);
+  if (staleSession)
+    return {
+      fingerprint: '',
+      outcome: unchanged(session, staleSession),
+    };
+
+  const fingerprint = stableFingerprint(kind, input);
+  const duplicate = findOperation(session, input.operationId);
+  if (duplicate)
+    return {
+      fingerprint,
+      outcome: replayOrReuseError(definition, session, duplicate, fingerprint),
+    };
+
+  const invalid = validateInput();
+  if (invalid) return { fingerprint, outcome: unchanged(session, invalid) };
+
+  if (input.expectedRevision !== session.revision)
+    return {
+      fingerprint,
+      outcome: unchanged(
+        session,
+        staleFailure(definition, session, input.expectedRevision),
+      ),
+    };
+
+  return { fingerprint, outcome: null };
+}
+
+function validateTurnInput(
   definition: ExperienceDefinition,
   session: ExperienceSession,
   input: BeginStoryTurnInput,
@@ -635,9 +678,25 @@ function validateCommonInput(
       'Provide a unique operationId, current revision, and the latest explicit player choice (500 characters or fewer).',
       session,
     );
-  if (input.expectedRevision !== session.revision)
-    return staleFailure(definition, session, input.expectedRevision);
   return null;
+}
+
+function validateChapterEnvelope(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+  input: CommitStoryChapterInput,
+): ToolFailure | null {
+  if (
+    validOperationId(input.operationId) &&
+    Number.isInteger(input.expectedRevision)
+  )
+    return null;
+  return failure(
+    definition,
+    'INVALID_INPUT',
+    'Provide a unique operationId and current revision.',
+    session,
+  );
 }
 
 function validateSessionIdentity(
@@ -664,12 +723,12 @@ function validateChapterContent(input: CommitStoryChapterInput): string | null {
     input.title.trim().length > RUNTIME_LIMITS.chapterTitleMaxLength
   )
     return 'Use a short chapter title of 80 characters or fewer.';
-  if (containsSecondPerson(input.title))
+  if (hasSecondPersonPronoun(input.title))
     return 'Use a neutral chapter title without second-person pronouns.';
   if (!input.prose?.trim() || !input.recordProse?.trim())
     return 'Provide both the player-facing prose and its official recordProse.';
-  const paragraphs = splitParagraphs(input.prose);
-  const recordParagraphs = splitParagraphs(input.recordProse);
+  const paragraphs = splitParagraphBlocks(input.prose);
+  const recordParagraphs = splitParagraphBlocks(input.recordProse);
   if (
     paragraphs.length < 1 ||
     paragraphs.length > RUNTIME_LIMITS.chapterParagraphsMax
@@ -686,7 +745,7 @@ function validateChapterContent(input: CommitStoryChapterInput): string | null {
     recordWords > RUNTIME_LIMITS.chapterWordsMax
   )
     return `Keep the chapter between 20 and ${RUNTIME_LIMITS.chapterWordsMax} words.`;
-  if (containsSecondPerson(input.recordProse))
+  if (hasSecondPersonPronoun(input.recordProse))
     return 'recordProse must not contain second-person pronouns.';
   if (
     !input.continuitySummary?.trim() ||
@@ -700,19 +759,8 @@ function validateChapterContent(input: CommitStoryChapterInput): string | null {
   return null;
 }
 
-function splitParagraphs(value: string): string[] {
-  return value
-    .trim()
-    .split(/\n\s*\n/)
-    .filter(Boolean);
-}
-
 function wordCount(value: string): number {
   return value.trim().split(/\s+/).length;
-}
-
-function containsSecondPerson(value: string): boolean {
-  return /\b(?:you|your|yours|yourself|yourselves)\b/iu.test(value);
 }
 
 function requiredChapterStatus(
@@ -788,9 +836,7 @@ function isDiscoveryLocked(
 }
 
 function normalizeParagraphs(text: string): string {
-  return text
-    .trim()
-    .split(/\n\s*\n/)
+  return splitParagraphBlocks(text)
     .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
     .join('\n\n');
 }

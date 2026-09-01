@@ -18,7 +18,7 @@ import type {
   ExperienceDefinition,
   ExperienceSession,
 } from '@/lib/runtime/types';
-import { copyText } from './copy-button';
+import { useClipboardCopy } from './use-clipboard-copy';
 
 type PublishState = 'publishing' | 'ready' | 'failed';
 
@@ -47,43 +47,24 @@ export function StoryShare({
   const linkRowRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
-  const copyResetTimer = useRef<number | null>(null);
   const [publishState, setPublishState] = useState<PublishState>('publishing');
   const [publicLink, setPublicLink] = useState('');
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
-
-  useLayoutEffect(() => {
-    onLayoutChange(linkRowRef.current ?? errorRef.current ?? rootRef.current);
-  }, [error, onLayoutChange, publicLink, publishState]);
-
-  useEffect(
-    () => () => {
-      if (copyResetTimer.current !== null)
-        window.clearTimeout(copyResetTimer.current);
-    },
-    [],
-  );
-
-  const copyPublicLink = async () => {
-    try {
-      await copyText(publicLink);
-      setCopied(true);
-      onAnnounce('The manuscript link was copied.');
-      if (copyResetTimer.current !== null)
-        window.clearTimeout(copyResetTimer.current);
-      copyResetTimer.current = window.setTimeout(() => {
-        setCopied(false);
-        copyResetTimer.current = null;
-      }, 1800);
-    } catch {
+  const { copied, copy: copyPublicLink } = useClipboardCopy({
+    text: publicLink,
+    onCopied: () => onAnnounce('The manuscript link was copied.'),
+    onFailed: () => {
       linkInputRef.current?.focus();
       linkInputRef.current?.select();
       onAnnounce(
         'The manuscript link could not be copied. Select it to copy manually.',
       );
-    }
-  };
+    },
+  });
+
+  useLayoutEffect(() => {
+    onLayoutChange(linkRowRef.current ?? errorRef.current ?? rootRef.current);
+  }, [error, onLayoutChange, publicLink, publishState]);
 
   const publish = useCallback(async () => {
     setPublishState('publishing');
@@ -146,7 +127,7 @@ export function StoryShare({
             aria-label={
               copied ? 'Manuscript link copied' : 'Copy manuscript link'
             }
-            className="public-link-copy"
+            className="inline-copy-action public-link-copy"
             title={copied ? 'Copied' : 'Copy link'}
             type="button"
             onClick={() => void copyPublicLink()}
@@ -177,7 +158,7 @@ export function StoryShare({
           <span className="public-link-status">Preparing a copy…</span>
           <button
             aria-label="Copy manuscript link"
-            className="public-link-copy"
+            className="inline-copy-action public-link-copy"
             disabled
             type="button"
           >

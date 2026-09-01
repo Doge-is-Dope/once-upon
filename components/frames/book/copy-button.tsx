@@ -2,13 +2,8 @@
 
 import { CheckIcon } from '@phosphor-icons/react/dist/ssr/Check';
 import { CopySimpleIcon } from '@phosphor-icons/react/dist/ssr/CopySimple';
-import { useEffect, useRef, useState } from 'react';
-
-export async function copyText(text: string): Promise<void> {
-  if (!navigator.clipboard?.writeText)
-    throw new Error('Clipboard access is unavailable in this browser.');
-  return navigator.clipboard.writeText(text);
-}
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useClipboardCopy } from './use-clipboard-copy';
 
 export function CopyButton({
   text,
@@ -29,9 +24,17 @@ export function CopyButton({
   onCopied?: () => void;
   onCopyFailed?: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
+  const handleCopyFailed = useCallback(() => {
+    setShowFallback(true);
+    onCopyFailed?.();
+  }, [onCopyFailed]);
+  const { copied, copy } = useClipboardCopy({
+    text,
+    onCopied,
+    onFailed: handleCopyFailed,
+  });
 
   useEffect(() => {
     if (!showFallback) return;
@@ -46,18 +49,7 @@ export function CopyButton({
         className={`copy-button${copied ? ' is-copied' : ''}${className ? ` ${className}` : ''}`}
         title={iconOnly ? (copied ? 'Copied' : idleLabel) : undefined}
         type="button"
-        onClick={() =>
-          void copyText(text)
-            .then(() => {
-              setCopied(true);
-              onCopied?.();
-              window.setTimeout(() => setCopied(false), 1800);
-            })
-            .catch(() => {
-              setShowFallback(true);
-              onCopyFailed?.();
-            })
-        }
+        onClick={() => void copy()}
       >
         {iconOnly ? (
           copied ? (

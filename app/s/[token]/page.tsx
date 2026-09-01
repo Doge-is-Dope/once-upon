@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { resolveRecordedEnding } from '@/lib/manuscript/prose';
 import { readSharedStory } from '@/lib/share/repository';
 
 export const dynamic = 'force-dynamic';
@@ -73,12 +74,11 @@ export default async function SharedStoryPage({
         ))}
         {story.version === 2 ? (
           <section aria-label="Completion" className="shared-completion">
-            {story.completionPassage.prose.map((paragraph, index) => (
-              <p key={index}>
-                {index === story.completionPassage.prose.length - 1
-                  ? (story.completionPassage.recordProse[index] ?? paragraph)
-                  : paragraph}
-              </p>
+            {resolveRecordedEnding(
+              story.completionPassage.prose,
+              story.completionPassage.recordProse,
+            ).map((paragraph, index) => (
+              <p key={index}>{paragraph}</p>
             ))}
           </section>
         ) : null}

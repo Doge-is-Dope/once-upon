@@ -1,43 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { LightbulbFilamentIcon } from '@phosphor-icons/react/dist/ssr/LightbulbFilament';
+import { useDismissiblePanel } from './use-dismissible-panel';
 
 const HINT_PANEL_ID = 'story-hint-panel';
 const HINT_TITLE_ID = 'story-hint-title';
 
 export function StoryHint({ hint }: { hint: string }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  const closeAndRestoreFocus = useCallback(() => {
-    setOpen(false);
-    triggerRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node) || rootRef.current?.contains(target))
-        return;
-      setOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      closeAndRestoreFocus();
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [closeAndRestoreFocus, open]);
+  const { open, rootRef, triggerRef, toggle } = useDismissiblePanel();
 
   return (
     <div className="story-hint-control" ref={rootRef}>
@@ -47,7 +17,7 @@ export function StoryHint({ hint }: { hint: string }) {
         aria-label="Hint"
         className="story-hint-trigger"
         data-available
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggle}
         ref={triggerRef}
         title="Hint"
         type="button"

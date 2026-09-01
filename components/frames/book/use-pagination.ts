@@ -3,7 +3,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 
-const PAGE_GAP_REM = 6;
+type PaginationMetrics = {
+  pager: HTMLDivElement;
+  gap: number;
+  width: number;
+  stride: number;
+  count: number;
+  current: number;
+};
+
+function paginationMetrics(pager: HTMLDivElement): PaginationMetrics | null {
+  if (pager.clientWidth === 0) return null;
+  const pagerStyle = getComputedStyle(pager);
+  const gapRem = Number.parseFloat(
+    pagerStyle.getPropertyValue('--page-gap-rem'),
+  );
+  const rootFontSize = Number.parseFloat(
+    getComputedStyle(document.documentElement).fontSize,
+  );
+  if (!Number.isFinite(gapRem) || !Number.isFinite(rootFontSize)) return null;
+  const gap = gapRem * rootFontSize;
+  const width = pager.clientWidth;
+  const stride = width + gap;
+  return {
+    pager,
+    gap,
+    width,
+    stride,
+    count: Math.max(1, Math.round((pager.scrollWidth + gap) / stride)),
+    current: Math.round(pager.scrollLeft / stride),
+  };
+}
 
 /**
  * Paginates the fixed-size sheet. The pager is a hidden-scrollbar scroll
@@ -41,13 +71,7 @@ export function usePagination({
 
   const metrics = useCallback(() => {
     const pager = pagerRef.current;
-    if (!pager || pager.clientWidth === 0) return null;
-    const rootFontSize = parseFloat(
-      getComputedStyle(document.documentElement).fontSize,
-    );
-    const gap = PAGE_GAP_REM * rootFontSize;
-    const width = pager.clientWidth;
-    return { pager, gap, width, stride: width + gap };
+    return pager ? paginationMetrics(pager) : null;
   }, []);
 
   const measure = useCallback(() => {
@@ -56,18 +80,15 @@ export function usePagination({
     // Set on the pager so both the column flow and the snap rails
     // inherit the same page width.
     m.pager.style.setProperty('--page-width', `${m.width}px`);
-    const count = Math.max(
-      1,
-      Math.round((m.pager.scrollWidth + m.gap) / m.stride),
-    );
-    setPageCount(count);
-    return { count };
+    const measured = paginationMetrics(m.pager) ?? m;
+    setPageCount(measured.count);
+    return { count: measured.count };
   }, [metrics]);
 
   const getCurrentPage = useCallback(() => {
     const m = metrics();
     if (!m) return 0;
-    return Math.round(m.pager.scrollLeft / m.stride);
+    return m.current;
   }, [metrics]);
 
   const pageAt = useCallback(
@@ -98,11 +119,7 @@ export function usePagination({
     (target: number, mode: 'swap' | 'slide' | 'jump' = 'swap') => {
       const m = metrics();
       if (!m) return;
-      const count = Math.max(
-        1,
-        Math.round((m.pager.scrollWidth + m.gap) / m.stride),
-      );
-      const next = Math.min(Math.max(target, 0), count - 1);
+      const next = Math.min(Math.max(target, 0), m.count - 1);
       const left = next * m.stride;
       targetPageRef.current = next;
       setPage(next);
@@ -171,9 +188,8 @@ export function usePagination({
     const onScroll = () => {
       const m = metrics();
       if (m) {
-        const next = Math.round(m.pager.scrollLeft / m.stride);
-        targetPageRef.current = next;
-        setPage(next);
+        targetPageRef.current = m.current;
+        setPage(m.current);
       }
     };
 

@@ -11,12 +11,13 @@ describe('in-memory experience controller', () => {
       testContext(),
     );
     const controller = new ExperienceController(experienceDefinition, initial);
-    const first = controller.beginStoryTurn({
+    const firstInput = {
       operationId: operationId('first'),
       expectedSessionId: initial.sessionId,
       expectedRevision: initial.revision,
       playerChoice: 'I inspect the table.',
-    });
+    };
+    const first = controller.beginStoryTurn(firstInput);
     const cancelled = new AbortController();
     const second = controller.beginStoryTurn(
       {
@@ -35,25 +36,9 @@ describe('in-memory experience controller', () => {
     expect(controller.getSnapshot().pendingTurn?.playerChoice).toBe(
       'I inspect the table.',
     );
-  });
-
-  it('keeps committed work and serves an idempotent retry', async () => {
-    const initial = createExperienceSession(
-      experienceDefinition,
-      testContext(),
-    );
-    const controller = new ExperienceController(experienceDefinition, initial);
-    const input = {
-      operationId: operationId('committed'),
-      expectedSessionId: initial.sessionId,
-      expectedRevision: initial.revision,
-      playerChoice: 'I inspect the wardrobe.',
-    };
-    const committed = await controller.beginStoryTurn(input);
-    expect(committed).toMatchObject({ ok: true });
     const revision = controller.getSnapshot().revision;
 
-    const retry = await controller.beginStoryTurn(input);
+    const retry = await controller.beginStoryTurn(firstInput);
     expect(retry).toMatchObject({ ok: true, idempotentReplay: true });
     expect(controller.getSnapshot().revision).toBe(revision);
   });

@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
-import { installModelContextMock } from './support/webmcp-mock';
+import { expect, test } from '@playwright/test';
+import { installModelContextMock, waitForTool } from './support/webmcp-mock';
 
 const EXPERIENCE_PATH = '/experiences/the-last-manuscript';
 
@@ -57,15 +57,13 @@ test('redacts the first sheet when WebMCP is unavailable', async ({ page }) => {
     }),
   ).toEqual({ overflowX: 'hidden', touchAction: 'none' });
 
-  await expect(page.getByText('Your turn')).toHaveCount(0);
-  await expect(page.getByText('Need a hint?')).toHaveCount(0);
+  await expect(page.locator('#your-turn, .writing-marker')).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Hint', exact: true }),
   ).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Copy example message' }),
   ).toHaveCount(0);
-  await expect(page.locator('.story-presence')).toHaveCount(0);
   await expect(page.locator('[role="alert"]')).toHaveCount(0);
   await expect(page.locator('main')).not.toContainText('ChatGPT');
 
@@ -154,7 +152,7 @@ test('recovers from an initial WebMCP startup error', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Access interrupted' }),
   ).toBeVisible();
-  await expect(page.getByText('Your turn')).toHaveCount(0);
+  await expect(page.locator('#your-turn, .writing-marker')).toHaveCount(0);
   await page.getByRole('button', { name: 'Try again' }).click();
 
   await waitForTool(page, 'get_story_state');
@@ -172,9 +170,3 @@ test('recovers from an initial WebMCP startup error', async ({ page }) => {
     ['get_story_state', 'begin_story_turn', 'commit_story_chapter'],
   );
 });
-
-async function waitForTool(page: Page, name: string): Promise<void> {
-  await expect
-    .poll(() => page.evaluate((tool) => window.__webMCPTools.has(tool), name))
-    .toBe(true);
-}

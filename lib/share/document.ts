@@ -1,12 +1,19 @@
 import { getExperience } from '@/experiences/registry';
+import {
+  flattenParagraphBlocks,
+  formatChapterLabel,
+  hasMatchingParagraphStructure,
+  hasSecondPersonPronoun,
+} from '@/lib/manuscript/prose';
 import type { SharedStorySubmissionV2 } from '@/lib/manuscript/read-model';
+import { RUNTIME_LIMITS } from '@/lib/runtime/protocol';
 import type { InteractionEffectReceipt } from '@/lib/runtime/types';
 
 export const SHARE_LIMITS = {
   maxBytes: 100 * 1024,
   maxChapters: 40,
   titleMaxLength: 80,
-  proseMaxLength: 20_000,
+  proseMaxLength: RUNTIME_LIMITS.chapterTextMaxLength,
   durationMs: 30 * 24 * 60 * 60 * 1_000,
   publishesPerHour: 10,
 } as const;
@@ -203,27 +210,29 @@ export function validateSharedStorySubmission(
           )
         : null;
       return {
-        label: index === 0 ? 'Prologue' : `Chapter ${index}`,
+        label: formatChapterLabel(index),
         title: chapter.title,
-        prose: paragraphs(chapter.prose),
-        recordProse: paragraphs(chapter.recordProse),
+        prose: flattenParagraphBlocks(chapter.prose),
+        recordProse: flattenParagraphBlocks(chapter.recordProse),
         effect: interaction
           ? {
               presentation: interaction.presentation,
               title: interaction.title,
               paragraphs: interaction.sealedFacts.flatMap(({ value }) =>
-                paragraphs(value),
+                flattenParagraphBlocks(value),
               ),
               recordParagraphs: interaction.sealedFacts.flatMap(
-                ({ recordValue }) => paragraphs(recordValue),
+                ({ recordValue }) => flattenParagraphBlocks(recordValue),
               ),
             }
           : null,
       };
     }),
     completionPassage: {
-      prose: paragraphs(experience.story.completionPassage.prose),
-      recordProse: paragraphs(experience.story.completionPassage.recordProse),
+      prose: flattenParagraphBlocks(experience.story.completionPassage.prose),
+      recordProse: flattenParagraphBlocks(
+        experience.story.completionPassage.recordProse,
+      ),
     },
   };
 
@@ -252,11 +261,11 @@ export function validateSharedStorySubmission(
 }
 
 function validateRecordPair(prose: string, recordProse: string): void {
-  if (paragraphs(prose).length !== paragraphs(recordProse).length)
+  if (!hasMatchingParagraphStructure(prose, recordProse))
     throw new ShareValidationError(
       'prose and recordProse must use the same paragraph structure.',
     );
-  if (/\b(?:you|your|yours|yourself|yourselves)\b/iu.test(recordProse))
+  if (hasSecondPersonPronoun(recordProse))
     throw new ShareValidationError(
       'recordProse contains a second-person pronoun.',
     );
@@ -292,12 +301,4 @@ function isUuid(value: unknown): value is string {
       value,
     )
   );
-}
-
-function paragraphs(value: string): string[] {
-  return value
-    .trim()
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, ' ').trim())
-    .filter(Boolean);
 }

@@ -285,6 +285,27 @@
     outline-offset: 3px;
   }
 
+  .story-hint-panel,
+  .settings-panel {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    translate: 0 -0.3rem;
+    transition:
+      opacity 140ms ease,
+      translate 160ms ease,
+      visibility 0s linear 160ms;
+  }
+
+  .story-hint-panel[data-open],
+  .settings-panel[data-open] {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    translate: 0;
+    transition-delay: 0s;
+  }
+
   .story-hint-panel {
     position: absolute;
     z-index: 2;
@@ -299,22 +320,6 @@
     box-shadow:
       0 0.9rem 2.4rem rgb(0 0 0 / 42%),
       0 0 1.6rem rgb(221 164 71 / 8%);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    translate: 0 -0.3rem;
-    transition:
-      opacity 140ms ease,
-      translate 160ms ease,
-      visibility 0s linear 160ms;
-  }
-
-  .story-hint-panel[data-open] {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    translate: 0;
-    transition-delay: 0s;
   }
 
   .story-hint-panel p {
@@ -369,22 +374,6 @@
     border: 1px solid rgb(234 219 185 / 18%);
     border-radius: 0.4rem;
     box-shadow: 0 0.9rem 2.4rem rgb(0 0 0 / 42%);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    translate: 0 -0.3rem;
-    transition:
-      opacity 140ms ease,
-      translate 160ms ease,
-      visibility 0s linear 160ms;
-  }
-
-  .settings-panel[data-open] {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    translate: 0;
-    transition-delay: 0s;
   }
 
   .settings-panel-header {
@@ -671,6 +660,8 @@
   }
 
   .sheet-pager {
+    --page-gap-rem: 6;
+    --page-gap: calc(var(--page-gap-rem) * 1rem);
     --page-inline-gutter: 0.25rem;
     --page-inline-gutters: 0.5rem;
     position: relative;
@@ -700,7 +691,9 @@
   .snap-rails > div {
     position: absolute;
     top: 0;
-    left: calc(var(--page-index) * (var(--page-width, 60rem) + 6rem));
+    left: calc(
+      var(--page-index) * (var(--page-width, 60rem) + var(--page-gap))
+    );
     width: var(--page-width, 60rem);
     height: 100%;
     pointer-events: none;
@@ -755,7 +748,7 @@
     height: 100%;
     margin-inline: var(--page-inline-gutter);
     column-width: calc(var(--page-width, 60rem) - var(--page-inline-gutters));
-    column-gap: calc(6rem + var(--page-inline-gutters));
+    column-gap: calc(var(--page-gap) + var(--page-inline-gutters));
     column-fill: auto;
   }
 
@@ -961,7 +954,8 @@
     white-space: nowrap;
   }
 
-  .webmcp-flag-copy.copy-button {
+  .inline-copy-action,
+  .copy-button.inline-copy-action {
     display: inline-grid;
     place-items: center;
     min-width: 3rem;
@@ -976,15 +970,27 @@
     touch-action: manipulation;
   }
 
-  .webmcp-flag-copy.copy-button:hover:not(:disabled) {
+  .inline-copy-action:hover:not(:disabled),
+  .copy-button.inline-copy-action:hover:not(:disabled) {
     color: var(--ink);
     background: rgb(41 33 23 / 8%);
     transform: none;
   }
 
-  .webmcp-flag-copy.copy-button:focus-visible {
+  .inline-copy-action:active:not(:disabled),
+  .copy-button.inline-copy-action:active:not(:disabled) {
+    transform: none;
+  }
+
+  .inline-copy-action:focus-visible,
+  .copy-button.inline-copy-action:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: -3px;
+  }
+
+  .inline-copy-action svg,
+  .copy-button.inline-copy-action svg {
+    display: block;
   }
 
   .webmcp-flag-result .copy-fallback {
@@ -1106,37 +1112,7 @@
   }
 
   .agent-handoff-example .handoff-copy-button {
-    display: inline-grid;
-    place-items: center;
-    min-width: 3rem;
-    min-height: 3rem;
     margin-top: 0;
-    padding: 0;
-    color: var(--ink);
-    background: transparent;
-    border: 0;
-    border-inline-start: 1px solid rgb(41 33 23 / 35%);
-    border-radius: 0;
-    touch-action: manipulation;
-  }
-
-  .agent-handoff-example .handoff-copy-button:hover:not(:disabled) {
-    color: var(--ink);
-    background: rgb(41 33 23 / 8%);
-    transform: none;
-  }
-
-  .agent-handoff-example .handoff-copy-button:active:not(:disabled) {
-    transform: none;
-  }
-
-  .agent-handoff-example .handoff-copy-button:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: -3px;
-  }
-
-  .agent-handoff-example .handoff-copy-button svg {
-    display: block;
   }
 
   .agent-handoff-example .copy-fallback {
@@ -1640,35 +1616,12 @@
   }
 
   .public-link-copy {
-    display: inline-grid;
-    place-items: center;
-    min-width: 3rem;
-    min-height: 3rem;
-    padding: 0;
-    color: var(--ink);
-    background: transparent;
-    border: 0;
-    border-inline-start: 1px solid rgb(41 33 23 / 35%);
     cursor: pointer;
-    touch-action: manipulation;
-  }
-
-  .public-link-copy:hover:not(:disabled) {
-    background: rgb(41 33 23 / 8%);
   }
 
   .public-link-copy:disabled {
     opacity: 0.45;
     cursor: wait;
-  }
-
-  .public-link-copy:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: -3px;
-  }
-
-  .public-link-copy svg {
-    display: block;
   }
 
   .share-feedback {
@@ -1844,10 +1797,6 @@
     .manuscript {
       height: clamp(30rem, calc(100dvh - 11rem), 50rem);
       padding: 1.25rem 1.25rem 0.85rem;
-    }
-
-    .sheet-flow {
-      column-gap: calc(6rem + var(--page-inline-gutters));
     }
 
     .tool-group,

@@ -7,6 +7,11 @@ import {
   effectFromReceipt,
   type ManuscriptEffect,
 } from '@/lib/manuscript/read-model';
+import {
+  flattenParagraphBlocks,
+  resolveRecordedEnding,
+  splitParagraphBlocks,
+} from '@/lib/manuscript/prose';
 import type {
   ExperienceDefinition,
   ExperienceSession,
@@ -58,9 +63,9 @@ export function StoryScroll({
       return null;
     return buildTypingPlan(
       latestChapterTitle,
-      splitProse(latestChapterProse),
+      splitParagraphBlocks(latestChapterProse),
       session.phase === 'COMPLETE'
-        ? splitProse(manuscript.completionPassage.prose)
+        ? splitParagraphBlocks(manuscript.completionPassage.prose)
         : [],
     );
   }, [
@@ -129,8 +134,8 @@ export function StoryScroll({
       return;
     }
 
-    const paragraphs = splitProse(manuscript.completionPassage.prose);
-    const recordParagraphs = splitProse(
+    const paragraphs = splitParagraphBlocks(manuscript.completionPassage.prose);
+    const recordParagraphs = splitParagraphBlocks(
       manuscript.completionPassage.recordProse,
     );
     const originalEnding = paragraphs.at(-1) ?? '';
@@ -290,13 +295,12 @@ export function StoryScroll({
           ref={pagerRef}
         >
           <div className="sheet-flow">
-            {manuscript.chapters.map((chapter, index) => {
+            {manuscript.chapters.map((chapter) => {
               const fresh = chapter.id === freshChapterId;
               return (
                 <ChapterBlock
                   articleRef={fresh ? freshArticleRef : undefined}
                   chapter={chapter}
-                  chapterIndex={index}
                   key={chapter.id}
                   plan={fresh && endingStage === 'original' ? typingPlan : null}
                 />
@@ -489,7 +493,7 @@ function AgentHandoff({
       <div className="agent-handoff-example">
         <p>{message}</p>
         <CopyButton
-          className="handoff-copy-button"
+          className="inline-copy-action handoff-copy-button"
           iconOnly
           idleLabel="Copy example message"
           onCopied={() =>
@@ -524,23 +528,19 @@ function handoffMessage(
 function ChapterBlock({
   articleRef,
   chapter,
-  chapterIndex,
   plan = null,
 }: {
   articleRef?: RefObject<HTMLElement | null>;
   chapter: ReturnType<typeof deriveManuscriptReadModel>['chapters'][number];
-  chapterIndex: number;
   plan?: TypingPlan | null;
 }) {
-  const paragraphs = splitProse(chapter.prose);
+  const paragraphs = splitParagraphBlocks(chapter.prose);
   return (
     <article
       className={`story-chapter${plan ? ' is-fresh' : ''}`}
       ref={articleRef}
     >
-      <p className="chapter-number">
-        {chapterIndex === 0 ? 'Prologue' : `Chapter ${chapterIndex}`}
-      </p>
+      <p className="chapter-number">{chapter.label}</p>
       <h2>
         {plan ? (
           <TypedText chars={plan.title} text={chapter.title} />
@@ -571,8 +571,12 @@ function CompletionPassageBlock({
   plan: number[][] | null | undefined;
   stage: EndingStage;
 }) {
-  const paragraphs = splitProse(passage.prose);
-  const recordParagraphs = splitProse(passage.recordProse);
+  const paragraphs = splitParagraphBlocks(passage.prose);
+  const recordParagraphs = splitParagraphBlocks(passage.recordProse);
+  const completedParagraphs = resolveRecordedEnding(
+    paragraphs,
+    recordParagraphs,
+  );
   const lastIndex = paragraphs.length - 1;
   return (
     <section
@@ -587,7 +591,7 @@ function CompletionPassageBlock({
               replacement={recordParagraphs[index] ?? original}
             />
           ) : index === lastIndex && stage === 'complete' ? (
-            (recordParagraphs[index] ?? original)
+            completedParagraphs[index]
           ) : plan?.[index] ? (
             <TypedText chars={plan[index]} text={original} />
           ) : (
@@ -761,10 +765,6 @@ type TypingPlan = {
 
 type EndingStage = 'original' | 'rewriting' | 'complete';
 
-function splitProse(prose: string): string[] {
-  return prose.split(/\n\s*\n/);
-}
-
 /**
  * Schedules every character of a committed entry at real typing speed
  * (~45 characters a second), with an uneven hand and pauses after
@@ -817,11 +817,7 @@ function effectParagraphs(effect: ManuscriptEffect): string[] {
 }
 
 function factParagraphs(value: string): string[] {
-  return value
-    .trim()
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, ' ').trim())
-    .filter(Boolean);
+  return flattenParagraphBlocks(value);
 }
 
 function factLines(value: string): { lead: string; note: string | null } {

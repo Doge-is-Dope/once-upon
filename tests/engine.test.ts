@@ -213,6 +213,10 @@ describe('living manuscript engine', () => {
       'commit_story_chapter',
     ]);
     const pencilReceipt = session.pendingTurn!.effectReceipt!;
+    expect(structuredClone(session).pendingTurn?.effectReceipt).toEqual(
+      pencilReceipt,
+    );
+    expect(session.interactionUses).toHaveLength(1);
     expect(
       toStoryState(experienceDefinition, session).requiredChapterStatus,
     ).toBe('continue');
@@ -597,39 +601,6 @@ describe('living manuscript engine', () => {
     expect(lateRetry.response).not.toHaveProperty('turnId');
     expect(lateRetry.response).not.toHaveProperty('effectReceipt');
     expect(lateRetry.response).not.toHaveProperty('chapter');
-  });
-
-  it('keeps a complete effect receipt until same-page commit without reinvocation', () => {
-    let session = createExperienceSession(experienceDefinition, testContext());
-    session = discover(session, 'pencil_found', 1);
-    const invoked = invokeStoryInteraction(
-      experienceDefinition,
-      session,
-      {
-        operationId: operationId('pending_pencil'),
-        expectedSessionId: session.sessionId,
-        expectedRevision: session.revision,
-        interactionId: 'pressed_writing',
-        playerChoice: 'I rub the pencil over the notepad.',
-      },
-      testContext(),
-    ).session;
-    const pendingCopy = structuredClone(invoked);
-    expect(pendingCopy.pendingTurn?.effectReceipt).toMatchObject({
-      interactionId: 'pressed_writing',
-      facts: [
-        {
-          id: 'sixth_attempt_note',
-          value: expect.stringContaining('Sixth time'),
-        },
-      ],
-    });
-    expect(deriveToolSurface(experienceDefinition, pendingCopy)).toEqual([
-      'get_story_state',
-      'begin_story_turn',
-      'commit_story_chapter',
-    ]);
-    expect(pendingCopy.interactionUses).toHaveLength(1);
   });
 
   it('requires authored completion facts without changing stale or replay semantics', () => {

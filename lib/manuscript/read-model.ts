@@ -3,6 +3,11 @@ import type {
   ExperienceSession,
   InteractionEffectReceipt,
 } from '@/lib/runtime/types';
+import {
+  formatChapterLabel,
+  resolveRecordedEnding,
+  splitParagraphBlocks,
+} from './prose';
 
 export type ManuscriptEffect = {
   receiptId: string;
@@ -70,7 +75,7 @@ export function deriveManuscriptReadModel(
     title: experience.title,
     chapters: session.chapters.map((chapter, index) => ({
       id: chapter.id,
-      label: index === 0 ? 'Prologue' : `Chapter ${index}`,
+      label: formatChapterLabel(index),
       title: chapter.title,
       prose: chapter.prose,
       recordProse: chapter.recordProse,
@@ -135,8 +140,10 @@ export function effectFromReceipt(
 }
 
 export function manuscriptToText(model: ManuscriptReadModel): string {
-  const completionParagraphs = splitProse(model.completionPassage.prose);
-  const recordCompletionParagraphs = splitProse(
+  const completionParagraphs = splitParagraphBlocks(
+    model.completionPassage.prose,
+  );
+  const recordCompletionParagraphs = splitParagraphBlocks(
     model.completionPassage.recordProse,
   );
   return [
@@ -151,11 +158,7 @@ export function manuscriptToText(model: ManuscriptReadModel): string {
         : []),
       chapter.prose,
     ]),
-    ...completionParagraphs.map((paragraph, index) =>
-      index === completionParagraphs.length - 1
-        ? (recordCompletionParagraphs[index] ?? paragraph)
-        : paragraph,
-    ),
+    ...resolveRecordedEnding(completionParagraphs, recordCompletionParagraphs),
   ]
     .map((part) => part.trim())
     .filter(Boolean)
@@ -180,8 +183,4 @@ export function createSharedStorySubmission(
     })),
     completionPassage: model.completionPassage,
   };
-}
-
-function splitProse(prose: string): string[] {
-  return prose.split(/\n\s*\n/);
 }

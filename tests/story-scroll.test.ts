@@ -170,18 +170,21 @@ describe('agent handoff', () => {
 
 describe('WebMCP availability', () => {
   it.each(['connecting', 'unsupported', 'disabled', 'error'] as const)(
-    'replaces the ready turn with one quiet %s state',
+    'replaces ready and awaiting turns with one quiet %s state',
     (status) => {
-      const html = render(baseSession(), { agentActive: false, status });
+      const ready = render(baseSession(), { agentActive: false, status });
+      const awaiting = render(pendingSession(), { status });
 
-      expect(occurrences(html, 'data-webmcp-availability')).toBe(1);
-      expect(html).toContain('inert=""');
-      expect(html).toContain('data-navigation-disabled="true"');
-      expect(html).not.toContain('Your turn');
-      expect(html).not.toContain('Need a hint?');
-      expect(html).not.toContain('Copy example message');
-      expect(html).not.toContain('role="alert"');
-      expect(html).not.toContain('ChatGPT');
+      for (const html of [ready, awaiting]) {
+        expect(occurrences(html, 'data-webmcp-availability')).toBe(1);
+        expect(html).toContain('inert=""');
+        expect(html).toContain('data-navigation-disabled="true"');
+        expect(html).not.toContain('id="your-turn"');
+        expect(html).not.toContain('class="writing-marker"');
+        expect(html).not.toContain('class="agent-handoff"');
+        expect(html).not.toContain('role="alert"');
+        expect(html).not.toContain('ChatGPT');
+      }
     },
   );
 
@@ -234,18 +237,6 @@ describe('WebMCP availability', () => {
     expect(html).toContain('WebMCP couldn’t start.');
     expect(html).toContain('>Try again</button>');
   });
-
-  it.each(['connecting', 'unsupported', 'disabled', 'error'] as const)(
-    'replaces an awaiting chapter with one quiet %s state',
-    (status) => {
-      const html = render(pendingSession(), { status });
-
-      expect(occurrences(html, 'data-webmcp-availability')).toBe(1);
-      expect(html).not.toContain('Saved turn');
-      expect(html).not.toContain('class="writing-marker"');
-      expect(html).not.toContain('Copy example message');
-    },
-  );
 
   it('keeps a completed manuscript available without WebMCP', () => {
     const html = render(completeSession(), { status: 'unsupported' });

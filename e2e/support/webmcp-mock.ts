@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export type BrowserTool = {
   name: string;
@@ -33,6 +33,12 @@ export async function callTool<T>(
     },
     { toolName: name, toolInput: input },
   ) as Promise<T>;
+}
+
+export async function waitForTool(page: Page, name: string): Promise<void> {
+  await expect
+    .poll(() => page.evaluate((tool) => window.__webMCPTools.has(tool), name))
+    .toBe(true);
 }
 
 export interface ModelContextMockOptions {

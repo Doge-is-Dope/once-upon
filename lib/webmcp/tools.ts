@@ -1,4 +1,5 @@
-import { deriveToolSurface, RUNTIME_LIMITS } from '../runtime/engine';
+import { deriveToolSurface } from '../runtime/engine';
+import { CORE_TOOL_NAMES, RUNTIME_LIMITS } from '../runtime/protocol';
 import type { ExperienceController } from '../runtime/controller';
 import type {
   BeginStoryTurnInput,
@@ -39,8 +40,24 @@ const REVISION_SCHEMA = {
 const PLAYER_CHOICE_SCHEMA = {
   type: 'string',
   minLength: 1,
-  maxLength: 500,
+  maxLength: RUNTIME_LIMITS.choiceMaxLength,
   description: "The player's latest explicit choice, kept verbatim.",
+};
+const TURN_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    operationId: OPERATION_SCHEMA,
+    expectedSessionId: SESSION_SCHEMA,
+    expectedRevision: REVISION_SCHEMA,
+    playerChoice: PLAYER_CHOICE_SCHEMA,
+  },
+  required: [
+    'operationId',
+    'expectedSessionId',
+    'expectedRevision',
+    'playerChoice',
+  ],
+  additionalProperties: false,
 };
 const LIVING_MANUSCRIPT_PROTOCOL =
   "The webpage is the canonical story. Read its state before every player turn. If the state is AWAITING_CHAPTER, commit that exact pending turn before any narrative, question, or new action. If it is READY and the user's latest message already contains an explicit character action, carry it out immediately instead of asking them to repeat it. Use a currently available story-object tool only when that latest message explicitly performs the action in its description; a mention, question, or recollection is not permission to consume it. Otherwise use begin_story_turn with the player's choice verbatim. After either mutation, call commit_story_chapter in the same assistant response and put all 1–3 prose paragraphs there. Submit an equivalent official recordProse with identical events and paragraph structure, changing every second-person reference—including quotations, notes, and testimony—to grammatically complete third-person references to the subject. Never add a new event or reveal the hidden rewrite. Never leave new story prose only in chat. Do not reply with narrative or another question until the commit succeeds. After a successful commit, do not repeat the saved prose in chat; briefly ask for the next choice. If the user has not supplied a character action, ask what they do.";
@@ -183,7 +200,7 @@ function makeTool(
     openWorldHint: false,
     untrustedContentHint: true,
   };
-  if (name === 'get_story_state')
+  if (name === CORE_TOOL_NAMES.getState)
     return {
       name,
       title: `Start or resume ${controller.definition.title}`,
@@ -204,28 +221,13 @@ function makeTool(
           options?.signal,
         ),
     };
-  if (name === 'begin_story_turn')
+  if (name === CORE_TOOL_NAMES.beginTurn)
     return {
       name,
       title: 'Begin a story turn',
       description:
         "Save the player's latest free choice when allowedNextTools includes this tool. Then call commit_story_chapter in the same response.",
-      inputSchema: {
-        type: 'object',
-        properties: {
-          operationId: OPERATION_SCHEMA,
-          expectedSessionId: SESSION_SCHEMA,
-          expectedRevision: REVISION_SCHEMA,
-          playerChoice: PLAYER_CHOICE_SCHEMA,
-        },
-        required: [
-          'operationId',
-          'expectedSessionId',
-          'expectedRevision',
-          'playerChoice',
-        ],
-        additionalProperties: false,
-      },
+      inputSchema: TURN_INPUT_SCHEMA,
       annotations: commonAnnotations,
       execute: (raw, options) =>
         execute(
@@ -239,7 +241,7 @@ function makeTool(
           options?.signal,
         ),
     };
-  if (name === 'commit_story_chapter')
+  if (name === CORE_TOOL_NAMES.commitChapter)
     return {
       name,
       title: 'Commit the next chapter',
@@ -257,24 +259,28 @@ function makeTool(
             maxLength: RUNTIME_LIMITS.idMaxLength,
             description: 'Exact pending turn ID.',
           },
-          title: { type: 'string', minLength: 1, maxLength: 80 },
+          title: {
+            type: 'string',
+            minLength: 1,
+            maxLength: RUNTIME_LIMITS.chapterTitleMaxLength,
+          },
           prose: {
             type: 'string',
             minLength: 20,
-            maxLength: 20_000,
+            maxLength: RUNTIME_LIMITS.chapterTextMaxLength,
             description: 'One to three short story paragraphs.',
           },
           recordProse: {
             type: 'string',
             minLength: 20,
-            maxLength: 20_000,
+            maxLength: RUNTIME_LIMITS.chapterTextMaxLength,
             description:
               'The same events and paragraph structure as prose, rewritten as a grammatically complete official record using the subject and no second-person pronouns.',
           },
           continuitySummary: {
             type: 'string',
             minLength: 1,
-            maxLength: 700,
+            maxLength: RUNTIME_LIMITS.summaryMaxLength,
             description: 'Compact current continuity for the next turn.',
           },
           discoveryIds: {
@@ -345,22 +351,7 @@ function makeTool(
     name,
     title: interaction.title,
     description: `${interaction.description} After success, call commit_story_chapter in the same response before replying.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        operationId: OPERATION_SCHEMA,
-        expectedSessionId: SESSION_SCHEMA,
-        expectedRevision: REVISION_SCHEMA,
-        playerChoice: PLAYER_CHOICE_SCHEMA,
-      },
-      required: [
-        'operationId',
-        'expectedSessionId',
-        'expectedRevision',
-        'playerChoice',
-      ],
-      additionalProperties: false,
-    },
+    inputSchema: TURN_INPUT_SCHEMA,
     annotations: commonAnnotations,
     execute: (raw, options) =>
       execute(
@@ -461,8 +452,16 @@ function readChapter(
       'title',
       RUNTIME_LIMITS.chapterTitleMaxLength,
     ),
-    prose: requiredString(raw.prose, 'prose', 20_000),
-    recordProse: requiredString(raw.recordProse, 'recordProse', 20_000),
+    prose: requiredString(
+      raw.prose,
+      'prose',
+      RUNTIME_LIMITS.chapterTextMaxLength,
+    ),
+    recordProse: requiredString(
+      raw.recordProse,
+      'recordProse',
+      RUNTIME_LIMITS.chapterTextMaxLength,
+    ),
     continuitySummary: requiredString(
       raw.continuitySummary,
       'continuitySummary',

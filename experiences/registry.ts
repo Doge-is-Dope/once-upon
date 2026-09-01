@@ -1,4 +1,8 @@
 import { experienceDefinitions } from './catalog';
+import {
+  hasMatchingParagraphStructure,
+  hasSecondPersonPronoun,
+} from '@/lib/manuscript/prose';
 import type { ExperienceDefinition } from '@/lib/runtime/types';
 
 export const DEFAULT_EXPERIENCE_ID = experienceDefinitions[0].id;
@@ -137,21 +141,14 @@ function validateRecordText(
     throw new Error(
       `Experience ${experienceId} requires both authored text versions.`,
     );
-  if (paragraphCount(prose) !== paragraphCount(recordProse))
+  if (!hasMatchingParagraphStructure(prose, recordProse))
     throw new Error(
       `Experience ${experienceId} record text must preserve paragraph structure.`,
     );
-  if (/\b(?:you|your|yours|yourself|yourselves)\b/iu.test(recordProse))
+  if (hasSecondPersonPronoun(recordProse))
     throw new Error(
       `Experience ${experienceId} record text contains second person.`,
     );
-}
-
-function paragraphCount(value: string): number {
-  return value
-    .trim()
-    .split(/\n\s*\n/)
-    .filter(Boolean).length;
 }
 
 const registry = createExperienceRegistry(experienceDefinitions);

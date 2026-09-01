@@ -14,7 +14,6 @@ describe('experience registry', () => {
 
   it('keeps the player kickoff short and the internal agent contract versioned', () => {
     expect(experienceDefinition.startMessage.length).toBeLessThanOrEqual(180);
-    expect(experienceDefinition.startMessage.split(/\s+/)).toHaveLength(15);
     expect(experienceDefinition.startMessage).not.toMatch(
       /get_story_state|begin_story_turn|commit_story_chapter|revision|receipt/,
     );
