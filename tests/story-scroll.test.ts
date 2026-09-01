@@ -129,25 +129,31 @@ describe('agent handoff', () => {
   it('offers one short optional example before the first agent call', () => {
     const html = render(baseSession(), { agentActive: false });
 
-    expect(html).toContain('Start with one move.');
-    expect(html).toContain('Tell your agent what you do in one message.');
-    expect(html).toContain('Copy this example');
-    expect(html).toContain('Copying is optional');
+    expect(html).toContain('The speaker is waiting.');
+    expect(html).toContain(
+      'Tell your agent what you inspect before you answer.',
+    );
+    expect(html).toContain('Copy example message');
     expect(html).toContain(experience.startMessage);
+    expect(html).not.toContain('Room Seven');
+    expect(html).not.toContain('the subject');
     expect(html).not.toContain('ChatGPT');
   });
 
   it('removes the handoff after the agent touches the page', () => {
     const html = render(baseSession());
 
-    expect(html).toContain('What do you do?');
-    expect(html).not.toContain('Copy this example');
+    expect(html).toContain('What do you inspect first?');
+    expect(html).not.toContain('Copy example message');
   });
 
   it('offers a recovery message instead of claiming an absent agent is writing', () => {
     const html = render(pendingSession(), { agentActive: false });
 
-    expect(html).toContain('Resume the unfinished chapter.');
+    expect(html).toContain('The page is unfinished.');
+    expect(html).toContain(
+      'Your move is already here. Ask your agent to finish the chapter.',
+    );
     expect(html).toContain('Finish the saved turn first.');
     expect(html).not.toContain('class="writing-marker"');
     expect(html).not.toContain('ChatGPT');
@@ -156,7 +162,7 @@ describe('agent handoff', () => {
   it('offers a later resume message when agent tools are ready', () => {
     const resumed = render(committedSession(), { agentActive: false });
 
-    expect(resumed).toContain('Continue with one move.');
+    expect(resumed).toContain('The room is waiting.');
     expect(resumed).toContain('Resume Memory test with me through this page.');
     expect(resumed).not.toContain('ChatGPT');
   });
@@ -171,7 +177,7 @@ describe('WebMCP availability', () => {
       expect(occurrences(html, 'data-webmcp-availability')).toBe(1);
       expect(html).not.toContain('Your turn');
       expect(html).not.toContain('Need a hint?');
-      expect(html).not.toContain('Copy this example');
+      expect(html).not.toContain('Copy example message');
       expect(html).not.toContain('role="alert"');
       expect(html).not.toContain('ChatGPT');
     },
@@ -201,7 +207,7 @@ describe('WebMCP availability', () => {
       expect(occurrences(html, 'data-webmcp-availability')).toBe(1);
       expect(html).not.toContain('Saved turn');
       expect(html).not.toContain('class="writing-marker"');
-      expect(html).not.toContain('Copy this example');
+      expect(html).not.toContain('Copy example message');
     },
   );
 
@@ -240,6 +246,7 @@ function render(
       agentActive: options.agentActive ?? true,
       experience,
       onAnnounce: () => undefined,
+      onPageChange: () => undefined,
       onRetryConnection: () => undefined,
       session,
       webMCPStatus: options.status ?? 'connected',

@@ -1,5 +1,7 @@
 'use client';
 
+import { CheckIcon } from '@phosphor-icons/react/dist/ssr/Check';
+import { CopySimpleIcon } from '@phosphor-icons/react/dist/ssr/CopySimple';
 import { useEffect, useRef, useState } from 'react';
 
 export async function copyText(text: string): Promise<void> {
@@ -12,12 +14,14 @@ export function CopyButton({
   text,
   idleLabel,
   className = '',
+  iconOnly = false,
   onCopied,
   onCopyFailed,
 }: {
   text: string;
   idleLabel: string;
   className?: string;
+  iconOnly?: boolean;
   onCopied?: () => void;
   onCopyFailed?: () => void;
 }) {
@@ -34,7 +38,9 @@ export function CopyButton({
   return (
     <>
       <button
+        aria-label={iconOnly ? idleLabel : undefined}
         className={`copy-button${copied ? ' is-copied' : ''}${className ? ` ${className}` : ''}`}
+        title={iconOnly ? (copied ? 'Copied' : idleLabel) : undefined}
         type="button"
         onClick={() =>
           void copyText(text)
@@ -49,7 +55,13 @@ export function CopyButton({
             })
         }
       >
-        {copied ? (
+        {iconOnly ? (
+          copied ? (
+            <CheckIcon aria-hidden="true" size={19} weight="bold" />
+          ) : (
+            <CopySimpleIcon aria-hidden="true" size={19} />
+          )
+        ) : copied ? (
           <>
             <span aria-hidden="true">✓</span> Copied
           </>

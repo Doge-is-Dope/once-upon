@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, RefObject } from 'react';
-import { availableInteractions } from '@/lib/runtime/engine';
 import {
   deriveManuscriptReadModel,
   effectFromReceipt,
@@ -23,6 +22,7 @@ export function StoryScroll({
   agentActive,
   experience,
   onAnnounce,
+  onPageChange,
   onRetryConnection,
   session,
   webMCPStatus,
@@ -30,6 +30,7 @@ export function StoryScroll({
   agentActive: boolean;
   experience: ExperienceDefinition;
   onAnnounce: (message: string) => void;
+  onPageChange: (page: number) => void;
   onRetryConnection: () => void;
   session: ExperienceSession;
   webMCPStatus: WebMCPStatus;
@@ -99,6 +100,10 @@ export function StoryScroll({
   const previousLatestId = useRef<string | null>(null);
   const previousWebMCPStatus = useRef(webMCPStatus);
   const previousPhase = useRef(session.phase);
+
+  useEffect(() => {
+    onPageChange(page);
+  }, [onPageChange, page]);
 
   useEffect(() => {
     const enteredComplete =
@@ -318,7 +323,6 @@ export function StoryScroll({
                 agentActive={agentActive}
                 experience={experience}
                 onAnnounce={onAnnounce}
-                onLayoutChange={handlePaginatedLayoutChange}
                 session={session}
               />
             ) : null}
@@ -382,35 +386,26 @@ function TurnGuide({
   agentActive,
   experience,
   onAnnounce,
-  onLayoutChange,
   session,
 }: {
   agentActive: boolean;
   experience: ExperienceDefinition;
   onAnnounce: (message: string) => void;
-  onLayoutChange: (anchor: Element | null) => void;
   session: ExperienceSession;
 }) {
   const opening = session.chapters.length === 1;
-  const interaction = availableInteractions(experience, session)[0];
-  const hint = interaction
-    ? interaction.cue
-    : opening
-      ? 'Look closer at something already on the page, speak to someone, or test a way forward.'
-      : 'Follow a detail from the latest chapter, revisit an earlier clue, or try something unexpected.';
 
   return (
     <div className="turn-guide" id="your-turn">
-      <p className="turn-guide-kicker">Your turn</p>
-      <p className="turn-guide-prompt">
+      <h2 className="turn-guide-prompt">
         {agentActive
           ? opening
-            ? 'What do you do?'
+            ? 'What do you inspect first?'
             : 'What do you do next?'
           : opening
-            ? 'Start with one move.'
-            : 'Continue with one move.'}
-      </p>
+            ? 'The speaker is waiting.'
+            : 'The room is waiting.'}
+      </h2>
       {!agentActive ? (
         <AgentHandoff
           experience={experience}
@@ -418,16 +413,6 @@ function TurnGuide({
           onAnnounce={onAnnounce}
         />
       ) : null}
-      <details
-        className="story-hint"
-        onToggle={(event) => {
-          const details = event.currentTarget;
-          onLayoutChange(details.querySelector(details.open ? 'p' : 'summary'));
-        }}
-      >
-        <summary>Need a hint?</summary>
-        <p>{hint}</p>
-      </details>
     </div>
   );
 }
@@ -457,8 +442,7 @@ function PendingTurnGuide({
 
   return (
     <div className="turn-guide pending-turn-guide" id="your-turn">
-      <p className="turn-guide-kicker">Saved turn</p>
-      <p className="turn-guide-prompt">Resume the unfinished chapter.</p>
+      <h2 className="turn-guide-prompt">The page is unfinished.</h2>
       <AgentHandoff
         experience={experience}
         mode="recover"
@@ -482,16 +466,17 @@ function AgentHandoff({
     <div className="agent-handoff">
       <p className="agent-handoff-instruction">
         {mode === 'recover'
-          ? 'Send one short message to your agent to finish the turn already saved on this page.'
-          : 'Tell your agent what you do in one message. The page handles the story rules.'}
+          ? 'Your move is already here. Ask your agent to finish the chapter.'
+          : mode === 'start'
+            ? 'Tell your agent what you inspect before you answer.'
+            : 'Tell your agent what you do next.'}
       </p>
-      <blockquote className="agent-handoff-example">
+      <div className="agent-handoff-example">
         <p>{message}</p>
-      </blockquote>
-      <div className="agent-handoff-actions">
         <CopyButton
           className="handoff-copy-button"
-          idleLabel="Copy this example"
+          iconOnly
+          idleLabel="Copy example message"
           onCopied={() =>
             onAnnounce(
               mode === 'recover'
@@ -506,7 +491,6 @@ function AgentHandoff({
           }
           text={message}
         />
-        <p>Copying is optional — the same idea works in your own words.</p>
       </div>
     </div>
   );

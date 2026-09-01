@@ -1,9 +1,15 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ExperienceController } from '@/lib/runtime/controller';
-import type { ExperienceDefinition } from '@/lib/runtime/types';
+import { availableInteractions } from '@/lib/runtime/engine';
+import type {
+  ExperienceDefinition,
+  ExperienceSession,
+} from '@/lib/runtime/types';
+import { StoryHeaderTitle } from './story-header-title';
+import { StoryHint } from './story-hint';
 import { StorySettings } from './story-settings';
 import { StoryScroll } from './story-scroll';
 import { useLampLight } from './lamp-light';
@@ -79,6 +85,8 @@ export function BookExperience({
   };
   const storyStarted =
     session.pendingTurn !== null || session.chapters.length > 1;
+  const [currentPage, setCurrentPage] = useState(0);
+  const showOpeningHero = !storyStarted && currentPage === 0;
   const usedInteractionIds = new Set(
     session.interactionUses.map(({ interactionId }) => interactionId),
   );
@@ -89,6 +97,7 @@ export function BookExperience({
         .map(({ presentation }) => String(presentation)),
     ),
   ];
+  const hint = resolveHint(experience, session, webMCPStatus);
   return (
     <div
       className="frame-book"
@@ -102,15 +111,19 @@ export function BookExperience({
         Skip to manuscript
       </a>
       <header className="story-header">
-        <Image
-          alt="Once Upon"
-          className="once-upon-mark"
-          height={32}
-          src="/logo-mark.svg"
-          unoptimized
-          width={32}
-        />
+        <div className="story-header-brand">
+          <Image
+            alt="Once Upon"
+            className="once-upon-mark"
+            height={32}
+            src="/logo-mark.svg"
+            unoptimized
+            width={32}
+          />
+          <StoryHeaderTitle title={experience.title} />
+        </div>
         <div className="story-header-actions">
+          {hint ? <StoryHint hint={hint} /> : null}
           <StorySettings
             debugMode={debugMode}
             onDebugModeChange={writeDebugMode}
@@ -121,18 +134,27 @@ export function BookExperience({
         {view.announcement}
       </p>
       <main className="story-shell" id="manuscript-content" tabIndex={-1}>
-        {storyStarted ? <h1 className="sr-only">{experience.title}</h1> : null}
-        <div className="title-block" hidden={storyStarted}>
-          <h1>{experience.title}</h1>
-          <p className="title-deck">
-            Read the page. Tell your agent what you do. Every discovery can give
-            the page a new way to answer.
-          </p>
+        {!showOpeningHero ? (
+          <h1 className="sr-only">{experience.title}</h1>
+        ) : null}
+        <div
+          aria-hidden={showOpeningHero ? undefined : true}
+          className="title-block"
+          data-visible={showOpeningHero || undefined}
+        >
+          <div className="title-block-content">
+            <h1>{experience.title}</h1>
+            <p className="title-deck">
+              Read the page. Tell your agent what you do. Every discovery can
+              give the page a new way to answer.
+            </p>
+          </div>
         </div>
         <StoryScroll
           agentActive={agentActive}
           experience={experience}
           onAnnounce={announce}
+          onPageChange={setCurrentPage}
           onRetryConnection={handleRetryConnection}
           session={session}
           webMCPStatus={webMCPStatus}
@@ -148,6 +170,19 @@ export function BookExperience({
       </main>
     </div>
   );
+}
+
+function resolveHint(
+  experience: ExperienceDefinition,
+  session: ExperienceSession,
+  webMCPStatus: WebMCPStatus,
+): string | null {
+  if (session.phase !== 'READY' || webMCPStatus !== 'connected') return null;
+  const interaction = availableInteractions(experience, session)[0];
+  if (interaction) return interaction.cue;
+  return session.chapters.length === 1
+    ? 'Look closer at something already on the page, speak to someone, or test a way forward.'
+    : 'Follow a detail from the latest chapter, revisit an earlier clue, or try something unexpected.';
 }
 
 function connectionAnnouncement(status: WebMCPStatus): string {

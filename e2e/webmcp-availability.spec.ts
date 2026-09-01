@@ -29,7 +29,10 @@ test('shows one accessible explanation when WebMCP is unavailable', async ({
   await expect(page.getByText('Your turn')).toHaveCount(0);
   await expect(page.getByText('Need a hint?')).toHaveCount(0);
   await expect(
-    page.getByRole('button', { name: 'Copy this example' }),
+    page.getByRole('button', { name: 'Hint', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Copy example message' }),
   ).toHaveCount(0);
   await expect(page.locator('.story-presence')).toHaveCount(0);
   await expect(page.locator('[role="alert"]')).toHaveCount(0);
@@ -85,7 +88,9 @@ for (const scenario of [
 
     await waitForTool(page, 'get_story_state');
     await expect(page.locator('[data-webmcp-availability]')).toHaveCount(0);
-    await expect(page.getByText('Your turn')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'The speaker is waiting.' }),
+    ).toBeVisible();
     await expect(page.locator('.sr-live')).toHaveText(
       'Agent tools are ready. You can continue in one message.',
     );

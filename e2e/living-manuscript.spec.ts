@@ -43,11 +43,27 @@ test('moves from the opening hero into the manuscript after the first choice', a
   await waitForTool(page, 'get_story_state');
   const initial = await readState(page);
   const hero = page.locator('.title-block');
+  const headerTitle = page.locator('.story-header-title');
+  const headerTitleText = page.locator('.story-header-title-text');
+  const settings = page.getByRole('button', { name: 'Settings', exact: true });
+  const logoBoundsBefore = await page.locator('.once-upon-mark').boundingBox();
+  const settingsBoundsBefore = await settings.boundingBox();
+  const manuscriptBoundsBefore = await page
+    .locator('.manuscript')
+    .boundingBox();
 
   await expect(hero).toBeVisible();
+  await expect(
+    hero.getByRole('heading', { name: 'The Last Manuscript' }),
+  ).toHaveCSS('font-size', '44px');
+  await expect(headerTitle).toBeHidden();
+  await expect(headerTitle).toHaveAttribute('aria-hidden', 'true');
   await expect(page.locator('.frame-book')).not.toHaveAttribute(
     'data-story-started',
   );
+  await expect(
+    page.getByRole('button', { name: 'Hint', exact: true }),
+  ).toBeVisible();
 
   const begun = await callTool<ToolResult>(page, 'begin_story_turn', {
     operationId: operationId('begin_immersive'),
@@ -56,13 +72,45 @@ test('moves from the opening hero into the manuscript after the first choice', a
     playerChoice: 'I inspect the torn edge of the notepad.',
   });
 
+  await page.waitForTimeout(160);
+  const manuscriptBoundsDuring = await page
+    .locator('.manuscript')
+    .boundingBox();
+  expect(manuscriptBoundsDuring!.y).toBeLessThan(manuscriptBoundsBefore!.y);
   await expect(hero).toBeHidden();
+  const manuscriptBoundsAfter = await page.locator('.manuscript').boundingBox();
+  expect(manuscriptBoundsDuring!.y).toBeGreaterThan(manuscriptBoundsAfter!.y);
   await expect(page.locator('.frame-book')).toHaveAttribute(
     'data-story-started',
     'true',
   );
   await expect(page.locator('.story-shell > h1.sr-only')).toHaveText(
     'The Last Manuscript',
+  );
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'The Last Manuscript' }),
+  ).toHaveCount(1);
+  await expect(headerTitle).toBeVisible();
+  await expect(headerTitle).toHaveText('The Last Manuscript');
+  await expect(headerTitle).toHaveCSS('font-size', '15.2px');
+  await expect(headerTitleText).toHaveCSS(
+    'animation-name',
+    'story-header-title-type',
+  );
+  const logoBoundsAfter = await page.locator('.once-upon-mark').boundingBox();
+  const settingsBoundsAfter = await settings.boundingBox();
+  expect(logoBoundsAfter!.x).toBeCloseTo(logoBoundsBefore!.x, 1);
+  expect(logoBoundsAfter!.y).toBeCloseTo(logoBoundsBefore!.y, 1);
+  expect(settingsBoundsAfter!.x).toBeCloseTo(settingsBoundsBefore!.x, 1);
+  expect(settingsBoundsAfter!.y).toBeCloseTo(settingsBoundsBefore!.y, 1);
+  await expect(
+    page.getByRole('button', { name: 'Hint', exact: true }),
+  ).toHaveCount(0);
+  await page.waitForTimeout(1250);
+  await expect(headerTitleText).toHaveCSS('clip-path', 'inset(0px 0% 0px 0px)');
+  await expect(page.locator('.story-header-title-caret')).toHaveCSS(
+    'opacity',
+    '0',
   );
 
   await commit(
@@ -74,6 +122,74 @@ test('moves from the opening hero into the manuscript after the first choice', a
     'continue',
   );
   await expect(hero).toBeHidden();
+  await expect(headerTitle).toBeVisible();
+  await expect(headerTitleText).toHaveCSS('clip-path', 'inset(0px 0% 0px 0px)');
+  await expect(
+    page.getByRole('button', { name: 'Hint', exact: true }),
+  ).toBeVisible();
+});
+
+test('shows the final header title at narrow width with reduced motion', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto(EXPERIENCE_PATH);
+  await waitForTool(page, 'get_story_state');
+  const initial = await readState(page);
+
+  await expect(
+    page.locator('.title-block').getByRole('heading', {
+      name: 'The Last Manuscript',
+    }),
+  ).toHaveCSS('font-size', '28px');
+
+  const begun = await callTool<ToolResult>(page, 'begin_story_turn', {
+    operationId: operationId('begin_reduced_header'),
+    expectedSessionId: initial.sessionId,
+    expectedRevision: initial.revision,
+    playerChoice: 'I inspect the torn edge of the notepad.',
+  });
+
+  const headerTitle = page.locator('.story-header-title');
+  const headerTitleText = page.locator('.story-header-title-text');
+  const actions = page.locator('.story-header-actions');
+  await expect(headerTitle).toBeVisible();
+  await expect(headerTitleText).toHaveCSS('animation-name', 'none');
+  await expect(headerTitleText).toHaveCSS('clip-path', 'inset(0px)');
+  const titleBounds = await headerTitle.boundingBox();
+  const actionBounds = await actions.boundingBox();
+  expect(titleBounds!.x + titleBounds!.width).toBeLessThanOrEqual(
+    actionBounds!.x,
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await commit(
+    page,
+    begun.structuredContent.state,
+    begun.structuredContent.turnId!,
+    'The torn edge',
+    [],
+    'continue',
+  );
+
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '2';
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  // The sheet pager is intentionally controlled by the document-level arrow
+  // keys and external page buttons; that contract has its own keyboard E2E.
+  const violations = await new AxeBuilder({ page })
+    .disableRules(['scrollable-region-focusable'])
+    .analyze();
+  expect(violations.violations).toEqual([]);
 });
 
 test('keeps the prologue in view while the connection settles', async ({
@@ -97,33 +213,58 @@ test('keeps the prologue in view while the connection settles', async ({
   ).toBe(0);
 });
 
-test('keeps an expanded hint on the active sheet', async ({ page }) => {
+test('reveals the contextual hint from the header without repaginating', async ({
+  page,
+}) => {
   await page.goto(EXPERIENCE_PATH);
   await waitForTool(page, 'get_story_state');
 
-  const summary = page.getByText('Need a hint?', { exact: true });
-  const next = page.getByRole('button', { name: 'Next page' });
-  for (
-    let attempt = 0;
-    attempt < 8 && !(await summary.isVisible());
-    attempt++
-  ) {
-    if (await next.isDisabled()) break;
-    await next.click();
-    await page.waitForTimeout(850);
-  }
+  const trigger = page.getByRole('button', { name: 'Hint', exact: true });
+  const panel = page.locator('#story-hint-panel');
+  const indicator = page.locator('.sheet-page-indicator');
+  const pager = page.locator('.sheet-pager');
+  const initialIndicator = await indicator.textContent();
+  const initialScrollLeft = await pager.evaluate(
+    (element) => element.scrollLeft,
+  );
 
-  await expect(summary).toBeVisible();
-  await summary.click();
-  const hint = page.locator('.story-hint p');
-  await expect(hint).toBeVisible();
-  await expectElementInsideActiveSheet(hint);
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveAttribute('data-available', 'true');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  const hintAppearance = await trigger.evaluate((button) => {
+    const buttonStyle = getComputedStyle(button);
+    const iconStyle = getComputedStyle(button.querySelector('svg')!);
+    return {
+      backgroundColor: buttonStyle.backgroundColor,
+      borderColor: buttonStyle.borderColor,
+      iconFilter: iconStyle.filter,
+    };
+  });
+  expect(hintAppearance.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(hintAppearance.borderColor).toBe('rgba(0, 0, 0, 0)');
+  expect(hintAppearance.iconFilter).toContain('drop-shadow');
+  await expect(panel).toBeHidden();
+  await expect(page.locator('.turn-guide details')).toHaveCount(0);
+
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText(
+    'Look closer at something already on the page, speak to someone, or test a way forward.',
+  );
+  await expect(indicator).toHaveText(initialIndicator!);
+  expect(await pager.evaluate((element) => element.scrollLeft)).toBe(
+    initialScrollLeft,
+  );
   await expectPaginationToMatchLayout(page);
 
-  await summary.click();
-  await expect(page.locator('.story-hint')).not.toHaveAttribute('open');
-  await expect(summary).toBeVisible();
-  await expectPaginationToMatchLayout(page);
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await page.locator('.once-upon-mark').click();
+  await expect(panel).toBeHidden();
 });
 
 test('turns pages from the keyboard without outlining the manuscript container', async ({
@@ -138,6 +279,8 @@ test('turns pages from the keyboard without outlining the manuscript container',
   await expect(manuscript).toHaveCSS('outline-style', 'none');
 
   const pageIndicator = page.locator('.sheet-page-indicator');
+  const hero = page.locator('.title-block');
+  await expect(hero).toBeVisible();
   await expect(pageIndicator).toHaveText(/Sheet \d+ of \d+/);
   const initialIndicator = await pageIndicator.innerText();
   const currentPage = Number(initialIndicator.match(/\d+/)?.[0]);
@@ -150,12 +293,20 @@ test('turns pages from the keyboard without outlining the manuscript container',
       Number((await pageIndicator.innerText()).match(/\d+/)?.[0]),
     )
     .toBe(currentPage + 1);
+  await expect(hero).toBeHidden();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'The Last Manuscript' }),
+  ).toHaveCount(1);
   await page.keyboard.press('ArrowLeft');
   await expect
     .poll(async () =>
       Number((await pageIndicator.innerText()).match(/\d+/)?.[0]),
     )
     .toBe(currentPage);
+  await expect(hero).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'The Last Manuscript' }),
+  ).toHaveCount(1);
 });
 
 test('opens and dismisses the accessible settings panel', async ({ page }) => {
@@ -289,6 +440,7 @@ test('completes the story within six registrations and shares a unique story lin
     'complete',
   );
   expect(state.phase).toBe('COMPLETE');
+  await expect(page.locator('.story-header-title')).toBeVisible();
   await expect(
     page.locator('.completion-passage.is-fresh .tw-char'),
   ).not.toHaveCount(0);
@@ -472,6 +624,16 @@ test('keeps the manuscript usable at narrow width, zoom, and reduced motion', as
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await page.getByRole('button', { name: 'Hint', exact: true }).click();
+  const hintBounds = await page
+    .locator('#story-hint-panel')
+    .evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { x: bounds.x, right: bounds.right };
+    });
+  expect(hintBounds.x).toBeGreaterThanOrEqual(0);
+  expect(hintBounds.right).toBeLessThanOrEqual(360);
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Settings' }).click();
   const panelBounds = await page
     .locator('#story-settings-panel')
@@ -484,7 +646,9 @@ test('keeps the manuscript usable at narrow width, zoom, and reduced motion', as
   await page.evaluate(() => {
     document.documentElement.style.zoom = '2';
   });
-  await expect(page.getByText('Your turn')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'The speaker is waiting.' }),
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
