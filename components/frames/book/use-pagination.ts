@@ -16,7 +16,11 @@ const PAGE_GAP_REM = 6;
  * with a stepped, line-by-line ratchet. 'slide' is the short corrective
  * scroll after a manual swipe; 'jump' is immediate.
  */
-export function usePagination(): {
+export function usePagination({
+  navigationEnabled = true,
+}: {
+  navigationEnabled?: boolean;
+} = {}): {
   pagerRef: RefObject<HTMLDivElement | null>;
   page: number;
   pageCount: number;
@@ -140,14 +144,12 @@ export function usePagination(): {
     () => goToPage(Number.MAX_SAFE_INTEGER),
     [goToPage],
   );
-  const goToPrevious = useCallback(
-    () => goToPage(targetPageRef.current - 1),
-    [goToPage],
-  );
-  const goToNext = useCallback(
-    () => goToPage(targetPageRef.current + 1),
-    [goToPage],
-  );
+  const goToPrevious = useCallback(() => {
+    if (navigationEnabled) goToPage(targetPageRef.current - 1);
+  }, [goToPage, navigationEnabled]);
+  const goToNext = useCallback(() => {
+    if (navigationEnabled) goToPage(targetPageRef.current + 1);
+  }, [goToPage, navigationEnabled]);
   const reflowTo = useCallback(
     (anchor: Element | null, mode: 'swap' | 'jump' = 'jump') => {
       const { count } = measure();
@@ -207,6 +209,7 @@ export function usePagination(): {
   // Arrow keys flip pages unless focus is in a text field.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!navigationEnabled) return;
       if (event.defaultPrevented || event.metaKey || event.ctrlKey) return;
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       const target = event.target as HTMLElement | null;
@@ -221,7 +224,7 @@ export function usePagination(): {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [goToPage]);
+  }, [goToPage, navigationEnabled]);
 
   return {
     pagerRef,

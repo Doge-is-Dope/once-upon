@@ -1,65 +1,95 @@
 'use client';
 
 import type { WebMCPStatus } from '@/lib/webmcp/tools';
+import { CopyButton } from './copy-button';
+import type { WebMCPSetupHint } from './use-webmcp-connection';
 
-const WEBMCP_SPEC_URL = 'https://webmachinelearning.github.io/webmcp/';
+const REDACTION_BARS = ['a', 'b', 'c', 'd'] as const;
+const WEBMCP_FLAG = 'chrome://flags/#enable-webmcp-testing';
 
 export function WebMCPAvailability({
   status,
+  setupHint,
   onRetry,
+  onAnnounce,
 }: {
   status: WebMCPStatus;
+  setupHint: WebMCPSetupHint;
   onRetry: () => void;
+  onAnnounce: (message: string) => void;
 }) {
   if (status === 'connected') return null;
-  if (status === 'connecting')
-    return (
-      <section
-        aria-label="WebMCP availability"
-        className="webmcp-availability is-pending"
-        data-webmcp-availability
-      >
-        <p>Preparing agent tools…</p>
-      </section>
-    );
-  if (status === 'unsupported')
-    return (
-      <section
-        aria-labelledby="webmcp-unavailable-title"
-        className="webmcp-availability"
-        data-webmcp-availability
-      >
-        <h2 id="webmcp-unavailable-title">
-          WebMCP isn&apos;t available for this page
-        </h2>
-        <p>
-          WebMCP lets your agent interact with this story through tools exposed
-          by the page. Open this page in a browser or app with a WebMCP-aware
-          agent to play.
-        </p>
-        <a href={WEBMCP_SPEC_URL}>Learn about WebMCP</a>
-      </section>
-    );
-  const disabled = status === 'disabled';
+
+  const title =
+    status === 'connecting'
+      ? 'Checking access…'
+      : status === 'error'
+        ? 'Access interrupted'
+        : 'Access restricted';
+  const titleId = `webmcp-${status}-title`;
+
   return (
     <section
-      aria-labelledby={`webmcp-${status}-title`}
-      className="webmcp-availability"
+      aria-labelledby={titleId}
+      className={`webmcp-availability webmcp-availability-${status}`}
       data-webmcp-availability
     >
-      <h2 id={`webmcp-${status}-title`}>
-        {disabled ? 'WebMCP is blocked for this page' : 'WebMCP couldn’t start'}
-      </h2>
-      {disabled ? (
-        <p>Allow site tools for this page, then check again.</p>
-      ) : null}
-      <button
-        className="webmcp-availability-action"
-        type="button"
-        onClick={onRetry}
-      >
-        {disabled ? 'Check again' : 'Try again'}
-      </button>
+      <div aria-hidden="true" className="webmcp-redactions">
+        <RedactionGroup position="top" />
+        <RedactionGroup position="bottom" />
+      </div>
+      <div className="webmcp-availability-copy">
+        <h2 id={titleId}>{title}</h2>
+        {status === 'unsupported' ? (
+          setupHint === 'chrome-flag' ? (
+            <div className="webmcp-flag-setup">
+              <p>Enable the Chrome flag:</p>
+              <div className="webmcp-flag-result">
+                <code>{WEBMCP_FLAG}</code>
+                <CopyButton
+                  className="webmcp-flag-copy"
+                  copiedLabel="Chrome flag copied"
+                  fallbackLabel="Copy this Chrome flag"
+                  iconOnly
+                  idleLabel="Copy Chrome flag"
+                  onCopied={() => onAnnounce('Chrome flag copied.')}
+                  onCopyFailed={() =>
+                    onAnnounce(
+                      'The Chrome flag could not be copied. Select it to copy manually.',
+                    )
+                  }
+                  text={WEBMCP_FLAG}
+                />
+              </div>
+            </div>
+          ) : (
+            <p>A WebMCP-enabled browser is required.</p>
+          )
+        ) : null}
+        {status === 'disabled' ? <p>WebMCP is blocked for this site.</p> : null}
+        {status === 'error' ? (
+          <>
+            <p>WebMCP couldn’t start.</p>
+            <button
+              className="webmcp-availability-action"
+              type="button"
+              onClick={onRetry}
+            >
+              Try again
+            </button>
+          </>
+        ) : null}
+      </div>
     </section>
+  );
+}
+
+function RedactionGroup({ position }: { position: 'top' | 'bottom' }) {
+  return (
+    <div className={`webmcp-redaction-group is-${position}`}>
+      {REDACTION_BARS.map((bar) => (
+        <span key={bar} />
+      ))}
+    </div>
   );
 }

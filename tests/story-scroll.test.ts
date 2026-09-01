@@ -175,6 +175,8 @@ describe('WebMCP availability', () => {
       const html = render(baseSession(), { agentActive: false, status });
 
       expect(occurrences(html, 'data-webmcp-availability')).toBe(1);
+      expect(html).toContain('inert=""');
+      expect(html).toContain('data-navigation-disabled="true"');
       expect(html).not.toContain('Your turn');
       expect(html).not.toContain('Need a hint?');
       expect(html).not.toContain('Copy example message');
@@ -183,20 +185,54 @@ describe('WebMCP availability', () => {
     },
   );
 
-  it('explains unavailable WebMCP with the canonical specification link', () => {
+  it('keeps the generic unsupported state short and non-actionable', () => {
     const html = render(baseSession(), {
       agentActive: false,
       status: 'unsupported',
     });
+    const availability = availabilityMarkup(html);
 
-    expect(html).toContain('WebMCP isn&#x27;t available for this page');
-    expect(html).toContain(
-      'WebMCP lets your agent interact with this story through tools exposed by the page.',
+    expect(availability).toContain('Access restricted');
+    expect(availability).toContain('A WebMCP-enabled browser is required.');
+    expect(availability).not.toContain('chrome://flags');
+    expect(availability).not.toContain('href=');
+    expect(availability).not.toContain('<button');
+  });
+
+  it('shows the bounded Chrome flag setup hint with one copy action', () => {
+    const html = render(baseSession(), {
+      agentActive: false,
+      setupHint: 'chrome-flag',
+      status: 'unsupported',
+    });
+    const availability = availabilityMarkup(html);
+
+    expect(availability).toContain('Access restricted');
+    expect(availability).toContain(
+      '<code>chrome://flags/#enable-webmcp-testing</code>',
     );
-    expect(html).toContain(
-      'href="https://webmachinelearning.github.io/webmcp/"',
-    );
-    expect(html).toContain('Learn about WebMCP');
+    expect(availability).toContain('Enable the Chrome flag:');
+    expect(availability).not.toContain('relaunch');
+    expect(availability).toContain('aria-label="Copy Chrome flag"');
+    expect(occurrences(availability, '<button')).toBe(1);
+  });
+
+  it('does not offer Check again when WebMCP is blocked', () => {
+    const html = render(baseSession(), { status: 'disabled' });
+    const availability = availabilityMarkup(html);
+
+    expect(availability).toContain('Access restricted');
+    expect(availability).toContain('WebMCP is blocked for this site.');
+    expect(availability).not.toContain('Check again');
+    expect(availability).not.toContain('<button');
+  });
+
+  it('keeps Try again only for a startup error', () => {
+    const html = render(baseSession(), { status: 'error' });
+
+    expect(html).toContain('Access interrupted');
+    expect(html).toContain('WebMCP couldn’t start.');
+    expect(html).toContain('>Try again</button>');
   });
 
   it.each(['connecting', 'unsupported', 'disabled', 'error'] as const)(
@@ -238,6 +274,7 @@ function render(
   session: ExperienceSession,
   options: {
     agentActive?: boolean;
+    setupHint?: 'chrome-flag' | 'generic';
     status?: 'connecting' | 'connected' | 'disabled' | 'unsupported' | 'error';
   } = {},
 ): string {
@@ -249,9 +286,17 @@ function render(
       onPageChange: () => undefined,
       onRetryConnection: () => undefined,
       session,
+      webMCPSetupHint: options.setupHint ?? 'generic',
       webMCPStatus: options.status ?? 'connected',
     }),
   );
+}
+
+function availabilityMarkup(html: string): string {
+  const start = html.indexOf('<section aria-labelledby="webmcp-');
+  if (start < 0) return '';
+  const end = html.indexOf('</section>', start);
+  return html.slice(start, end + '</section>'.length);
 }
 
 function pendingSession(): ExperienceSession {

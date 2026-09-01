@@ -16,6 +16,7 @@ import { BackspaceText, backspaceDuration } from './backspace-text';
 import { CopyButton } from './copy-button';
 import { StoryShare } from './story-share';
 import { usePagination } from './use-pagination';
+import type { WebMCPSetupHint } from './use-webmcp-connection';
 import { WebMCPAvailability } from './webmcp-notices';
 
 export function StoryScroll({
@@ -25,6 +26,7 @@ export function StoryScroll({
   onPageChange,
   onRetryConnection,
   session,
+  webMCPSetupHint,
   webMCPStatus,
 }: {
   agentActive: boolean;
@@ -33,9 +35,12 @@ export function StoryScroll({
   onPageChange: (page: number) => void;
   onRetryConnection: () => void;
   session: ExperienceSession;
+  webMCPSetupHint: WebMCPSetupHint;
   webMCPStatus: WebMCPStatus;
 }) {
   const manuscript = deriveManuscriptReadModel(experience, session);
+  const availabilityVisible =
+    session.phase !== 'COMPLETE' && webMCPStatus !== 'connected';
   const pendingEffect = resolvePendingEffect(experience, session);
   const latestChapter = manuscript.chapters.at(-1) ?? null;
   const latestChapterId = latestChapter?.id ?? null;
@@ -89,7 +94,7 @@ export function StoryScroll({
     pageAt,
     reflowTo,
     measure,
-  } = usePagination();
+  } = usePagination({ navigationEnabled: !availabilityVisible });
   const handlePaginatedLayoutChange = useCallback(
     (anchor: Element | null) => reflowTo(anchor),
     [reflowTo],
@@ -278,7 +283,12 @@ export function StoryScroll({
       {/* The window clips the rolling pager so sheets feed through the
           platen instead of sliding over the running head or off the paper. */}
       <div className="sheet-window">
-        <div className="sheet-pager" ref={pagerRef}>
+        <div
+          aria-hidden={availabilityVisible || undefined}
+          className="sheet-pager"
+          inert={availabilityVisible}
+          ref={pagerRef}
+        >
           <div className="sheet-flow">
             {manuscript.chapters.map((chapter, index) => {
               const fresh = chapter.id === freshChapterId;
@@ -312,12 +322,6 @@ export function StoryScroll({
               />
             ) : null}
 
-            {session.phase !== 'COMPLETE' && webMCPStatus !== 'connected' ? (
-              <WebMCPAvailability
-                onRetry={onRetryConnection}
-                status={webMCPStatus}
-              />
-            ) : null}
             {session.phase === 'READY' && webMCPStatus === 'connected' ? (
               <TurnGuide
                 agentActive={agentActive}
@@ -358,12 +362,23 @@ export function StoryScroll({
             ))}
           </div>
         </div>
+        {availabilityVisible ? (
+          <WebMCPAvailability
+            onAnnounce={onAnnounce}
+            onRetry={onRetryConnection}
+            setupHint={webMCPSetupHint}
+            status={webMCPStatus}
+          />
+        ) : null}
       </div>
       <div aria-hidden="true" className="typing-caret" hidden ref={caretRef} />
-      <div className="sheet-controls">
+      <div
+        className="sheet-controls"
+        data-navigation-disabled={availabilityVisible || undefined}
+      >
         <button
           aria-label="Previous page"
-          disabled={page === 0}
+          disabled={availabilityVisible || page === 0}
           onClick={goToPrevious}
           type="button"
         >
@@ -371,7 +386,7 @@ export function StoryScroll({
         </button>
         <button
           aria-label="Next page"
-          disabled={page >= pageCount - 1}
+          disabled={availabilityVisible || page >= pageCount - 1}
           onClick={goToNext}
           type="button"
         >

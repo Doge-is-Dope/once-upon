@@ -63,7 +63,7 @@ export function BookExperience({
   );
   const view = useSessionView(controller);
   const announce = view.announce;
-  const { webMCPStatus, agentActive, activeTool, retryConnection } =
+  const { webMCPStatus, setupHint, agentActive, activeTool, retryConnection } =
     useWebMCPConnection(controller);
   const announcedConnectionStatus = useRef<WebMCPStatus | null>(null);
 
@@ -157,6 +157,7 @@ export function BookExperience({
           onPageChange={setCurrentPage}
           onRetryConnection={handleRetryConnection}
           session={session}
+          webMCPSetupHint={setupHint}
           webMCPStatus={webMCPStatus}
         />
         {debugMode ? (

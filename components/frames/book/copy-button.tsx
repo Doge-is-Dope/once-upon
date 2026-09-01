@@ -13,6 +13,8 @@ export async function copyText(text: string): Promise<void> {
 export function CopyButton({
   text,
   idleLabel,
+  copiedLabel = 'Copied',
+  fallbackLabel = 'Copy this message',
   className = '',
   iconOnly = false,
   onCopied,
@@ -20,6 +22,8 @@ export function CopyButton({
 }: {
   text: string;
   idleLabel: string;
+  copiedLabel?: string;
+  fallbackLabel?: string;
   className?: string;
   iconOnly?: boolean;
   onCopied?: () => void;
@@ -38,7 +42,7 @@ export function CopyButton({
   return (
     <>
       <button
-        aria-label={iconOnly ? idleLabel : undefined}
+        aria-label={iconOnly ? (copied ? copiedLabel : idleLabel) : undefined}
         className={`copy-button${copied ? ' is-copied' : ''}${className ? ` ${className}` : ''}`}
         title={iconOnly ? (copied ? 'Copied' : idleLabel) : undefined}
         type="button"
@@ -71,7 +75,7 @@ export function CopyButton({
       </button>
       {showFallback ? (
         <label className="copy-fallback">
-          <span>Copy this message</span>
+          <span>{fallbackLabel}</span>
           <textarea
             readOnly
             ref={fallbackRef}
