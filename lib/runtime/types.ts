@@ -1,119 +1,151 @@
-export type SessionPhase =
-  | 'SETUP'
-  | 'READY_FOR_ACTION'
-  | 'AWAITING_NARRATION'
-  | 'AWAITING_FINAL_NARRATION'
-  | 'COMPLETE';
+export type SessionPhase = 'READY' | 'AWAITING_CHAPTER' | 'COMPLETE';
 
-export type AttributeId = string;
-export type AbilityId = string;
-export type LocationId = string;
-export type EndingId = string;
+export type DiscoveryId = string;
+export type FactId = string;
+export type InteractionId = string;
 
-export type ResultTier =
-  | 'critical_success'
-  | 'success'
-  | 'costly_success'
-  | 'setback'
-  | 'critical_setback';
-
-export type NarrationPayload =
-  | { format: 'prose'; text: string }
-  | {
-      format: 'terminal';
-      lines: Array<{
-        kind: 'command' | 'output' | 'system';
-        text: string;
-      }>;
-    };
-
-export type NarrationFormat = NarrationPayload['format'];
-
-export interface Character {
-  name: string;
-  specialty: AttributeId;
-}
-
-export interface RollResult {
-  die: number;
-  attribute: AttributeId;
-  modifier: number;
-  total: number;
-  dc: number;
-  tier: ResultTier;
-}
-
-export interface CanonicalEvent {
+export interface StoryChapter {
   id: string;
-  type:
-    | 'location'
-    | 'item'
-    | 'clue'
-    | 'ability'
-    | 'resolve'
-    | 'story'
-    | 'ending';
-  label: string;
-  detail: string;
+  title: string;
+  prose: string;
+  createdAt: number;
+  turnId: string | null;
+  discoveryIds: DiscoveryId[];
+  effectReceiptId: string | null;
 }
 
-export interface TurnResolution {
-  resolutionId: string;
-  actionId: string;
-  intent: string;
-  turn: number;
-  createdAt: number;
-  roll: RollResult;
-  canonicalEvents: CanonicalEvent[];
-  representedEventIds: string[];
-  mustInclude: string[];
-  mustNotClaim: string[];
-  newAbilityIds: AbilityId[];
+export interface DiscoveryRecord {
+  id: DiscoveryId;
+  chapterId: string;
+  discoveredAt: number;
 }
 
-export interface NarrationEntry {
-  id: string;
-  turn: number;
-  payload: NarrationPayload;
+export interface WorldFact {
+  id: FactId;
+  value: string;
+  revealedByInteractionId: InteractionId;
+  revealedAt: number;
+}
+
+export interface InteractionEffectReceipt {
+  receiptId: string;
+  interactionId: InteractionId;
+  presentation: 'pressed_writing' | 'memory_flashback' | 'world_shift';
+  factIds: FactId[];
+  facts: Array<{ id: FactId; value: string }>;
   createdAt: number;
-  resolution: TurnResolution | null;
+}
+
+export interface PendingTurn {
+  turnId: string;
+  kind: 'choice' | 'interaction';
+  playerChoice: string;
+  createdAt: number;
+  interactionId: InteractionId | null;
+  effectReceipt: InteractionEffectReceipt | null;
+}
+
+export interface InteractionUse {
+  interactionId: InteractionId;
+  status: 'pending' | 'retired';
+  invokedAt: number;
+  retiredAt: number | null;
+  receiptId: string;
+}
+
+export interface OperationReplay {
+  revision: number;
+  turnId?: string;
+  receipt?: InteractionEffectReceipt;
+  chapterId?: string;
 }
 
 export interface OperationRecord {
   operationId: string;
   fingerprint: string;
-  kind: 'action' | 'narration';
-  result: ToolResponse;
+  kind: 'begin_turn' | 'interaction' | 'chapter';
+  replay: OperationReplay;
 }
 
 export interface ExperienceSession {
-  schemaVersion: 2;
   experienceId: string;
   storyId: string;
   sessionId: string;
   revision: number;
   phase: SessionPhase;
-  turn: number;
-  clock: number;
-  resolve: number;
-  character: Character;
-  stats: Record<AttributeId, number>;
-  locationId: LocationId;
-  inventoryIds: string[];
-  clueIds: string[];
-  unlockedAbilityIds: AbilityId[];
-  usedAbilityIds: AbilityId[];
-  narrationEntries: NarrationEntry[];
-  pendingResolution: TurnResolution | null;
-  endingId: EndingId | null;
+  continuitySummary: string;
+  chapters: StoryChapter[];
+  discoveries: DiscoveryRecord[];
+  facts: WorldFact[];
+  interactionUses: InteractionUse[];
+  pendingTurn: PendingTurn | null;
   operationLedger: OperationRecord[];
 }
 
-export interface Affordance {
-  id: string;
-  label: string;
+export interface StoryInteractionDefinition {
+  id: InteractionId;
+  toolName: string;
+  title: string;
   description: string;
-  suggestedApproaches: AttributeId[];
+  cue: string;
+  requiredDiscoveryIds: readonly DiscoveryId[];
+  requiredInteractionIds: readonly InteractionId[];
+  requiredFactIds: readonly FactId[];
+  sealedFacts: ReadonlyArray<{
+    id: FactId;
+    value: string;
+    protectedTerms: readonly string[];
+  }>;
+  presentation: InteractionEffectReceipt['presentation'];
+  completionPolicy: 'must_continue' | 'may_complete' | 'must_complete';
+}
+
+export interface DerivedInteractionSurface {
+  interaction: StoryInteractionDefinition;
+  prerequisitesMet: boolean;
+  registered: boolean;
+  callable: boolean;
+  useStatus: 'unused' | InteractionUse['status'];
+}
+
+export interface StoryDiscoveryRequirement {
+  id: DiscoveryId;
+  requiredInteractionIds: readonly InteractionId[];
+  requiredFactIds: readonly FactId[];
+}
+
+export interface StoryDefinition {
+  id: string;
+  prologue: { title: string; prose: string; continuitySummary: string };
+  discoveryIds: readonly DiscoveryId[];
+  discoveryRequirements: readonly StoryDiscoveryRequirement[];
+  completionRequiredFactIds: readonly FactId[];
+  interactions: readonly StoryInteractionDefinition[];
+}
+
+export interface FrameDefinition {
+  id: 'book';
+}
+
+export interface AgentContract {
+  version: string;
+  instructions: string;
+}
+
+export interface ExperienceDefinition {
+  id: string;
+  title: string;
+  story: StoryDefinition;
+  frame: FrameDefinition;
+  startMessage: string;
+  agentContract: AgentContract;
+}
+
+export interface AvailableInteraction {
+  id: InteractionId;
+  toolName: string;
+  title: string;
+  cue: string;
 }
 
 export interface StoryStateSnapshot {
@@ -122,150 +154,81 @@ export interface StoryStateSnapshot {
   sessionId: string;
   revision: number;
   phase: SessionPhase;
-  requiredNextTool: string;
-  turn: number;
-  clock: number;
-  resolve: number;
-  character: Character;
-  stats: Record<AttributeId, number>;
-  location: { id: LocationId; label: string };
-  inventory: Array<{ id: string; label: string }>;
-  clues: Array<{ id: string; label: string }>;
-  abilities: Array<{ id: AbilityId; label: string; used: boolean }>;
-  affordances: Affordance[];
-  pendingResolution: TurnResolution | null;
-  ending: { id: EndingId; label: string } | null;
-  scenePrompt: string;
+  bootstrap: {
+    protocolVersion: 'living-manuscript-v1';
+    contractVersion: string;
+    instructions: string;
+    mode: 'opening' | 'continuing' | 'recovering' | 'complete';
+  };
+  requiredNextTool: 'commit_story_chapter' | 'none';
+  requiredChapterStatus: 'none' | 'continue' | 'complete' | 'either';
+  allowedNextTools: string[];
+  continuitySummary: string;
+  latestChapter: { title: string; excerpt: string };
+  pending: null | {
+    turnId: string;
+    kind: PendingTurn['kind'];
+    playerChoice: string;
+    interactionId: InteractionId | null;
+    effectReceipt: InteractionEffectReceipt | null;
+  };
+  availableInteractions: AvailableInteraction[];
 }
 
 export interface ToolSuccess {
   ok: true;
   state: StoryStateSnapshot;
-  resolution?: TurnResolution;
-  narrationEntry?: NarrationEntry;
+  turnId?: string;
+  chapter?: StoryChapter;
+  effectReceipt?: InteractionEffectReceipt;
   idempotentReplay?: boolean;
 }
 
 export interface ToolFailure {
   ok: false;
   code:
-    | 'NO_ACTIVE_SESSION'
+    | 'STALE_SESSION'
     | 'STALE_STATE'
-    | 'NARRATION_REQUIRED'
-    | 'ABILITY_LOCKED'
+    | 'CHAPTER_REQUIRED'
+    | 'INTERACTION_LOCKED'
+    | 'INTERACTION_USED'
     | 'ACTION_UNAVAILABLE'
     | 'INVALID_INPUT'
-    | 'OPERATION_ID_REUSED'
-    | 'SAVE_CORRUPT';
+    | 'INVALID_DISCOVERY'
+    | 'SEALED_FACT_LEAK'
+    | 'OPERATION_ID_REUSED';
   message: string;
   state?: StoryStateSnapshot;
-  pendingResolution?: TurnResolution;
 }
 
 export type ToolResponse = ToolSuccess | ToolFailure;
 
-export interface ActionInput {
+export interface BeginStoryTurnInput {
   operationId: string;
+  expectedSessionId: string;
   expectedRevision: number;
-  targetId: string;
-  approach: AttributeId;
-  intent: string;
+  playerChoice: string;
 }
 
-export interface NarrationInput {
+export interface InvokeInteractionInput extends BeginStoryTurnInput {
+  interactionId: InteractionId;
+}
+
+export interface CommitStoryChapterInput {
   operationId: string;
+  expectedSessionId: string;
   expectedRevision: number;
-  resolutionId: string;
-  representedEventIds: string[];
-  payload: NarrationPayload;
+  turnId: string;
+  title: string;
+  prose: string;
+  continuitySummary: string;
+  discoveryIds: DiscoveryId[];
+  status: 'continue' | 'complete';
+  effectReceiptId?: string;
+  representedFactIds?: FactId[];
 }
 
 export interface EngineContext {
   now: () => number;
   id: (prefix: string) => string;
-}
-
-export interface StoryInitialState {
-  clock: number;
-  resolve: number;
-  character: Character;
-  stats: Record<AttributeId, number>;
-  locationId: LocationId;
-  inventoryIds: string[];
-  clueIds: string[];
-  unlockedAbilityIds: AbilityId[];
-  usedAbilityIds: AbilityId[];
-  opening: NarrationPayload;
-}
-
-export interface StoryActionResult {
-  canonicalEvents: CanonicalEvent[];
-  newAbilityIds: AbilityId[];
-  endingId: EndingId | null;
-  mustNotClaim?: string[];
-}
-
-export interface AttributeDescriptor {
-  id: AttributeId;
-  label: string;
-  description: string;
-}
-
-export interface StoryLimits {
-  maxTurns: number;
-  maxClock: number;
-  maxResolve: number;
-}
-
-export interface StoryDefinition {
-  id: string;
-  attributes: readonly AttributeDescriptor[];
-  limits: StoryLimits;
-  createInitialState(
-    name: string,
-    specialty: AttributeId,
-    context: EngineContext,
-  ): StoryInitialState;
-  isAttribute(value: string): boolean;
-  getAffordances(session: ExperienceSession): Affordance[];
-  scenePrompt(session: ExperienceSession): string;
-  locationLabel(id: LocationId): string;
-  itemLabel(id: string): string;
-  clueLabel(id: string): string;
-  abilityLabel(id: AbilityId): string;
-  abilityDescription(id: AbilityId): string;
-  endingLabel(id: EndingId): string;
-  actionDc(actionId: string): number;
-  validateAction(
-    session: ExperienceSession,
-    actionId: string,
-  ): { code: ToolFailure['code']; message: string } | null;
-  applyAction(
-    session: ExperienceSession,
-    actionId: string,
-    roll: RollResult,
-    resolutionId: string,
-  ): StoryActionResult;
-}
-
-export interface NarrationContract {
-  format: NarrationFormat;
-  inputSchema: Record<string, unknown>;
-  normalize(payload: NarrationPayload): NarrationPayload | null;
-  instruction: string;
-}
-
-export interface FrameDefinition {
-  id: string;
-  narrationFormat: NarrationFormat;
-}
-
-export interface ExperienceDefinition {
-  id: string;
-  title: string;
-  story: StoryDefinition;
-  frame: FrameDefinition;
-  narration: NarrationContract;
-  startMessage: string;
-  continueMessage: string;
 }

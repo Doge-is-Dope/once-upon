@@ -1,10 +1,9 @@
-import { isNarrationPayload } from '../runtime/narration';
+import { deriveToolSurface, RUNTIME_LIMITS } from '../runtime/engine';
 import type { ExperienceController } from '../runtime/controller';
 import type {
-  AbilityId,
-  ActionInput,
-  AttributeId,
-  NarrationInput,
+  BeginStoryTurnInput,
+  CommitStoryChapterInput,
+  StoryStateSnapshot,
   ToolResponse,
 } from '../runtime/types';
 
@@ -15,35 +14,6 @@ export type WebMCPStatus =
   | 'unsupported'
   | 'error';
 
-export const CHROME_WEBMCP_MIN_VERSION = 149;
-export const CHROME_WEBMCP_FLAG = 'chrome://flags/#enable-webmcp-testing';
-export const WEBMCP_CLIENT_NAME = 'ChatGPT';
-
-type BrowserBrand = {
-  brand: string;
-  version: string;
-};
-
-export type WebMCPNavigator = Navigator & {
-  userAgentData?: {
-    brands: BrowserBrand[];
-  };
-};
-
-export function classifyMissingWebMCP(
-  navigatorLike: WebMCPNavigator,
-): Extract<WebMCPStatus, 'disabled' | 'unsupported'> {
-  const chrome = navigatorLike.userAgentData?.brands.find(
-    ({ brand }) => brand === 'Google Chrome',
-  );
-  if (!chrome) return 'unsupported';
-  const majorVersion = Number.parseInt(chrome.version, 10);
-  return Number.isInteger(majorVersion) &&
-    majorVersion >= CHROME_WEBMCP_MIN_VERSION
-    ? 'disabled'
-    : 'unsupported';
-}
-
 const EMPTY_SCHEMA = {
   type: 'object',
   properties: {},
@@ -52,323 +22,454 @@ const EMPTY_SCHEMA = {
 const OPERATION_SCHEMA = {
   type: 'string',
   minLength: 6,
-  description:
-    'A unique ID for this exact tool call. Reuse it only when retrying the same call.',
+  maxLength: RUNTIME_LIMITS.idMaxLength,
+  description: 'Unique call ID; reuse only for an identical retry.',
+};
+const SESSION_SCHEMA = {
+  type: 'string',
+  minLength: 1,
+  maxLength: RUNTIME_LIMITS.idMaxLength,
+  description: 'Exact latest manuscript session ID.',
 };
 const REVISION_SCHEMA = {
   type: 'integer',
   minimum: 1,
-  description:
-    'The exact revision returned by the most recent experience tool result.',
+  description: 'Exact latest manuscript revision.',
 };
-export type ExperienceToolName =
-  | 'get_story_state'
-  | 'perform_action'
-  | 'commit_narration';
+const PLAYER_CHOICE_SCHEMA = {
+  type: 'string',
+  minLength: 1,
+  maxLength: 500,
+  description: "The player's latest explicit choice, kept verbatim.",
+};
+const LIVING_MANUSCRIPT_PROTOCOL =
+  "The webpage is the canonical story. Read its state before every player turn. If the state is AWAITING_CHAPTER, commit that exact pending turn before any narrative, question, or new action. If it is READY and the user's latest message already contains an explicit character action, carry it out immediately instead of asking them to repeat it. Use a currently available story-object tool only when that latest message explicitly performs the action in its description; a mention, question, or recollection is not permission to consume it. Otherwise use begin_story_turn with the player's choice verbatim. After either mutation, call commit_story_chapter in the same assistant response and put all 1–3 prose paragraphs there. Never leave new story prose only in chat. Do not reply with narrative or another question until the commit succeeds. After a successful commit, do not repeat the saved prose in chat; briefly ask for the next choice. If the user has not supplied a character action, ask what they do.";
+
+export type ToolActivity = {
+  toolName: string;
+  phase: 'invoked' | 'settled';
+};
 
 export async function registerExperienceTools(
   controller: ExperienceController,
   onStatus: (status: WebMCPStatus) => void,
-  onToolActivity?: (tool: ExperienceToolName) => void,
+  onToolActivity?: (activity: ToolActivity) => void,
+  lifecycleSignal?: AbortSignal,
 ): Promise<() => void> {
   const modelContext = document.modelContext;
   if (!modelContext) {
-    onStatus(classifyMissingWebMCP(navigator as WebMCPNavigator));
+    onStatus('unsupported');
     return () => undefined;
   }
+  const context = modelContext;
 
   onStatus('connecting');
-  const lifetime = new AbortController();
-  const abilityLeases = new Map<AbilityId, AbortController>();
-  const approachSchema = {
-    type: 'string',
-    enum: controller.definition.story.attributes.map((attribute) => attribute.id),
-    description:
-      "Which character attribute best matches the player's described approach.",
-  };
+  const leases = new Map<string, AbortController>();
+  const executing = new Map<string, number>();
+  let disposed = false;
+  let registrationFailed = false;
+  let reconcileAgain = false;
+  let reconcileQueue: Promise<void> = Promise.resolve();
+  let unsubscribe: () => void = () => undefined;
 
-  try {
-    await Promise.all([
-      modelContext.registerTool(
-        {
-          name: 'get_story_state',
-          description: `Read the authoritative local state of ${controller.definition.title}. Always call this at the start, after interruption, after stale-state errors, or when a saved turn may need narration.`,
-          inputSchema: EMPTY_SCHEMA,
-          annotations: {
-            readOnlyHint: true,
-            destructiveHint: false,
-            openWorldHint: false,
-          },
-          execute: async (_input, options) => {
-            assertNotAborted(options?.signal);
-            onToolActivity?.('get_story_state');
-            return webMCPResult(
-              await controller.getState(),
-              Boolean(options?.signal),
-            );
-          },
-        },
-        { signal: lifetime.signal },
-      ),
-      modelContext.registerTool(
-        {
-          name: 'perform_action',
-          description:
-            "Resolve one player action using the experience's D20 and canonical rules. Use only an affordance targetId currently returned by get_story_state. Follow a saved result with commit_narration before any new action.",
-          inputSchema: {
-            type: 'object',
-            properties: {
-              operationId: OPERATION_SCHEMA,
-              expectedRevision: REVISION_SCHEMA,
-              targetId: {
-                type: 'string',
-                description:
-                  'An exact current affordance ID from get_story_state.',
-              },
-              approach: approachSchema,
-              intent: {
-                type: 'string',
-                minLength: 1,
-                maxLength: 280,
-                description:
-                  'A concise restatement of what the player is trying to do.',
-              },
-            },
-            required: [
-              'operationId',
-              'expectedRevision',
-              'targetId',
-              'approach',
-              'intent',
-            ],
-            additionalProperties: false,
-          },
-          annotations: {
-            readOnlyHint: false,
-            destructiveHint: false,
-            openWorldHint: false,
-          },
-          execute: async (raw, options) => {
-            assertNotAborted(options?.signal);
-            onToolActivity?.('perform_action');
-            return webMCPResult(
-              await controller.performAction(readAction(raw)),
-              Boolean(options?.signal),
-            );
-          },
-        },
-        { signal: lifetime.signal },
-      ),
-      modelContext.registerTool(
-        {
-          name: 'commit_narration',
-          description: `Commit narration for the exact pending saved result. ${controller.definition.narration.instruction} Acknowledge every canonical event ID and do not invent facts. This is the only legal mutation while narration is pending.`,
-          inputSchema: {
-            type: 'object',
-            properties: {
-              operationId: OPERATION_SCHEMA,
-              expectedRevision: REVISION_SCHEMA,
-              resolutionId: {
-                type: 'string',
-                description: 'The exact pending resolutionId.',
-              },
-              representedEventIds: {
-                type: 'array',
-                items: { type: 'string' },
-                minItems: 1,
-                description:
-                  'Every canonical event ID represented in the narration payload.',
-              },
-              payload: controller.definition.narration.inputSchema,
-            },
-            required: [
-              'operationId',
-              'expectedRevision',
-              'resolutionId',
-              'representedEventIds',
-              'payload',
-            ],
-            additionalProperties: false,
-          },
-          annotations: {
-            readOnlyHint: false,
-            destructiveHint: false,
-            openWorldHint: false,
-          },
-          execute: async (raw, options) => {
-            assertNotAborted(options?.signal);
-            onToolActivity?.('commit_narration');
-            return webMCPResult(
-              await controller.commitNarration(readNarration(raw)),
-              Boolean(options?.signal),
-            );
-          },
-        },
-        { signal: lifetime.signal },
-      ),
-    ]);
-    onStatus('connected');
-  } catch (error) {
-    lifetime.abort();
-    for (const lease of abilityLeases.values()) lease.abort();
-    abilityLeases.clear();
-    if (isPermissionDenied(error)) onStatus('disabled');
-    else {
-      console.error('WebMCP registration failed', error);
-      onStatus('error');
-    }
-    return () => undefined;
-  }
-
-  const syncAbilities = (): void => {
-    const snapshot = controller.getSnapshot();
-    const unlocked = new Set(
-      snapshot?.phase === 'COMPLETE'
-        ? []
-        : (snapshot?.unlockedAbilityIds ?? []).filter(
-            (id) => !snapshot?.usedAbilityIds.includes(id),
-          ),
-    );
-    for (const abilityId of abilityLeases.keys()) {
-      if (!unlocked.has(abilityId)) {
-        abilityLeases.get(abilityId)?.abort();
-        abilityLeases.delete(abilityId);
-      }
-    }
-    for (const abilityId of unlocked) {
-      if (!abilityLeases.has(abilityId))
-        void registerAbility(
-          modelContext,
-          controller,
-          abilityId,
-          abilityLeases,
-          onStatus,
-          onToolActivity,
-        );
-    }
-  };
-  syncAbilities();
-  const unsubscribe = controller.subscribe(syncAbilities);
-
-  return () => {
+  const dispose = (): void => {
+    if (disposed) return;
+    disposed = true;
     unsubscribe();
-    for (const lease of abilityLeases.values()) lease.abort();
-    lifetime.abort();
+    lifecycleSignal?.removeEventListener('abort', dispose);
+    for (const lease of leases.values()) lease.abort();
+    leases.clear();
   };
-}
 
-async function registerAbility(
-  modelContext: WebMCPModelContext,
-  controller: ExperienceController,
-  abilityId: AbilityId,
-  leases: Map<AbilityId, AbortController>,
-  onStatus: (status: WebMCPStatus) => void,
-  onToolActivity?: (tool: ExperienceToolName) => void,
-): Promise<void> {
-  const lease = new AbortController();
-  leases.set(abilityId, lease);
-  try {
-    await modelContext.registerTool(
-      {
-        name: abilityId,
-        description: `${controller.definition.story.abilityLabel(abilityId)} — ${controller.definition.story.abilityDescription(abilityId)} Use only when unlocked in the saved state, then commit narration for the returned pending result.`,
-        inputSchema: {
-          type: 'object',
-          properties: {
-            operationId: OPERATION_SCHEMA,
-            expectedRevision: REVISION_SCHEMA,
-            approach: {
-              type: 'string',
-              enum: controller.definition.story.attributes.map((attribute) => attribute.id),
-              description:
-                "Which character attribute best matches the player's described approach.",
-            },
-            intent: {
-              type: 'string',
-              minLength: 1,
-              maxLength: 280,
-              description:
-                'How the player invokes this ability in the current scene.',
-            },
-          },
-          required: ['operationId', 'expectedRevision', 'approach', 'intent'],
-          additionalProperties: false,
-        },
-        annotations: {
-          readOnlyHint: false,
-          destructiveHint: false,
-          openWorldHint: false,
-        },
-        execute: async (raw, options) => {
-          assertNotAborted(options?.signal);
-          onToolActivity?.('perform_action');
-          return webMCPResult(
-            await controller.performAction({
-              ...readAbility(raw),
-              targetId: abilityId,
-            }),
-            Boolean(options?.signal),
-          );
-        },
-      },
-      { signal: lease.signal },
-    );
-  } catch (error) {
-    if (!lease.signal.aborted) {
-      lease.abort();
-      leases.delete(abilityId);
+  if (lifecycleSignal?.aborted) {
+    dispose();
+    return dispose;
+  }
+  lifecycleSignal?.addEventListener('abort', dispose, { once: true });
+
+  const scheduleReconcile = (): void => {
+    if (disposed || registrationFailed) return;
+    reconcileQueue = reconcileQueue.then(reconcile).catch((error) => {
+      if (disposed) return;
+      registrationFailed = true;
+      for (const lease of leases.values()) lease.abort();
+      leases.clear();
       if (isPermissionDenied(error)) onStatus('disabled');
       else {
-        console.error(`Could not register ${abilityId}`, error);
+        console.error('WebMCP registration failed', error);
         onStatus('error');
+      }
+    });
+  };
+
+  const execute = async (
+    toolName: string,
+    work: () => Promise<ToolResponse>,
+    signal?: AbortSignal,
+  ) => {
+    assertNotAborted(signal);
+    executing.set(toolName, (executing.get(toolName) ?? 0) + 1);
+    onToolActivity?.({ toolName, phase: 'invoked' });
+    try {
+      return webMCPResult(await work(), Boolean(signal));
+    } finally {
+      const remaining = (executing.get(toolName) ?? 1) - 1;
+      if (remaining > 0) executing.set(toolName, remaining);
+      else executing.delete(toolName);
+      onToolActivity?.({ toolName, phase: 'settled' });
+      if (reconcileAgain && !disposed) {
+        reconcileAgain = false;
+        globalThis.setTimeout(scheduleReconcile, 0);
+      }
+    }
+  };
+
+  async function reconcile(): Promise<void> {
+    if (disposed) return;
+    const desired = deriveToolSurface(
+      controller.definition,
+      controller.getSnapshot(),
+    );
+    const desiredSet = new Set(desired);
+    for (const [name, lease] of leases) {
+      if (desiredSet.has(name)) continue;
+      if (executing.has(name)) {
+        reconcileAgain = true;
+        continue;
+      }
+      lease.abort();
+      leases.delete(name);
+    }
+    for (const name of desired) {
+      if (disposed || leases.has(name)) continue;
+      const lease = new AbortController();
+      leases.set(name, lease);
+      try {
+        await context.registerTool(makeTool(controller, name, execute), {
+          signal: lease.signal,
+        });
+      } catch (error) {
+        lease.abort();
+        leases.delete(name);
+        throw error;
       }
     }
   }
+
+  unsubscribe = controller.subscribe(scheduleReconcile);
+  scheduleReconcile();
+  try {
+    await reconcileQueue;
+    if (!disposed && !registrationFailed) onStatus('connected');
+  } catch {
+    // scheduleReconcile maps registration errors to a user-facing status.
+  }
+
+  return dispose;
 }
 
-function isPermissionDenied(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'name' in error &&
-    error.name === 'NotAllowedError'
+function makeTool(
+  controller: ExperienceController,
+  name: string,
+  execute: (
+    toolName: string,
+    work: () => Promise<ToolResponse>,
+    signal?: AbortSignal,
+  ) => Promise<ReturnType<typeof webMCPResult>>,
+): WebMCPToolDefinition {
+  const commonAnnotations = {
+    readOnlyHint: false,
+    destructiveHint: false,
+    openWorldHint: false,
+    untrustedContentHint: true,
+  };
+  if (name === 'get_story_state')
+    return {
+      name,
+      title: `Start or resume ${controller.definition.title}`,
+      description: `Read the canonical manuscript before every player turn. Use it to start or resume ${controller.definition.title}, then follow the returned instructions and allowedNextTools.`,
+      inputSchema: EMPTY_SCHEMA,
+      annotations: { ...commonAnnotations, readOnlyHint: true },
+      execute: (raw, options) =>
+        execute(
+          name,
+          () =>
+            exactObject(raw, [], [])
+              ? controller.getState()
+              : Promise.resolve(
+                  controller.invalidInput(
+                    'get_story_state accepts no input fields.',
+                  ),
+                ),
+          options?.signal,
+        ),
+    };
+  if (name === 'begin_story_turn')
+    return {
+      name,
+      title: 'Begin a story turn',
+      description:
+        "Save the player's latest free choice when allowedNextTools includes this tool. Then call commit_story_chapter in the same response.",
+      inputSchema: {
+        type: 'object',
+        properties: {
+          operationId: OPERATION_SCHEMA,
+          expectedSessionId: SESSION_SCHEMA,
+          expectedRevision: REVISION_SCHEMA,
+          playerChoice: PLAYER_CHOICE_SCHEMA,
+        },
+        required: [
+          'operationId',
+          'expectedSessionId',
+          'expectedRevision',
+          'playerChoice',
+        ],
+        additionalProperties: false,
+      },
+      annotations: commonAnnotations,
+      execute: (raw, options) =>
+        execute(
+          name,
+          () =>
+            parseAndRun(
+              controller,
+              () => readBeginTurn(raw),
+              (input) => controller.beginStoryTurn(input, options?.signal),
+            ),
+          options?.signal,
+        ),
+    };
+  if (name === 'commit_story_chapter')
+    return {
+      name,
+      title: 'Commit the next chapter',
+      description:
+        'Finish the exact pending turn when requiredNextTool names this tool. Save all 1–3 prose paragraphs to the webpage before replying.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          operationId: OPERATION_SCHEMA,
+          expectedSessionId: SESSION_SCHEMA,
+          expectedRevision: REVISION_SCHEMA,
+          turnId: {
+            type: 'string',
+            minLength: 1,
+            maxLength: RUNTIME_LIMITS.idMaxLength,
+            description: 'Exact pending turn ID.',
+          },
+          title: { type: 'string', minLength: 1, maxLength: 80 },
+          prose: {
+            type: 'string',
+            minLength: 20,
+            maxLength: 20_000,
+            description: 'One to three short story paragraphs.',
+          },
+          continuitySummary: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 700,
+            description: 'Compact current continuity for the next turn.',
+          },
+          discoveryIds: {
+            type: 'array',
+            maxItems: controller.definition.story.discoveryIds.length,
+            uniqueItems: true,
+            items: {
+              type: 'string',
+              enum: [...controller.definition.story.discoveryIds],
+            },
+            description: 'Authored discoveries established in this prose.',
+          },
+          status: { type: 'string', enum: ['continue', 'complete'] },
+          effectReceiptId: {
+            type: 'string',
+            description: 'Exact pending effect receipt, when present.',
+          },
+          representedFactIds: {
+            type: 'array',
+            maxItems: controller.definition.story.interactions.reduce(
+              (count, interaction) =>
+                Math.max(count, interaction.sealedFacts.length),
+              0,
+            ),
+            uniqueItems: true,
+            items: {
+              type: 'string',
+              enum: controller.definition.story.interactions.flatMap(
+                ({ sealedFacts }) => sealedFacts.map(({ id }) => id),
+              ),
+            },
+            description: 'Every fact ID in the pending effect receipt.',
+          },
+        },
+        required: [
+          'operationId',
+          'expectedSessionId',
+          'expectedRevision',
+          'turnId',
+          'title',
+          'prose',
+          'continuitySummary',
+          'discoveryIds',
+          'status',
+        ],
+        additionalProperties: false,
+      },
+      annotations: commonAnnotations,
+      execute: (raw, options) =>
+        execute(
+          name,
+          () =>
+            parseAndRun(
+              controller,
+              () => readChapter(controller, raw),
+              (input) => controller.commitStoryChapter(input, options?.signal),
+            ),
+          options?.signal,
+        ),
+    };
+
+  const interaction = controller.definition.story.interactions.find(
+    ({ toolName }) => toolName === name,
   );
-}
-
-function readAction(raw: Record<string, unknown>): ActionInput {
+  if (!interaction) throw new Error(`Unknown derived tool: ${name}`);
   return {
-    operationId: stringValue(raw.operationId),
-    expectedRevision: numberValue(raw.expectedRevision),
-    targetId: stringValue(raw.targetId),
-    approach: attributeValue(raw.approach),
-    intent: stringValue(raw.intent),
+    name,
+    title: interaction.title,
+    description: `${interaction.description} After success, call commit_story_chapter in the same response before replying.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operationId: OPERATION_SCHEMA,
+        expectedSessionId: SESSION_SCHEMA,
+        expectedRevision: REVISION_SCHEMA,
+        playerChoice: PLAYER_CHOICE_SCHEMA,
+      },
+      required: [
+        'operationId',
+        'expectedSessionId',
+        'expectedRevision',
+        'playerChoice',
+      ],
+      additionalProperties: false,
+    },
+    annotations: commonAnnotations,
+    execute: (raw, options) =>
+      execute(
+        name,
+        () =>
+          parseAndRun(
+            controller,
+            () => readBeginTurn(raw),
+            (input) =>
+              controller.invokeInteraction(
+                { ...input, interactionId: interaction.id },
+                options?.signal,
+              ),
+          ),
+        options?.signal,
+      ),
   };
 }
 
-function readAbility(
+function readBeginTurn(raw: Record<string, unknown>): BeginStoryTurnInput {
+  requireExactObject(raw, [
+    'operationId',
+    'expectedSessionId',
+    'expectedRevision',
+    'playerChoice',
+  ]);
+  return {
+    operationId: requiredString(
+      raw.operationId,
+      'operationId',
+      RUNTIME_LIMITS.idMaxLength,
+    ),
+    expectedSessionId: requiredString(
+      raw.expectedSessionId,
+      'expectedSessionId',
+      RUNTIME_LIMITS.idMaxLength,
+    ),
+    expectedRevision: requiredInteger(raw.expectedRevision, 'expectedRevision'),
+    playerChoice: requiredString(
+      raw.playerChoice,
+      'playerChoice',
+      RUNTIME_LIMITS.choiceMaxLength,
+    ),
+  };
+}
+
+function readChapter(
+  controller: ExperienceController,
   raw: Record<string, unknown>,
-): Omit<ActionInput, 'targetId'> {
+): CommitStoryChapterInput {
+  requireExactObject(
+    raw,
+    [
+      'operationId',
+      'expectedSessionId',
+      'expectedRevision',
+      'turnId',
+      'title',
+      'prose',
+      'continuitySummary',
+      'discoveryIds',
+      'status',
+    ],
+    ['effectReceiptId', 'representedFactIds'],
+  );
+  if (raw.status !== 'continue' && raw.status !== 'complete')
+    throw new InputError('status must be exactly continue or complete.');
+  const discoveryIds = requiredStringArray(raw.discoveryIds, 'discoveryIds');
+  const knownDiscoveries = new Set(controller.definition.story.discoveryIds);
+  rejectUnknownIds(discoveryIds, knownDiscoveries, 'discoveryIds');
+  const knownFacts = new Set(
+    controller.definition.story.interactions.flatMap(({ sealedFacts }) =>
+      sealedFacts.map(({ id }) => id),
+    ),
+  );
+  const representedFactIds =
+    raw.representedFactIds === undefined
+      ? undefined
+      : requiredStringArray(raw.representedFactIds, 'representedFactIds');
+  if (representedFactIds)
+    rejectUnknownIds(representedFactIds, knownFacts, 'representedFactIds');
   return {
-    operationId: stringValue(raw.operationId),
-    expectedRevision: numberValue(raw.expectedRevision),
-    approach: attributeValue(raw.approach),
-    intent: stringValue(raw.intent),
-  };
-}
-
-function readNarration(raw: Record<string, unknown>): NarrationInput {
-  return {
-    operationId: stringValue(raw.operationId),
-    expectedRevision: numberValue(raw.expectedRevision),
-    resolutionId: stringValue(raw.resolutionId),
-    representedEventIds: Array.isArray(raw.representedEventIds)
-      ? raw.representedEventIds.filter(
-          (value): value is string => typeof value === 'string',
-        )
-      : [],
-    payload: isNarrationPayload(raw.payload)
-      ? raw.payload
-      : { format: 'prose', text: '' },
+    operationId: requiredString(
+      raw.operationId,
+      'operationId',
+      RUNTIME_LIMITS.idMaxLength,
+    ),
+    expectedSessionId: requiredString(
+      raw.expectedSessionId,
+      'expectedSessionId',
+      RUNTIME_LIMITS.idMaxLength,
+    ),
+    expectedRevision: requiredInteger(raw.expectedRevision, 'expectedRevision'),
+    turnId: requiredString(raw.turnId, 'turnId', RUNTIME_LIMITS.idMaxLength),
+    title: requiredString(
+      raw.title,
+      'title',
+      RUNTIME_LIMITS.chapterTitleMaxLength,
+    ),
+    prose: requiredString(raw.prose, 'prose', 20_000),
+    continuitySummary: requiredString(
+      raw.continuitySummary,
+      'continuitySummary',
+      RUNTIME_LIMITS.summaryMaxLength,
+    ),
+    discoveryIds,
+    status: raw.status,
+    ...(raw.effectReceiptId !== undefined
+      ? {
+          effectReceiptId: requiredString(
+            raw.effectReceiptId,
+            'effectReceiptId',
+            RUNTIME_LIMITS.idMaxLength,
+          ),
+        }
+      : {}),
+    ...(representedFactIds ? { representedFactIds } : {}),
   };
 }
 
@@ -380,43 +481,136 @@ function webMCPResult(
   structuredContent: ToolResponse & { clientCancellation: string };
 } {
   const text = result.ok
-    ? result.resolution
-      ? `Roll saved as ${result.resolution.resolutionId}. You must now call commit_narration for this exact result before any new action.`
-      : result.narrationEntry
-        ? `Narration for turn ${result.narrationEntry.turn} saved. Revision is now ${result.state.revision}.`
-        : `Story state read. Required next tool: ${result.state.requiredNextTool}.`
-    : `${result.code}: ${result.message}`;
-  const structuredContent = {
-    ...result,
-    clientCancellation: hasExecutionSignal
-      ? 'available'
-      : 'unavailable_device_local_only',
-  };
+    ? result.effectReceipt
+      ? `The page changed. REQUIRED NEXT: commit receipt ${result.effectReceipt.receiptId} and its exact facts before any narrative or question.`
+      : result.chapter
+        ? result.state.phase === 'COMPLETE'
+          ? 'Final chapter saved to the webpage. The story is complete.'
+          : `Chapter saved to the webpage at revision ${result.state.revision}. Do not repeat it in chat; briefly ask for the next choice.`
+        : result.turnId
+          ? `Player choice saved as turn ${result.turnId}. REQUIRED NEXT: call commit_story_chapter now, before any narrative or question.`
+          : stateGuidance(result.state)
+    : `${result.code}: ${result.message}${result.state?.phase === 'AWAITING_CHAPTER' ? ' Do not narrate or ask a new question; finish the pending chapter first.' : ''}`;
   return {
-    content: [
-      {
-        type: 'text',
-        text: `${text}\nClient cancellation: ${structuredContent.clientCancellation}.\n\n${JSON.stringify(structuredContent)}`,
-      },
-    ],
-    structuredContent,
+    content: [{ type: 'text', text }],
+    structuredContent: {
+      ...result,
+      clientCancellation: hasExecutionSignal
+        ? 'before_commit_point'
+        : 'unavailable_device_local_only',
+    },
   };
+}
+
+function stateGuidance(state: StoryStateSnapshot): string {
+  const contract = `${LIVING_MANUSCRIPT_PROTOCOL} Story contract ${state.bootstrap.contractVersion}: ${state.bootstrap.instructions}`;
+  if (state.phase === 'AWAITING_CHAPTER' && state.pending)
+    return `${contract}\n\nA chapter is pending. Commit turn ${state.pending.turnId} before any narrative, question, or new action.`;
+  if (state.phase === 'COMPLETE')
+    return `${contract}\n\nThe manuscript is complete. Read it without starting another action.`;
+  const storyObjectTools = state.availableInteractions.map(
+    ({ toolName }) => toolName,
+  );
+  const objectGuidance = storyObjectTools.length
+    ? ` An explicitly matching story-object action may use ${storyObjectTools.join(', ')}; otherwise use begin_story_turn.`
+    : ' Use begin_story_turn for an explicit character action.';
+  return `${contract}\n\nStory state read.${objectGuidance} If the latest user message contains no character action, ask what they do.`;
+}
+
+function isPermissionDenied(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    error.name === 'NotAllowedError'
+  );
 }
 
 function assertNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted)
     throw new DOMException(
-      'The tool call was cancelled before it changed the story.',
+      'The tool call was cancelled before it changed the manuscript.',
       'AbortError',
     );
 }
 
-function stringValue(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+class InputError extends Error {}
+
+async function parseAndRun<T>(
+  controller: ExperienceController,
+  parse: () => T,
+  run: (input: T) => Promise<ToolResponse>,
+): Promise<ToolResponse> {
+  try {
+    return await run(parse());
+  } catch (error) {
+    if (error instanceof InputError)
+      return controller.invalidInput(error.message);
+    throw error;
+  }
 }
-function numberValue(value: unknown): number {
-  return typeof value === 'number' ? value : Number.NaN;
+
+function exactObject(
+  raw: unknown,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): raw is Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const keys = Object.keys(raw);
+  const allowed = new Set([...required, ...optional]);
+  return (
+    required.every((key) => Object.hasOwn(raw, key)) &&
+    keys.every((key) => allowed.has(key))
+  );
 }
-function attributeValue(value: unknown): AttributeId {
-  return typeof value === 'string' ? value : '';
+
+function requireExactObject(
+  raw: unknown,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): asserts raw is Record<string, unknown> {
+  if (!exactObject(raw, required, optional))
+    throw new InputError(
+      'Input must contain exactly the documented required and optional fields.',
+    );
+}
+
+function requiredString(
+  value: unknown,
+  field: string,
+  maxLength: number,
+): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > maxLength)
+    throw new InputError(
+      `${field} must be a non-empty string of ${maxLength} characters or fewer.`,
+    );
+  return value;
+}
+
+function requiredInteger(value: unknown, field: string): number {
+  if (!Number.isInteger(value) || (value as number) < 1)
+    throw new InputError(`${field} must be a positive integer.`);
+  return value as number;
+}
+
+function requiredStringArray(value: unknown, field: string): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== 'string') ||
+    new Set(value).size !== value.length
+  )
+    throw new InputError(`${field} must be an array of unique strings.`);
+  return value as string[];
+}
+
+function rejectUnknownIds(
+  ids: readonly string[],
+  known: ReadonlySet<string>,
+  field: string,
+): void {
+  const unknown = ids.filter((id) => !known.has(id));
+  if (unknown.length)
+    throw new InputError(
+      `${field} contains unknown IDs: ${unknown.join(', ')}.`,
+    );
 }

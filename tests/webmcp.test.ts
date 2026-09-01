@@ -1,94 +1,593 @@
-import { describe, expect, it } from 'vitest';
-import {
-  classifyMissingWebMCP,
-  registerExperienceTools,
-  type WebMCPNavigator,
-} from '../lib/webmcp/tools';
+import { afterEach, describe, expect, it } from 'vitest';
 import { ExperienceController } from '../lib/runtime/controller';
-import type { ExperienceStore } from '../lib/runtime/store';
-import { fixtureExperience } from './fixtures';
+import {
+  beginStoryTurn,
+  commitStoryChapter,
+  createExperienceSession,
+} from '../lib/runtime/engine';
+import type { ExperienceSession } from '../lib/runtime/types';
+import { registerExperienceTools } from '../lib/webmcp/tools';
+import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
+import { operationId, ordinaryProse, testContext } from './helpers';
 
-function browser(brands?: Array<{ brand: string; version: string }>) {
-  return {
-    userAgentData: brands ? { brands } : undefined,
-  } as unknown as WebMCPNavigator;
+type Registered = {
+  tool: WebMCPToolDefinition;
+  signal?: AbortSignal;
+};
+
+const originalDocument = Object.getOwnPropertyDescriptor(
+  globalThis,
+  'document',
+);
+
+afterEach(() => {
+  if (originalDocument)
+    Object.defineProperty(globalThis, 'document', originalDocument);
+  else Reflect.deleteProperty(globalThis, 'document');
+});
+
+function installModelContext(failName?: string) {
+  const current = new Map<string, Registered>();
+  const history: Registered[] = [];
+  const context = Object.assign(new EventTarget(), {
+    registerTool(
+      tool: WebMCPToolDefinition,
+      options?: { signal?: AbortSignal },
+    ) {
+      if (tool.name === failName) return Promise.reject(new Error('refused'));
+      const record = { tool, signal: options?.signal };
+      current.set(tool.name, record);
+      history.push(record);
+      options?.signal?.addEventListener(
+        'abort',
+        () => {
+          if (current.get(tool.name) === record) current.delete(tool.name);
+        },
+        { once: true },
+      );
+      return Promise.resolve();
+    },
+  }) as WebMCPModelContext;
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { modelContext: context },
+  });
+  return { current, history };
 }
 
-describe('missing WebMCP classification', () => {
-  it('treats Chrome 149 and newer as disabled', () => {
-    expect(
-      classifyMissingWebMCP(
-        browser([{ brand: 'Google Chrome', version: '149' }]),
-      ),
-    ).toBe('disabled');
-    expect(
-      classifyMissingWebMCP(
-        browser([{ brand: 'Google Chrome', version: '153.0.0.0' }]),
-      ),
-    ).toBe('disabled');
+function installDelayedModelContext() {
+  const current = new Map<string, Registered>();
+  const history: Registered[] = [];
+  let delayFirst = true;
+  let releaseFirst: () => void = () => undefined;
+  const context = Object.assign(new EventTarget(), {
+    registerTool(
+      tool: WebMCPToolDefinition,
+      options?: { signal?: AbortSignal },
+    ) {
+      const record = { tool, signal: options?.signal };
+      history.push(record);
+      return new Promise<void>((resolve, reject) => {
+        const install = () => {
+          if (options?.signal?.aborted) {
+            resolve();
+            return;
+          }
+          if (current.has(tool.name)) {
+            reject(new Error(`duplicate registration: ${tool.name}`));
+            return;
+          }
+          current.set(tool.name, record);
+          options?.signal?.addEventListener(
+            'abort',
+            () => {
+              if (current.get(tool.name) === record) current.delete(tool.name);
+            },
+            { once: true },
+          );
+          resolve();
+        };
+        if (delayFirst) {
+          delayFirst = false;
+          releaseFirst = install;
+        } else install();
+      });
+    },
+  }) as WebMCPModelContext;
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { modelContext: context },
   });
+  return { current, history, releaseFirst: () => releaseFirst() };
+}
 
-  it('does not offer the Chrome flag to older or unconfirmed browsers', () => {
-    expect(
-      classifyMissingWebMCP(
-        browser([{ brand: 'Google Chrome', version: '148' }]),
-      ),
-    ).toBe('unsupported');
-    expect(
-      classifyMissingWebMCP(browser([{ brand: 'Chromium', version: '153' }])),
-    ).toBe('unsupported');
-    expect(classifyMissingWebMCP(browser())).toBe('unsupported');
+function installRejectedModelContext(error: Error) {
+  const context = Object.assign(new EventTarget(), {
+    registerTool() {
+      return Promise.reject(error);
+    },
+  }) as WebMCPModelContext;
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { modelContext: context },
   });
+}
 
-  it('registers narration-neutral core tools with the configured payload schema', async () => {
-    const registered: WebMCPToolDefinition[] = [];
-    const modelContext = Object.assign(new EventTarget(), {
-      registerTool(tool: WebMCPToolDefinition) {
-        registered.push(tool);
-        return Promise.resolve();
-      },
-    }) as WebMCPModelContext;
-    const originalDocument = Object.getOwnPropertyDescriptor(
-      globalThis,
-      'document',
-    );
+async function controllerFor(session?: ExperienceSession) {
+  const initial =
+    session ?? createExperienceSession(experienceDefinition, testContext());
+  const controller = new ExperienceController(experienceDefinition, initial);
+  return { controller };
+}
+
+function pencilAvailableSession() {
+  let session = createExperienceSession(experienceDefinition, testContext());
+  session = beginStoryTurn(
+    experienceDefinition,
+    session,
+    {
+      operationId: operationId('prep_begin'),
+      expectedSessionId: session.sessionId,
+      expectedRevision: session.revision,
+      playerChoice: 'I search the desk drawer and find a pencil.',
+    },
+    testContext(),
+  ).session;
+  return commitStoryChapter(
+    experienceDefinition,
+    session,
+    {
+      operationId: operationId('prep_chapter'),
+      expectedSessionId: session.sessionId,
+      expectedRevision: session.revision,
+      turnId: session.pendingTurn!.turnId,
+      title: 'A pencil in the drawer',
+      prose: ordinaryProse,
+      continuitySummary:
+        'You found a pencil near the table. The torn notebook, handleless door, wardrobe, and unanswered North Station question remain in the room.',
+      discoveryIds: ['pencil_found'],
+      status: 'continue',
+    },
+    testContext(),
+  ).session;
+}
+
+describe('WebMCP living tool surface', () => {
+  it('reports unsupported when WebMCP is unavailable for the page', async () => {
     Object.defineProperty(globalThis, 'document', {
       configurable: true,
-      value: { modelContext },
+      value: {},
     });
-    const emptyStore: ExperienceStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      mutate: () => Promise.resolve(null),
-      clear: () => Promise.resolve(),
-      quarantineCorrupt: () => Promise.resolve(),
-    };
+    const { controller } = await controllerFor();
+    const statuses: string[] = [];
 
-    try {
-      const statuses: string[] = [];
-      const cleanup = await registerExperienceTools(
-        new ExperienceController(fixtureExperience(), emptyStore),
-        (status) => statuses.push(status),
-      );
-      expect(registered.map((tool) => tool.name)).toEqual([
-        'get_story_state',
-        'perform_action',
-        'commit_narration',
-      ]);
-      const narrationSchema = registered[2].inputSchema;
-      expect(narrationSchema).toBeDefined();
-      expect(
-        (narrationSchema!.properties as Record<string, unknown>).payload,
-      ).toMatchObject({
-        type: 'object',
-        properties: { format: { const: 'prose' } },
+    const cleanup = await registerExperienceTools(controller, (status) =>
+      statuses.push(status),
+    );
+
+    expect(statuses).toEqual(['unsupported']);
+    cleanup();
+  });
+
+  it('reports disabled when WebMCP registration is blocked', async () => {
+    installRejectedModelContext(
+      new DOMException('site tools are disabled', 'NotAllowedError'),
+    );
+    const { controller } = await controllerFor();
+    const statuses: string[] = [];
+
+    const cleanup = await registerExperienceTools(controller, (status) =>
+      statuses.push(status),
+    );
+
+    expect(statuses).toEqual(['connecting', 'disabled']);
+    cleanup();
+  });
+
+  it('registers stable core tools with a self-describing bootstrap contract', async () => {
+    const registry = installModelContext();
+    const { controller } = await controllerFor();
+    const statuses: string[] = [];
+    const cleanup = await registerExperienceTools(controller, (status) =>
+      statuses.push(status),
+    );
+    expect([...registry.current.keys()]).toEqual([
+      'get_story_state',
+      'begin_story_turn',
+      'commit_story_chapter',
+    ]);
+    const getState = registry.current.get('get_story_state')!.tool;
+    expect(getState.annotations).toMatchObject({
+      readOnlyHint: true,
+      untrustedContentHint: true,
+    });
+    expect(getState).not.toHaveProperty('exposedTo');
+    expect(getState.title).toBe('Start or resume The Last Manuscript');
+    expect(getState.description).toContain('before every player turn');
+    expect(getState.description.length).toBeLessThan(240);
+    expect(getState.description).not.toContain('last-manuscript-agent-v1');
+    expect(getState.description).not.toContain(
+      'close second-person novel prose',
+    );
+    expect(getState.description).not.toContain('Sixth time');
+    const bootstrap = (await getState.execute({})) as {
+      content: Array<{ text: string }>;
+      structuredContent: {
+        state: {
+          requiredNextTool: string;
+          allowedNextTools: string[];
+          bootstrap: {
+            protocolVersion: string;
+            contractVersion: string;
+            instructions: string;
+            mode: string;
+          };
+        };
+      };
+    };
+    expect(bootstrap.structuredContent.state.bootstrap).toEqual({
+      protocolVersion: 'living-manuscript-v1',
+      contractVersion: 'last-manuscript-agent-v1',
+      instructions: expect.stringContaining('close second-person novel prose'),
+      mode: 'opening',
+    });
+    expect(bootstrap.structuredContent.state.requiredNextTool).toBe('none');
+    expect(bootstrap.structuredContent.state.allowedNextTools).toEqual([
+      'begin_story_turn',
+    ]);
+    expect(bootstrap.content[0].text).toContain(
+      'If the latest user message contains no character action, ask what they do.',
+    );
+    expect(bootstrap.content[0].text).toContain(
+      'latest message already contains an explicit character action',
+    );
+    expect(bootstrap.content[0].text).toContain(
+      'a mention, question, or recollection is not permission',
+    );
+    expect(
+      registry.current.get('begin_story_turn')!.tool.description,
+    ).toContain('commit_story_chapter in the same response');
+    expect(statuses).toEqual(['connecting', 'connected']);
+    cleanup();
+  });
+
+  it('cleans partial registrations and does not report a failed surface as connected', async () => {
+    const registry = installModelContext('begin_story_turn');
+    const { controller } = await controllerFor();
+    const statuses: string[] = [];
+    const cleanup = await registerExperienceTools(controller, (status) =>
+      statuses.push(status),
+    );
+    expect(registry.current.size).toBe(0);
+    expect(statuses).toEqual(['connecting', 'error']);
+    cleanup();
+  });
+
+  it('aborts an in-flight connection before a replacement registers the same names', async () => {
+    const registry = installDelayedModelContext();
+    const { controller } = await controllerFor();
+    const firstLifecycle = new AbortController();
+    const firstStatuses: string[] = [];
+    const firstRegistration = registerExperienceTools(
+      controller,
+      (status) => firstStatuses.push(status),
+      undefined,
+      firstLifecycle.signal,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(registry.history.map(({ tool }) => tool.name)).toEqual([
+      'get_story_state',
+    ]);
+
+    firstLifecycle.abort();
+    registry.releaseFirst();
+    const firstCleanup = await firstRegistration;
+    expect(registry.current.size).toBe(0);
+    expect(firstStatuses).toEqual(['connecting']);
+
+    const secondStatuses: string[] = [];
+    const secondCleanup = await registerExperienceTools(controller, (status) =>
+      secondStatuses.push(status),
+    );
+    expect([...registry.current.keys()]).toEqual([
+      'get_story_state',
+      'begin_story_turn',
+      'commit_story_chapter',
+    ]);
+    expect(secondStatuses).toEqual(['connecting', 'connected']);
+    expect(registry.history.map(({ tool }) => tool.name)).toEqual([
+      'get_story_state',
+      'get_story_state',
+      'begin_story_turn',
+      'commit_story_chapter',
+    ]);
+    firstCleanup();
+    secondCleanup();
+  });
+
+  it('keeps every core lease stable across READY and AWAITING_CHAPTER', async () => {
+    const registry = installModelContext();
+    const { controller } = await controllerFor();
+    const cleanup = await registerExperienceTools(controller, () => {});
+    const begin = registry.current.get('begin_story_turn')!;
+    const commit = registry.current.get('commit_story_chapter')!;
+    const beginInput = {
+      operationId: operationId('web_begin'),
+      expectedSessionId: controller.getSnapshot()!.sessionId,
+      expectedRevision: 1,
+      playerChoice: 'I examine the moving wallpaper before proceeding.',
+    };
+    const result = (await begin.tool.execute(beginInput)) as {
+      content: Array<{ text: string }>;
+      structuredContent: unknown;
+    };
+    expect(result.structuredContent).toMatchObject({ ok: true });
+    expect(result.content[0].text).toContain(
+      'REQUIRED NEXT: call commit_story_chapter now',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(begin.signal?.aborted).toBe(false);
+    expect(commit.signal?.aborted).toBe(false);
+    expect([...registry.current.keys()]).toEqual([
+      'get_story_state',
+      'begin_story_turn',
+      'commit_story_chapter',
+    ]);
+    const pending = controller.getSnapshot()!;
+    const committed = (await registry.current
+      .get('commit_story_chapter')!
+      .tool.execute({
+        operationId: operationId('web_chapter'),
+        expectedSessionId: pending.sessionId,
+        expectedRevision: pending.revision,
+        turnId: pending.pendingTurn!.turnId,
+        title: 'The room listens',
+        prose: ordinaryProse,
+        continuitySummary:
+          'You listened while the correction room stayed closed and quiet.',
+        discoveryIds: [],
+        status: 'continue',
+      })) as { content: Array<{ text: string }> };
+    expect(committed.content[0].text).toContain('Chapter saved to the webpage');
+    expect(committed.content[0].text).toContain('Do not repeat it in chat');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(begin.signal?.aborted).toBe(false);
+    expect(commit.signal?.aborted).toBe(false);
+    expect(registry.history.map(({ tool }) => tool.name)).toEqual([
+      'get_story_state',
+      'begin_story_turn',
+      'commit_story_chapter',
+    ]);
+
+    const lateRetry = (await begin.tool.execute(beginInput)) as {
+      content: Array<{ text: string }>;
+      structuredContent: Record<string, unknown>;
+    };
+    expect(lateRetry.structuredContent).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      state: { phase: 'READY' },
+    });
+    expect(lateRetry.structuredContent).not.toHaveProperty('turnId');
+    expect(lateRetry.content[0].text).toContain(
+      'Use begin_story_turn for an explicit character action.',
+    );
+    cleanup();
+  });
+
+  it('registers an unlocked story object without leaking its fact in metadata', async () => {
+    const registry = installModelContext();
+    const { controller } = await controllerFor(pencilAvailableSession());
+    const cleanup = await registerExperienceTools(controller, () => {});
+    expect([...registry.current.keys()]).toEqual([
+      'get_story_state',
+      'begin_story_turn',
+      'commit_story_chapter',
+      'reveal_pressed_words',
+    ]);
+    const getState = registry.current.get('get_story_state')!.tool;
+    const state = (await getState.execute({})) as {
+      structuredContent: {
+        state: { requiredNextTool: string; allowedNextTools: string[] };
+      };
+    };
+    expect(state.structuredContent.state.requiredNextTool).toBe('none');
+    expect(state.structuredContent.state.allowedNextTools).toEqual([
+      'begin_story_turn',
+      'reveal_pressed_words',
+    ]);
+    const pencil = registry.current.get('reveal_pressed_words')!.tool;
+    const metadata = JSON.stringify({
+      name: pencil.name,
+      title: pencil.title,
+      description: pencil.description,
+      inputSchema: pencil.inputSchema,
+    });
+    expect(metadata).not.toContain('Sixth time');
+    expect(metadata).not.toContain('Close your eyes');
+    expect(pencil.description).toContain('explicitly asks');
+    expect(pencil.description).toContain(
+      'commit_story_chapter in the same response before replying',
+    );
+
+    const before = controller.getSnapshot()!;
+    await registry.current.get('begin_story_turn')!.tool.execute({
+      operationId: operationId('ordinary_while_pencil_unlocked'),
+      expectedSessionId: before.sessionId,
+      expectedRevision: before.revision,
+      playerChoice: 'I reread the note without touching the pencil to it.',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(registry.current.has('reveal_pressed_words')).toBe(true);
+    const pending = (await getState.execute({})) as {
+      structuredContent: {
+        state: { allowedNextTools: string[]; requiredNextTool: string };
+      };
+    };
+    expect(pending.structuredContent.state).toMatchObject({
+      allowedNextTools: ['commit_story_chapter'],
+      requiredNextTool: 'commit_story_chapter',
+    });
+    expect(registry.history.map(({ tool }) => tool.name)).toEqual([
+      'get_story_state',
+      'begin_story_turn',
+      'commit_story_chapter',
+      'reveal_pressed_words',
+    ]);
+    cleanup();
+  });
+
+  it('waits for every concurrent invocation before retiring a story object', async () => {
+    const registry = installModelContext();
+    const { controller } = await controllerFor(pencilAvailableSession());
+    const cleanup = await registerExperienceTools(controller, () => {});
+    const pencil = registry.current.get('reveal_pressed_words')!.tool;
+    const originalInvoke = controller.invokeInteraction.bind(controller);
+    let releaseFirst: () => void = () => undefined;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let invocationCount = 0;
+    controller.invokeInteraction = async (input) => {
+      invocationCount += 1;
+      if (invocationCount === 1) await firstGate;
+      return originalInvoke(input);
+    };
+    const snapshot = controller.getSnapshot()!;
+    const first = Promise.resolve(
+      pencil.execute({
+        operationId: operationId('concurrent_first'),
+        expectedSessionId: snapshot.sessionId,
+        expectedRevision: snapshot.revision,
+        playerChoice: 'I shade the pressed writing with the pencil.',
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const second = Promise.resolve(
+      pencil.execute({
+        operationId: operationId('concurrent_second'),
+        expectedSessionId: snapshot.sessionId,
+        expectedRevision: snapshot.revision,
+        playerChoice: 'I shade the pressed writing with the pencil.',
+      }),
+    );
+    await second;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(registry.current.has('reveal_pressed_words')).toBe(true);
+
+    releaseFirst();
+    await first;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(registry.current.has('reveal_pressed_words')).toBe(false);
+    cleanup();
+  });
+
+  it('cancels before mutation and returns one canonical agent receipt after invocation', async () => {
+    const registry = installModelContext();
+    const { controller } = await controllerFor(pencilAvailableSession());
+    const cleanup = await registerExperienceTools(controller, () => {});
+    const pencil = registry.current.get('reveal_pressed_words')!.tool;
+    const beforeRevision = controller.getSnapshot().revision;
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await expect(
+      pencil.execute(
+        {
+          operationId: operationId('cancelled'),
+          expectedSessionId: controller.getSnapshot().sessionId,
+          expectedRevision: beforeRevision,
+          playerChoice: 'I rub the pencil over the notepad.',
+        },
+        { signal: cancelled.signal },
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(controller.getSnapshot().revision).toBe(beforeRevision);
+
+    const result = (await pencil.execute({
+      operationId: operationId('web_pencil'),
+      expectedSessionId: controller.getSnapshot().sessionId,
+      expectedRevision: beforeRevision,
+      playerChoice: 'I rub the pencil across the torn notepad.',
+    })) as {
+      content: Array<{ text: string }>;
+      structuredContent: {
+        effectReceipt: { receiptId: string; facts: unknown[] };
+      };
+    };
+    expect(result.structuredContent.effectReceipt).toMatchObject({
+      facts: [
+        {
+          id: 'sixth_attempt_note',
+          value: expect.stringContaining('Sixth time'),
+        },
+      ],
+    });
+    expect(result.content[0].text).not.toContain('{"');
+    expect(result.content[0].text).toContain('REQUIRED NEXT: commit receipt');
+    expect(controller.getSnapshot().pendingTurn?.effectReceipt?.receiptId).toBe(
+      result.structuredContent.effectReceipt.receiptId,
+    );
+    cleanup();
+  });
+
+  it('rejects coercion, extra fields, mixed arrays, and unknown IDs', async () => {
+    const registry = installModelContext();
+    const { controller } = await controllerFor(pencilAvailableSession());
+    const cleanup = await registerExperienceTools(controller, () => {});
+    const before = controller.getSnapshot();
+    const begin = registry.current.get('begin_story_turn')!.tool;
+    const invalidCalls = [
+      begin.execute({
+        operationId: operationId('extra_field'),
+        expectedSessionId: before.sessionId,
+        expectedRevision: before.revision,
+        playerChoice: 'I inspect the door.',
+        extra: true,
+      }),
+      begin.execute({
+        operationId: operationId('string_revision'),
+        expectedSessionId: before.sessionId,
+        expectedRevision: String(before.revision),
+        playerChoice: 'I inspect the door.',
+      }),
+      registry.current.get('get_story_state')!.tool.execute({ extra: true }),
+    ];
+    for (const call of invalidCalls) {
+      const result = (await call) as {
+        structuredContent: { ok: boolean; code: string };
+      };
+      expect(result.structuredContent).toMatchObject({
+        ok: false,
+        code: 'INVALID_INPUT',
       });
-      expect(statuses).toEqual(['connecting', 'connected']);
-      cleanup();
-    } finally {
-      if (originalDocument)
-        Object.defineProperty(globalThis, 'document', originalDocument);
-      else Reflect.deleteProperty(globalThis, 'document');
     }
+    expect(controller.getSnapshot().revision).toBe(before.revision);
+
+    const started = await controller.beginStoryTurn({
+      operationId: operationId('strict_chapter_begin'),
+      expectedSessionId: before.sessionId,
+      expectedRevision: before.revision,
+      playerChoice: 'I inspect the door.',
+    });
+    expect(started.ok).toBe(true);
+    const pending = controller.getSnapshot();
+    const chapter = registry.current.get('commit_story_chapter')!.tool;
+    const invalidChapter = (await chapter.execute({
+      operationId: operationId('strict_chapter'),
+      expectedSessionId: pending.sessionId,
+      expectedRevision: pending.revision,
+      turnId: pending.pendingTurn!.turnId,
+      title: 'Strict input',
+      prose: ordinaryProse,
+      continuitySummary: 'The room remains unchanged.',
+      discoveryIds: ['pencil_found', 7],
+      status: 'continue',
+    })) as { structuredContent: { ok: boolean; code: string } };
+    expect(invalidChapter.structuredContent).toMatchObject({
+      ok: false,
+      code: 'INVALID_INPUT',
+    });
+    expect(controller.getSnapshot().pendingTurn).not.toBeNull();
+    cleanup();
   });
 });

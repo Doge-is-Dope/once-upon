@@ -1,166 +1,65 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
-import {
-  CHROME_WEBMCP_FLAG,
-  WEBMCP_CLIENT_NAME,
-  type WebMCPStatus,
-} from '@/lib/webmcp/tools';
-import { copyText, CopyTooltip } from './copy-button';
+import type { WebMCPStatus } from '@/lib/webmcp/tools';
 
-export function ConnectionIssueNotice({
+const WEBMCP_SPEC_URL = 'https://webmachinelearning.github.io/webmcp/';
+
+export function WebMCPAvailability({
   status,
   onRetry,
-  compact = false,
 }: {
   status: WebMCPStatus;
   onRetry: () => void;
-  compact?: boolean;
 }) {
   if (status === 'connected') return null;
   if (status === 'connecting')
     return (
-      <output className="connection-pending">Checking browser support…</output>
+      <section
+        aria-label="WebMCP availability"
+        className="webmcp-availability is-pending"
+        data-webmcp-availability
+      >
+        <p>Preparing agent tools…</p>
+      </section>
     );
-  if (status === 'disabled')
-    return <WebMCPDisabledNotice onRetry={onRetry} compact={compact} />;
   if (status === 'unsupported')
     return (
-      <div className="capability-notice" role="alert">
-        <strong>WebMCP isn&apos;t available in this browser.</strong>
-      </div>
-    );
-  return <ConnectionErrorNotice onRetry={onRetry} />;
-}
-
-function WebMCPDisabledNotice({
-  onRetry,
-  compact,
-}: {
-  onRetry: () => void;
-  compact: boolean;
-}) {
-  return (
-    <div
-      className={`capability-notice${compact ? ' is-compact' : ''}`}
-      role="alert"
-    >
-      <strong>Turn on WebMCP</strong>
-      <p>
-        <b>{WEBMCP_CLIENT_NAME}</b>
-        <span>Browser settings → Permissions → Enable site tools</span>
-      </p>
-      <ChromeFlagRow />
-      <button className="support-action" type="button" onClick={onRetry}>
-        Check again
-      </button>
-    </div>
-  );
-}
-
-function ConnectionErrorNotice({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className="connection-error-notice" role="alert">
-      <p>WebMCP couldn&apos;t start.</p>
-      <button type="button" onClick={onRetry}>
-        Try again
-      </button>
-    </div>
-  );
-}
-
-function ChromeFlagRow() {
-  const flagRef = useRef<HTMLInputElement>(null);
-  return (
-    <div className="chrome-flag-row">
-      <span>Chrome</span>
-      <input
-        aria-label="Chrome WebMCP flag URL"
-        readOnly
-        ref={flagRef}
-        value={CHROME_WEBMCP_FLAG}
-        onFocus={(event) => event.currentTarget.select()}
-      />
-      <FlagCopyButton
-        text={CHROME_WEBMCP_FLAG}
-        onCopyFailure={() => {
-          flagRef.current?.focus();
-          flagRef.current?.select();
-        }}
-      />
-    </div>
-  );
-}
-
-type CopyFeedback = 'copied' | 'failed' | null;
-
-function FlagCopyButton({
-  text,
-  onCopyFailure,
-}: {
-  text: string;
-  onCopyFailure: () => void;
-}) {
-  const [feedback, setFeedback] = useState<CopyFeedback>(null);
-  const [copying, setCopying] = useState(false);
-  const timer = useRef<number | null>(null);
-  const tooltipId = useId();
-
-  const showFeedback = (next: Exclude<CopyFeedback, null>): void => {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    setFeedback(next);
-    timer.current = window.setTimeout(() => {
-      setFeedback(null);
-      timer.current = null;
-    }, 5_000);
-  };
-
-  useEffect(
-    () => () => {
-      if (timer.current !== null) window.clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  const copied = feedback === 'copied';
-  return (
-    <span className="flag-copy-control">
-      <CopyTooltip
-        id={tooltipId}
-        message={
-          feedback === 'copied'
-            ? 'Copied'
-            : feedback === 'failed'
-              ? 'Copy failed'
-              : null
-        }
-      />
-      <button
-        aria-describedby={feedback ? tooltipId : undefined}
-        aria-label={copied ? 'Chrome flag URL copied' : 'Copy Chrome flag URL'}
-        className="flag-copy-button"
-        disabled={copying || copied}
-        type="button"
-        onClick={() => {
-          setCopying(true);
-          setFeedback(null);
-          void copyText(text)
-            .then(() => showFeedback('copied'))
-            .catch(() => {
-              showFeedback('failed');
-              onCopyFailure();
-            })
-            .finally(() => setCopying(false));
-        }}
+      <section
+        aria-labelledby="webmcp-unavailable-title"
+        className="webmcp-availability"
+        data-webmcp-availability
       >
-        {copied ? (
-          <span className="flag-copy-check" aria-hidden="true">
-            ✓
-          </span>
-        ) : (
-          <span className="flag-copy-icon" aria-hidden="true" />
-        )}
+        <h2 id="webmcp-unavailable-title">
+          WebMCP isn&apos;t available for this page
+        </h2>
+        <p>
+          WebMCP lets your agent interact with this story through tools exposed
+          by the page. Open this page in a browser or app with a WebMCP-aware
+          agent to play.
+        </p>
+        <a href={WEBMCP_SPEC_URL}>Learn about WebMCP</a>
+      </section>
+    );
+  const disabled = status === 'disabled';
+  return (
+    <section
+      aria-labelledby={`webmcp-${status}-title`}
+      className="webmcp-availability"
+      data-webmcp-availability
+    >
+      <h2 id={`webmcp-${status}-title`}>
+        {disabled ? 'WebMCP is blocked for this page' : 'WebMCP couldn’t start'}
+      </h2>
+      {disabled ? (
+        <p>Allow site tools for this page, then check again.</p>
+      ) : null}
+      <button
+        className="webmcp-availability-action"
+        type="button"
+        onClick={onRetry}
+      >
+        {disabled ? 'Check again' : 'Try again'}
       </button>
-    </span>
+    </section>
   );
 }

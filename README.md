@@ -1,85 +1,131 @@
 # Once Upon
 
-> Stories shaped by you, told by AI.
+> **Every discovery changes what AI can do.**
 
-Once Upon is a platform for interactive stories you play with AI. Describe what
-your character does in natural language; the page applies the rules, rolls the
-dice, and saves the exact outcome on your device. AI turns that result into the
-next part of the story without changing what happened.
+Once Upon is a story you play with your agent beside the page. Tell your agent
+what your character does; it writes the result into a continuous manuscript.
+As the story reveals certain objects, the page gives your agent a new WebMCP
+action that did not exist before.
 
-## The Last Manuscript
-
-**The Last Manuscript** is the first and currently only playable Once Upon
-experience: a dark-fantasy mystery with up to six pages before midnight. Create
-a traveler, choose a strength, and tell ChatGPT what you do. Every saved result
-becomes another page in your manuscript.
-
-Playing requires a WebMCP-enabled ChatGPT browser with site tools turned on.
-Other browsers can explore the sample manuscript, but cannot start or continue
-the story.
+The first story, **The Last Manuscript**, begins in a room with a handleless
+door. There is no character sheet, dice roll, stat block, turn limit, or fixed
+action menu.
 
 ## How to play
 
-1. Open the experience in a WebMCP-enabled ChatGPT browser.
-2. Create your character and choose one strength: Wits, Nerve, or Grace.
-3. Copy the opening message from the manuscript into the chat beside the page.
-4. Describe what you do. The page resolves and saves the outcome, ChatGPT writes
-   it into the manuscript, and you choose what to do next.
+1. Open the page in a browser or app with a WebMCP-aware agent.
+2. Ask your agent to play and include your first move in the same message.
+3. Read the next chapter on the page and keep choosing.
 
-Keep the page open while you play. Once started, the same local save is
-available at `/` and `/experiences/the-last-manuscript`.
+For example:
 
-## How it works
+> Play The Last Manuscript with me through this page. I inspect the room before
+> answering.
 
-| You                                | The page                                                                        | AI                                                         |
-| ---------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Choose actions in natural language | Owns the rules, D20 rolls, inventory, clues, abilities, endings, and local save | Interprets your intent and narrates the exact saved result |
+The page offers this short starter as an optional copy helper; there is no setup
+prompt to paste.
 
-The page saves an action before AI narrates it. It will not accept another
-action until that result has been committed to the story.
+[WebMCP](https://webmachinelearning.github.io/webmcp/) is an evolving browser
+API for exposing page tools to agents. Availability depends on the browser or
+app hosting the agent; Once Upon does not require a specific AI provider.
 
-## What makes it different
-
-- **The AI's tools become part of the story.** Progress can unlock new
-  page-local abilities that ChatGPT can actually call, then retire after use.
-- **A saved outcome cannot be rewritten.** AI can bring each turn to life, but
-  it cannot change the roll, clues, inventory, abilities, or ending.
-- **Interruptions do not reroll the story.** If ChatGPT stops mid-turn or the
-  page reloads, the exact pending result is restored before play continues.
-
-## Architecture
-
-Each experience binds a story, presentation frame, and narration contract. The
-current experience uses:
-
-| Contract   | ID                    | Responsibility                                |
-| ---------- | --------------------- | --------------------------------------------- |
-| Experience | `the-last-manuscript` | Binds the compatible contracts below          |
-| Story      | `last-tavern`         | Rules, state, actions, abilities, and endings |
-| Frame      | `book`                | Book-specific interaction and presentation    |
-| Narration  | `prose`               | Validates grounded prose from AI              |
+Most characters, locations, consequences, and branches are freeform. Three
+author-designed secrets stay in the page until the player discovers and
+explicitly uses the right story object:
 
 ```text
-app/                              Routes and Once Upon metadata
-components/experience-app.tsx     Frame-neutral experience shell
-components/frames/book/           The Book Frame and its view model
-experiences/registry.ts            Valid experience definitions
-experiences/the-last-manuscript/  The first story and experience contract
-lib/runtime/                       Shared engine, controller, session, storage
-lib/webmcp/                        Narration-neutral browser tools
+The Pencil         → raise the warning pressed through the torn page
+The Memory         → follow one North Station memory when the player chooses to
+The Last Manuscript → read the testimony hidden behind the wardrobe
 ```
 
-The shared WebMCP contract exposes `get_story_state`, `perform_action`, and
-`commit_narration`. Story-specific ability tools are registered only while the
-current experience has unlocked them.
+The final page opens the room onto a larger system, then stops before the player
+chooses what to do.
 
-Sessions use schema version 2 in the `once-upon` IndexedDB database, under the
-`experience-sessions` store and `active:${experienceId}` keys. The previous
-database is intentionally neither read, migrated, nor deleted.
+Judges can enable **Settings → Debug mode** to inspect the real tool lifecycle.
+The panel stays out of the player experience by default.
 
-See [Adding or replacing a story](docs/EXPERIENCES.md) and the
-[interruption and recovery protocol](docs/RECOVERY_PROTOCOL.md) for the full
-contracts.
+## Human + AI + page
+
+| Player                                                              | AI                                                 | Page                                                                                                          |
+| ------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Chooses what the character does and when to use a discovered object | Freely continues the story in 1–3 short paragraphs | Holds authored secrets, keeps a stable core surface, unlocks story-object tools, and preserves the manuscript |
+
+An interaction changes the page before AI writes the chapter. Its exact effect
+receipt stays in the current page's memory until that chapter is committed.
+Reloading, closing the tab, or choosing Start over opens the prologue again.
+
+## WebMCP surface
+
+Registration and callability have separate lifecycles. The three core tools —
+`get_story_state`, `begin_story_turn`, and `commit_story_chapter` — are
+registered once for the document lifetime. An unlocked, unused story-object
+tool remains registered through both Ready and Awaiting chapter phases, then
+retires only after its interaction is invoked.
+
+The state returned by `get_story_state`, rather than registration presence,
+governs the next valid call:
+
+| Phase            | `requiredNextTool`     | `allowedNextTools`                                 |
+| ---------------- | ---------------------- | -------------------------------------------------- |
+| Ready            | `none`                 | `begin_story_turn` and eligible story-object tools |
+| Awaiting chapter | `commit_story_chapter` | `commit_story_chapter`                             |
+| Complete         | `none`                 | none                                               |
+
+`get_story_state` is also the start-and-continue bootstrap. Its tool metadata
+stays concise; the returned bootstrap instructions carry the versioned turn
+protocol and story-specific narration contract, so the player never has to
+transport internal instructions through chat. The state identifies whether the
+manuscript is opening, continuing an unfinished same-page turn, or complete.
+
+Every mutation includes both `expectedSessionId` and `expectedRevision`. A
+request from a replaced manuscript or an older revision is rejected before it
+can change the active page session.
+
+AI may submit only allowlisted discovery IDs. A story can give later discoveries
+fact and completed-interaction requirements, so naming a real ID before its
+authored stage does not unlock it. Tool names, descriptions, schemas,
+prerequisites, and sealed facts come from declarative story definitions and
+cannot be created by story text.
+
+A story may also declare `completionRequiredFactIds`. The runtime rejects a
+final chapter until every required authored fact has been revealed, so an agent
+cannot close the manuscript before its final turn.
+
+Each interaction also declares a `completionPolicy`: early interactions must
+continue, while the Last Manuscript must complete the story. A wrong status is
+rejected without consuming the pending receipt.
+
+## Sharing a completed manuscript
+
+Nothing is uploaded during play. After completion, the player may explicitly
+choose **Create a public link**. The server validates and rebuilds the reader
+document, then stores only that anonymous, unlisted, read-only copy in D1. The
+link expires after 30 days. Copy story and Download `.txt` remain available
+without publishing.
+
+## Project layout
+
+```text
+app/                              Routes and global metadata
+components/frames/book/           Living Manuscript UI and tool inspector
+experiences/the-last-manuscript/  Prologue and declarative interactions
+lib/runtime/                       In-memory narrative state machine
+lib/manuscript/                    Shared reading order and text export
+lib/share/                         Public document validation and D1 access
+lib/webmcp/                        State-derived WebMCP registration
+tests/                             Deterministic engine and tool tests
+e2e/                               Full browser journey, reset, and sharing
+```
+
+Game sessions never use browser storage. `sessionId`, revision, and the
+operation ledger exist only for same-page concurrency and idempotent retries.
+Set `SHARE_SIGNING_SECRET` for local or hosted public-link publishing; D1 is
+bound as `DB` and R2 is unused.
+
+See [Adding a story](docs/EXPERIENCES.md), the
+[recovery protocol](docs/RECOVERY_PROTOCOL.md), and the
+[WebMCP evaluation set](docs/WEBMCP_EVALS.md).
 
 ## Local development
 
@@ -90,5 +136,5 @@ pnpm verify
 pnpm test:e2e
 ```
 
-`pnpm verify` runs route type generation, TypeScript, lint, unit tests, and a
-production build. No hosted Sites project is configured yet.
+`pnpm verify` runs route type generation, strict TypeScript, lint, unit tests,
+and a production build.

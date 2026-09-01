@@ -1,81 +1,44 @@
-# Once Upon — The Last Manuscript Experience Plan
+# Living Manuscript product boundary
 
-## Product frame
+The current release proves one loop:
 
-Once Upon hosts interactive stories where the player chooses, the browser owns
-canonical state, and a connected agent narrates only what the saved result
-permits. The platform identity is independent of any particular story or
-renderer.
-
-The first experience is **The Last Manuscript**:
-
-| Contract   | ID                    | Responsibility                                |
-| ---------- | --------------------- | --------------------------------------------- |
-| Experience | `the-last-manuscript` | Binds the compatible contracts below          |
-| Story      | `last-tavern`         | Rules, state, actions, abilities, and endings |
-| Frame      | `book`                | Book-specific interaction and presentation    |
-| Narration  | `prose`               | Validates a grounded prose payload            |
-
-## Player loop
-
-1. The player creates a character and chooses a strength.
-2. The agent calls `get_story_state` and presents the current scene.
-3. The player describes an action.
-4. The agent calls `perform_action` with the current revision and an available
-   target. The browser saves the roll and enters `AWAITING_NARRATION` or
-   `AWAITING_FINAL_NARRATION`.
-5. The agent calls `commit_narration` for the exact resolution and canonical
-   event IDs.
-6. The browser validates the narration payload, commits it, and either returns
-   to `READY_FOR_ACTION` or completes the experience.
-
-An interrupted agent must call `get_story_state` again and obey
-`requiredNextTool`. A saved result is never rerolled during recovery.
-
-## Runtime boundaries
-
-`lib/runtime` owns only experience-neutral concepts:
-
-- `ExperienceDefinition`, `ExperienceSession`, and `StoryStateSnapshot`
-- deterministic action resolution and narration receipts
-- serialized controller mutations and fault reporting
-- experience-scoped persistence and corrupt-save quarantine
-
-`experiences/the-last-manuscript` owns the current setting, authored content,
-action rules, labels, abilities, and ending precedence.
-
-`components/frames/book` owns the Book Frame view model, interaction, and visual
-language. A future frame may use a different narration contract without
-changing the shared session engine.
-
-## Narration payloads
-
-The common receipt carries one discriminated payload:
-
-```ts
-type NarrationPayload =
-  | { format: 'prose'; text: string }
-  | {
-      format: 'terminal';
-      lines: Array<{
-        kind: 'command' | 'output' | 'system';
-        text: string;
-      }>;
-    };
+```text
+player chooses → AI writes → discovery unlocks a page tool →
+player explicitly asks to use it → page changes → AI continues
 ```
 
-The current experience accepts only `prose`. The terminal contract is exercised
-as a runtime fixture; no second story or Terminal Frame is part of this version.
+The player starts with one natural sentence and may include the first move in
+that same message. Internal tool order, recovery rules, and narrative boundaries
+travel through the bootstrap instructions returned by `get_story_state`, not
+through long tool metadata or a prompt that the player must copy.
 
-## Routes, persistence, and release
+`The Last Manuscript` is the only story in scope. Its pencil, voluntary memory
+flashback, and hidden manuscript demonstrate a dependent progression of
+unlockable WebMCP verbs:
 
-- `/` resolves the default registry entry directly.
-- `/experiences/the-last-manuscript` is the canonical experience route.
-- Unknown experience IDs return 404.
-- IndexedDB uses database `once-upon`, store `experience-sessions`, and key
-  `active:${experienceId}`.
-- Session schema version 2 includes `experienceId` and `storyId`.
-- The previous database remains untouched as an intentional clean break.
+```text
+Pencil → Memory → Last Manuscript
+```
 
-The project is not deployed automatically. When a Sites project and Devpost
-submission are created, both should start directly with the Once Upon identity.
+Every present-time scene remains inside one correction room. The final reveal
+widens the setting to a national system, but the player never crosses the
+threshold and their identity remains unresolved.
+
+For one document lifetime, the runtime holds chapters, continuity, discoveries,
+revealed facts, pending turns, interaction usage, session identity, revision,
+and idempotency records in memory. Reload, close, and Start over all return to
+the prologue.
+The three core tools stay registered for the document lifetime; an unlocked
+story-object tool remains registered until invocation retires it. Current
+`allowedNextTools` and `requiredNextTool`, not registration presence, govern
+callability. Every mutation must match both the active session and revision.
+The runtime does not contain dice, attributes, clocks, resolve, fixed choices,
+turn limits, or mechanical ending branches. A story may require authored facts
+before accepting a final chapter; this protects reveal order rather than
+scoring the player.
+
+Accounts, cloud game sync, a story builder, and community worldbuilding remain
+outside this release. A completed player may explicitly publish an anonymous,
+unlisted, read-only manuscript for 30 days; no gameplay session is uploaded.
+Declarative interactions preserve the boundary needed to build future features
+without letting player or model text generate executable tools.

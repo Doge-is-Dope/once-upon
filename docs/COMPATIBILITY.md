@@ -36,6 +36,10 @@ corepack pnpm@11.24.0 run build
 corepack pnpm@11.24.0 audit --prod
 ```
 
-The actual ChatGPT in-app browser remains a separate release gate. Local
-Chromium tests exercise the same imperative `document.modelContext.registerTool`
-shape with dynamic tool registration and reload-persistent IndexedDB state.
+Manual inspection in the ChatGPT in-app browser on 2026-08-30 verified the
+initial living manuscript and its state-derived
+`document.modelContext.registerTool` surface. ChatGPT is one verified client,
+not a product requirement: Once Upon depends on WebMCP availability rather than
+provider identity. Chromium E2E tests cover dynamic registration, in-memory
+page mutation, reload reset, the D1-backed public reader, and reduced-motion
+behavior.

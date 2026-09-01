@@ -1,398 +1,129 @@
-import type {
-  AbilityId as RuntimeAbilityId,
-  CanonicalEvent,
-  EndingId as RuntimeEndingId,
-  ExperienceSession,
-  RollResult,
-  StoryActionResult,
-  StoryDefinition,
-} from '@/lib/runtime/types';
-import {
-  ABILITY_DESCRIPTIONS,
-  ABILITY_LABELS,
-  ATTRIBUTES,
-  CLUE_LABELS,
-  ENDING_LABELS,
-  getAffordances,
-  ITEM_LABELS,
-  LOCATION_LABELS,
-} from './content';
-import {
-  isAttributeId,
-  type AbilityId,
-  type AttributeId,
-  type EndingId,
-  type LocationId,
-} from './types';
+import type { StoryDefinition } from '@/lib/runtime/types';
 
-const DYNAMIC_ABILITY_IDS: AbilityId[] = [
-  'reveal_hidden_ink',
-  'ask_the_raven',
-  'speak_the_true_name',
-];
-
-const LIMITS = {
-  maxTurns: 6,
-  maxClock: 6,
-  maxResolve: 3,
-} as const;
-
-// This module is the single narrowing boundary between the runtime's
-// string-based IDs and this story's literal-union IDs; the casts below are
-// deliberate and safe because every ID originates from this story's tables.
-export const lastTavernStory: StoryDefinition = {
-  id: 'last-tavern',
-  attributes: ATTRIBUTES,
-  limits: LIMITS,
-
-  createInitialState(name, specialty, _context) {
-    const displayName = name.trim().slice(0, 40) || 'the traveler';
-    const selected: AttributeId = isAttributeId(specialty) ? specialty : 'wits';
-    const stats: Record<AttributeId, number> = {
-      wits: 1,
-      nerve: 1,
-      grace: 1,
-    };
-    stats[selected] = 2;
-    return {
-      clock: 0,
-      resolve: LIMITS.maxResolve,
-      character: { name: displayName, specialty: selected },
-      stats,
-      locationId: 'main_hall',
-      inventoryIds: ['lit_tin_lantern', 'half_burnt_letter'],
-      clueIds: [],
-      unlockedAbilityIds: [],
-      usedAbilityIds: [],
-      opening: {
-        format: 'prose',
-        text: `${displayName === 'the traveler' ? 'The traveler' : displayName} woke beside a dying hearth. A raven watched from the rafters while the chained door breathed cold air around its frame. Beneath the floor, something answered the clock.`,
-      },
-    };
+export const lastManuscriptStory: StoryDefinition = {
+  id: 'last-manuscript-living-v3',
+  prologue: {
+    title: 'The question at 5:41',
+    prose:
+      '“Please answer: What happened at North Station at 5:41 p.m. on May twelfth?”\n\nThe question wakes you at a table. A desk lamp shines across an open notepad. Its top page has been torn away, leaving a ragged edge in the binding. A bed stands against one wall. Beside it are a sink, a wardrobe, and the room’s only door. The door has no handle.\n\nThe speaker set into the wall repeats the question. You know North Station should mean something to you, but no answer follows. You cannot remember why you are here.\n\nThe ventilation starts. Something taps twice against the wall behind the wardrobe, then falls still.',
+    continuitySummary:
+      'You woke at a table in a single room while a wall speaker asked what happened at North Station at 5:41 p.m. on May twelfth. The room contains a torn notepad, a bed, a sink, a wardrobe, and a door with no handle. You know North Station should mean something to you, but no answer returns. When the ventilation runs, something taps behind the wardrobe.',
   },
-
-  isAttribute: isAttributeId,
-  getAffordances,
-
-  scenePrompt(session) {
-    if (session.phase === 'COMPLETE' && session.endingId)
-      return `The manuscript is complete: ${endingLabel(session.endingId)}.`;
-    if (session.pendingResolution)
-      return 'A saved roll is waiting for its manuscript entry. Write it before taking another action.';
-    if (
-      session.clueIds.includes('first_name_fragment') &&
-      session.clueIds.includes('second_name_fragment')
-    )
-      return 'The two fragments form VESPER. The breathing waits below the floor.';
-    if (session.locationId === 'upstairs_room')
-      return 'Rain scratches the upstairs window. The black mirror frame is empty except for one sharp fragment.';
-    return 'The hearth fades, the raven watches, and the chained entrance moves in the draft.';
-  },
-
-  locationLabel(id) {
-    return LOCATION_LABELS[id as LocationId] ?? id;
-  },
-  itemLabel(id) {
-    return ITEM_LABELS[id] ?? id;
-  },
-  clueLabel(id) {
-    return CLUE_LABELS[id] ?? id;
-  },
-  abilityLabel(id) {
-    return ABILITY_LABELS[id as AbilityId] ?? id;
-  },
-  abilityDescription(id) {
-    return ABILITY_DESCRIPTIONS[id as AbilityId] ?? id;
-  },
-  endingLabel,
-
-  actionDc(actionId) {
-    if (actionId === 'speak_the_true_name') return 11;
-    if (actionId === 'ask_the_raven' || actionId === 'enter_cellar_unprepared')
-      return 14;
-    if (actionId === 'improvise') return 15;
-    return 13;
-  },
-
-  validateAction(session, actionId) {
-    if (getAffordances(session).some((action) => action.id === actionId))
-      return null;
-    if (DYNAMIC_ABILITY_IDS.includes(actionId as AbilityId)) {
-      if (!session.unlockedAbilityIds.includes(actionId))
-        return {
-          code: 'ABILITY_LOCKED',
-          message: `${ABILITY_LABELS[actionId as AbilityId]} has not been unlocked. Follow the current affordances.`,
-        };
-      if (
-        session.usedAbilityIds.includes(actionId) &&
-        actionId !== 'speak_the_true_name'
-      )
-        return {
-          code: 'ACTION_UNAVAILABLE',
-          message: `${ABILITY_LABELS[actionId as AbilityId]} has already been used.`,
-        };
-      return null;
-    }
-    return {
-      code: 'ACTION_UNAVAILABLE',
-      message: `"${actionId}" is not available. Choose one of the returned affordance IDs; no roll occurred.`,
-    };
-  },
-
-  applyAction(session, actionId, roll, resolutionId) {
-    return applyLastTavernAction(session, actionId, roll, resolutionId);
-  },
+  discoveryIds: ['pencil_found', 'manuscript_found'],
+  discoveryRequirements: [
+    {
+      id: 'manuscript_found',
+      requiredInteractionIds: ['north_station_memory'],
+      requiredFactIds: ['north_station_flashback'],
+    },
+  ],
+  completionRequiredFactIds: ['national_correction_network'],
+  interactions: [
+    {
+      id: 'pressed_writing',
+      toolName: 'reveal_pressed_words',
+      title: 'The Pencil',
+      description:
+        'Rub the discovered pencil across the notepad only when the player explicitly asks to reveal the impressions left by the missing page.',
+      cue: 'Faint grooves cross the blank page. The side of the pencil can make them legible.',
+      requiredDiscoveryIds: ['pencil_found'],
+      requiredInteractionIds: [],
+      requiredFactIds: [],
+      sealedFacts: [
+        {
+          id: 'sixth_attempt_note',
+          value:
+            'Sixth time.\nDon’t answer yet.\nClose your eyes. Start with the announcement.\nBehind the wardrobe.\nRead all the papers first.\n\nThere is no signature. The note does not explain who wrote it or what the papers are.',
+          protectedTerms: [
+            'Sixth time',
+            'Start with the announcement',
+            'Read all the papers first',
+          ],
+        },
+      ],
+      presentation: 'pressed_writing',
+      completionPolicy: 'must_continue',
+    },
+    {
+      id: 'north_station_memory',
+      toolName: 'follow_north_station_memory',
+      title: 'The North Station Memory',
+      description:
+        'Follow the broken North Station memory only when the player explicitly chooses to close their eyes and begin with the remembered announcement. This is a memory, not a recording or an answer from the room.',
+      cue: 'The note offers a way into the broken memory: close your eyes and begin with the station announcement.',
+      requiredDiscoveryIds: [],
+      requiredInteractionIds: ['pressed_writing'],
+      requiredFactIds: ['sixth_attempt_note'],
+      sealedFacts: [
+        {
+          id: 'north_station_flashback',
+          value:
+            'You close your eyes and begin with the announcement. Two short tones sound before a voice directs everyone toward the east exit and tells them not to run.\n\nThe clock above the concourse reads 5:41. The east gate is already descending. The crowd presses toward it as the metal reaches the floor, then turns toward the platforms. The shutters along that route are already down.\n\nThe first shot sounds before there is any smoke. More shots follow. Smoke comes later.',
+          protectedTerms: [
+            'The shutters along that route are already down',
+            'The first shot sounds before there is any smoke',
+            'Smoke comes later',
+          ],
+        },
+        {
+          id: 'approved_north_station_account',
+          value:
+            'When you open your eyes, the table, notepad, and handleless door have not changed. The wall speaker is still waiting. It states the approved version: “An equipment fire occurred. The evacuation was successful. No one died.” Then it asks you to repeat it. If you repeat those words exactly, the speaker answers, “Words correct. Memory response inconsistent.” The door remains closed.',
+          protectedTerms: [
+            'An equipment fire occurred',
+            'Words correct. Memory response inconsistent',
+          ],
+        },
+      ],
+      presentation: 'memory_flashback',
+      completionPolicy: 'must_continue',
+    },
+    {
+      id: 'last_manuscript',
+      toolName: 'read_the_last_manuscript',
+      title: 'The Last Manuscript',
+      description:
+        'Read the sewn papers found behind the wardrobe only when the player explicitly asks to open or examine them. Carry every revealed fact into the next chapter.',
+      cue: 'Pages taken from different forms have been sewn into one volume. The note asked you to read all of them before deciding what to say.',
+      requiredDiscoveryIds: ['manuscript_found'],
+      requiredInteractionIds: ['north_station_memory'],
+      requiredFactIds: ['north_station_flashback'],
+      sealedFacts: [
+        {
+          id: 'north_station_testimonies',
+          value:
+            'The sewn pages carry the same North Station case number but different handwriting. A station record says the east gate received its order to close before the fire alert. A passenger writes that the shots came before the smoke. An emergency form lists gunshot wounds; its linked medical record later calls them smoke inhalation. The accounts differ at the edges but agree on the sequence. At the bottom of each page, repeated evaluations gradually replace the original account with the same sentence: “An equipment fire occurred. The evacuation was successful. No one died.” The final version is stamped CONSISTENT. Archive marks show that witnesses wrote these sheets during separate evaluations and that the sheets were later confiscated into separate case files. An unknown person with archive access removed them, arranged them, and sewed them into this volume. Nothing in the manuscript identifies that person or explains their motive or fate.',
+          protectedTerms: ['stamped CONSISTENT', 'lists gunshot wounds'],
+        },
+        {
+          id: 'memory_correction_protocol',
+          value:
+            'The forms show what the room is for. A person is not released for agreeing to repeat the approved version. The evaluations continue until the approved version has replaced what that person remembers. Each completed page ends with CONSISTENT.',
+          protectedTerms: ['replaced what that person remembers'],
+        },
+        {
+          id: 'last_unmodified_witness',
+          value:
+            'Near the end is an unsigned form for Room Seven. Six evaluations are marked incomplete. Its surviving account matches the memory that returned to you. The torn sheet hidden with the manuscript fits the ragged edge in the notepad and carries the original note; the graphite on the remaining page recovered the impressions it left. You wrote the instructions during the previous attempt. The papers do not reveal your name or what brought you to North Station. They establish only that every other linked witness has been marked CONSISTENT and you are the last one who still remembers another version.',
+          protectedTerms: [
+            'Room Seven',
+            'the last one who still remembers another version',
+          ],
+        },
+        {
+          id: 'national_correction_network',
+          value:
+            'A final notice sounds: “Automatic correction limit reached. Manual transfer team has arrived.” The handleless door unlocks and slides into the wall. You remain inside the room. Across the corridor stand more identical doors. Beneath a row of government department seals, a status board lists incidents from cities across the country, each divided into NEWS, MEDICAL, JUDICIAL, and ASSOCIATED PERSONS. Most rows are marked CONSISTENT. North Station reads 183/184; the remaining entry is Room Seven. A national map beside the board marks active facilities in every region.\n\nNorth Station is not an isolated cover-up. The government maintains public history by changing records first, then sending everyone who remembers another version into rooms like this one. The manuscript’s final page is blank. At the far end of the corridor, an elevator indicator rises toward this floor. Air from the open door lifts the blank page. The indicator reaches your level. The elevator doors begin to open.',
+          protectedTerms: [
+            'Manual transfer team has arrived',
+            'North Station reads 183/184',
+            'government department seals',
+            'active facilities in every region',
+          ],
+        },
+      ],
+      presentation: 'world_shift',
+      completionPolicy: 'must_complete',
+    },
+  ],
 };
-
-function applyLastTavernAction(
-  session: ExperienceSession,
-  actionId: string,
-  roll: RollResult,
-  resolutionId: string,
-): StoryActionResult {
-  const events: CanonicalEvent[] = [];
-  const newAbilities: RuntimeAbilityId[] = [];
-  session.clock = Math.min(LIMITS.maxClock, session.clock + 1);
-
-  switch (actionId) {
-    case 'search_hearth':
-      move(session, 'main_hall', events, resolutionId);
-      addUnique(session.inventoryIds, 'charred_key');
-      addEvent(
-        events,
-        resolutionId,
-        'item',
-        'Charred Key found',
-        roll.total >= roll.dc
-          ? 'A Charred Key waits beneath the loose hearthstone.'
-          : "The key is found, but hot ash burns the traveler's hand.",
-      );
-      break;
-    case 'search_upstairs_room':
-      move(session, 'upstairs_room', events, resolutionId);
-      addUnique(session.inventoryIds, 'black_mirror_shard');
-      unlock(session, 'reveal_hidden_ink', events, newAbilities, resolutionId);
-      addEvent(
-        events,
-        resolutionId,
-        'item',
-        'Black Mirror Shard found',
-        roll.total >= roll.dc
-          ? 'A Black Mirror Shard lies inside the empty frame.'
-          : "The shard is recovered as the room's reflection moves a moment too late.",
-      );
-      break;
-    case 'reveal_hidden_ink':
-      markUsed(session, 'reveal_hidden_ink');
-      addUnique(session.clueIds, 'first_name_fragment');
-      addEvent(
-        events,
-        resolutionId,
-        'clue',
-        'First name fragment',
-        'Hidden ink on the half-burnt letter reveals the first fragment: VES—.',
-      );
-      break;
-    case 'offer_charred_key_to_raven':
-      move(session, 'main_hall', events, resolutionId);
-      remove(session.inventoryIds, 'charred_key');
-      addUnique(session.clueIds, 'raven_trust');
-      unlock(session, 'ask_the_raven', events, newAbilities, resolutionId);
-      addEvent(
-        events,
-        resolutionId,
-        'story',
-        'The raven accepts the key',
-        'The raven takes the Charred Key and chooses to trust the traveler.',
-      );
-      break;
-    case 'ask_the_raven':
-      markUsed(session, 'ask_the_raven');
-      addUnique(session.clueIds, 'second_name_fragment');
-      unlock(
-        session,
-        'speak_the_true_name',
-        events,
-        newAbilities,
-        resolutionId,
-      );
-      addEvent(
-        events,
-        resolutionId,
-        'clue',
-        'Second name fragment',
-        'The raven speaks the second fragment: —PER. Together the hidden name is VESPER.',
-      );
-      break;
-    case 'speak_the_true_name':
-      move(session, 'cellar', events, resolutionId);
-      markUsed(session, 'speak_the_true_name');
-      addEvent(
-        events,
-        resolutionId,
-        'story',
-        'The name is spoken',
-        'In the cellar, the traveler speaks VESPER and the breathing beneath the tavern stops.',
-      );
-      break;
-    case 'escape_front_door':
-      move(session, 'main_hall', events, resolutionId);
-      addEvent(
-        events,
-        resolutionId,
-        'story',
-        'The chain opens',
-        'The Charred Key opens the chained entrance, and the traveler escapes before dawn.',
-      );
-      break;
-    case 'enter_cellar_unprepared':
-      move(session, 'cellar', events, resolutionId);
-      addEvent(
-        events,
-        resolutionId,
-        'story',
-        'The cellar takes its due',
-        "Without the complete True Name, the traveler descends and the old keeper's chair turns toward them.",
-      );
-      break;
-    default:
-      addEvent(
-        events,
-        resolutionId,
-        'story',
-        'The tavern answers',
-        roll.total >= roll.dc
-          ? 'The attempt reveals how closely the tavern is listening, but no new key or clue appears.'
-          : 'The attempt changes nothing except the nearness of the sixth bell.',
-      );
-  }
-
-  const costly =
-    roll.tier === 'costly_success' ||
-    roll.tier === 'setback' ||
-    roll.tier === 'critical_setback';
-  if (costly && !events.some((event) => event.type === 'resolve'))
-    loseResolve(
-      session,
-      events,
-      resolutionId,
-      'The effort lets the darkness close in.',
-    );
-
-  let ending = session.endingId as EndingId | null;
-  if (actionId === 'speak_the_true_name') ending = 'true_name';
-  else if (actionId === 'escape_front_door') ending = 'escape';
-  else if (actionId === 'enter_cellar_unprepared') ending = 'new_keeper';
-  else if (session.resolve <= 0 || session.clock >= LIMITS.maxClock)
-    ending = 'new_keeper';
-
-  if (ending) {
-    addEvent(
-      events,
-      resolutionId,
-      'ending',
-      ENDING_LABELS[ending],
-      endingDetail(ending),
-    );
-  }
-
-  return {
-    canonicalEvents: events,
-    newAbilityIds: newAbilities,
-    endingId: ending,
-  };
-}
-
-function move(
-  session: ExperienceSession,
-  locationId: LocationId,
-  events: CanonicalEvent[],
-  resolutionId: string,
-): void {
-  if (session.locationId === locationId) return;
-  session.locationId = locationId;
-  addEvent(
-    events,
-    resolutionId,
-    'location',
-    `Moved to ${LOCATION_LABELS[locationId]}`,
-    `The action carries the traveler to the ${LOCATION_LABELS[locationId]}.`,
-  );
-}
-
-function unlock(
-  session: ExperienceSession,
-  abilityId: AbilityId,
-  events: CanonicalEvent[],
-  newAbilities: RuntimeAbilityId[],
-  resolutionId: string,
-): void {
-  if (session.unlockedAbilityIds.includes(abilityId)) return;
-  session.unlockedAbilityIds.push(abilityId);
-  newAbilities.push(abilityId);
-  addEvent(
-    events,
-    resolutionId,
-    'ability',
-    `${ABILITY_LABELS[abilityId]} unlocked`,
-    `${ABILITY_LABELS[abilityId]} is now an available page ability for ChatGPT.`,
-  );
-}
-
-function markUsed(session: ExperienceSession, abilityId: AbilityId): void {
-  addUnique(session.usedAbilityIds, abilityId);
-}
-
-function loseResolve(
-  session: ExperienceSession,
-  events: CanonicalEvent[],
-  resolutionId: string,
-  detail: string,
-): void {
-  session.resolve = Math.max(0, session.resolve - 1);
-  addEvent(
-    events,
-    resolutionId,
-    'resolve',
-    'The night takes its toll',
-    session.resolve <= 1
-      ? `${detail} The traveler is close to breaking.`
-      : detail,
-  );
-}
-
-function addEvent(
-  events: CanonicalEvent[],
-  resolutionId: string,
-  type: CanonicalEvent['type'],
-  label: string,
-  detail: string,
-): void {
-  events.push({
-    id: `${resolutionId}_event_${events.length + 1}`,
-    type,
-    label,
-    detail,
-  });
-}
-
-function endingLabel(ending: RuntimeEndingId): string {
-  return ENDING_LABELS[ending as EndingId] ?? ending;
-}
-
-function endingDetail(ending: EndingId): string {
-  if (ending === 'true_name')
-    return 'The True Name breaks the cycle. Dawn enters the tavern for the first time in years.';
-  if (ending === 'escape')
-    return 'The traveler escapes, but the curse remains for whoever opens the tavern next.';
-  return "The sixth bell claims the traveler as the tavern's new keeper.";
-}
-
-function addUnique<T>(values: T[], value: T): void {
-  if (!values.includes(value)) values.push(value);
-}
-
-function remove<T>(values: T[], value: T): void {
-  const index = values.indexOf(value);
-  if (index >= 0) values.splice(index, 1);
-}

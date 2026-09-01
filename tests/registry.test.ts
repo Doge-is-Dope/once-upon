@@ -1,56 +1,155 @@
 import { describe, expect, it } from 'vitest';
-import { renderExperienceFrame } from '../components/frames/registry';
 import {
   createExperienceRegistry,
   DEFAULT_EXPERIENCE_ID,
   getExperience,
-  listExperienceIds,
 } from '../experiences/registry';
-import { fixtureExperience } from './fixtures';
-import { ExperienceController } from '../lib/runtime/controller';
+import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
 
 describe('experience registry', () => {
-  it('resolves the default and formal experience route identity', () => {
+  it('resolves the curated living manuscript', () => {
     expect(DEFAULT_EXPERIENCE_ID).toBe('the-last-manuscript');
-    expect(listExperienceIds()).toEqual(['the-last-manuscript']);
-    expect(getExperience(DEFAULT_EXPERIENCE_ID)).toMatchObject({
-      id: 'the-last-manuscript',
-      title: 'The Last Manuscript',
-      story: { id: 'last-tavern' },
-      frame: { id: 'book', narrationFormat: 'prose' },
-      narration: { format: 'prose' },
-    });
-    expect(getExperience('unknown-experience')).toBeNull();
+    expect(getExperience(DEFAULT_EXPERIENCE_ID)).toBe(experienceDefinition);
   });
 
-  it('rejects incompatible frame and narration contracts', () => {
-    const invalid = fixtureExperience();
-    invalid.frame = { id: 'fixture', narrationFormat: 'terminal' };
-    expect(() => createExperienceRegistry([invalid])).toThrow(
-      'incompatible frame and narration formats',
+  it('keeps the player kickoff short and the internal agent contract versioned', () => {
+    expect(experienceDefinition.startMessage.length).toBeLessThanOrEqual(180);
+    expect(experienceDefinition.startMessage.split(/\s+/)).toHaveLength(15);
+    expect(experienceDefinition.startMessage).not.toMatch(
+      /get_story_state|begin_story_turn|commit_story_chapter|revision|receipt/,
     );
+    expect(experienceDefinition.agentContract).toMatchObject({
+      version: 'last-manuscript-agent-v1',
+      instructions: expect.stringContaining('close second-person novel prose'),
+    });
+    expect(experienceDefinition.agentContract.instructions).toContain(
+      'interaction receipt is already visible prose',
+    );
+    const memory = experienceDefinition.story.interactions.find(
+      ({ id }) => id === 'north_station_memory',
+    );
+    expect(memory?.description).toContain(
+      'explicitly chooses to close their eyes',
+    );
+    expect(memory?.description).toContain('remembered announcement');
   });
 
-  it('rejects duplicate experience IDs', () => {
+  it('rejects an empty agent contract', () => {
     expect(() =>
       createExperienceRegistry([
-        fixtureExperience('same-id'),
-        fixtureExperience('same-id'),
+        {
+          ...experienceDefinition,
+          id: 'missing-agent-contract',
+          agentContract: { version: '', instructions: '' },
+        },
       ]),
-    ).toThrow('Duplicate experience ID');
+    ).toThrow('requires a versioned agent contract');
   });
 
-  it('dispatches the configured renderer and rejects unsupported pairings', () => {
-    const experience = getExperience(DEFAULT_EXPERIENCE_ID)!;
-    const rendered = renderExperienceFrame(
-      experience,
-      new ExperienceController(experience),
+  it('rejects duplicate authored interaction or tool identities', () => {
+    const duplicate = {
+      ...experienceDefinition,
+      id: 'duplicate-tools',
+      story: {
+        ...experienceDefinition.story,
+        interactions: [
+          experienceDefinition.story.interactions[0],
+          experienceDefinition.story.interactions[0],
+        ],
+      },
+    };
+    expect(() => createExperienceRegistry([duplicate])).toThrow(
+      'duplicate interactions',
     );
-    expect(rendered.props.experience).toBe(experience);
+  });
 
-    const unsupported = fixtureExperience('fixture-terminal', 'terminal');
-    expect(() =>
-      renderExperienceFrame(unsupported, new ExperienceController(unsupported)),
-    ).toThrow('Unsupported frame and narration pairing');
+  it('rejects interaction prerequisites outside the authored allowlist', () => {
+    const invalid = {
+      ...experienceDefinition,
+      id: 'invalid-prerequisite',
+      story: {
+        ...experienceDefinition.story,
+        interactions: [
+          {
+            ...experienceDefinition.story.interactions[0],
+            requiredDiscoveryIds: ['prompt_injected_discovery'],
+          },
+        ],
+      },
+    };
+    expect(() => createExperienceRegistry([invalid])).toThrow(
+      'unknown discovery',
+    );
+  });
+
+  it('rejects fact prerequisites that no interaction declares', () => {
+    const invalid = {
+      ...experienceDefinition,
+      id: 'invalid-fact-prerequisite',
+      story: {
+        ...experienceDefinition.story,
+        interactions: [
+          {
+            ...experienceDefinition.story.interactions[0],
+            requiredFactIds: ['invented_fact'],
+          },
+        ],
+      },
+    };
+    expect(() => createExperienceRegistry([invalid])).toThrow(
+      'unknown fact invented_fact',
+    );
+  });
+
+  it('rejects discovery requirements outside the authored story graph', () => {
+    const unknownDiscovery = {
+      ...experienceDefinition,
+      id: 'invalid-discovery-requirement',
+      story: {
+        ...experienceDefinition.story,
+        discoveryRequirements: [
+          {
+            id: 'invented_discovery',
+            requiredInteractionIds: [],
+            requiredFactIds: [],
+          },
+        ],
+      },
+    };
+    expect(() => createExperienceRegistry([unknownDiscovery])).toThrow(
+      'unknown discovery invented_discovery',
+    );
+
+    const unknownInteraction = {
+      ...experienceDefinition,
+      id: 'invalid-discovery-interaction',
+      story: {
+        ...experienceDefinition.story,
+        discoveryRequirements: [
+          {
+            id: 'manuscript_found',
+            requiredInteractionIds: ['invented_interaction'],
+            requiredFactIds: [],
+          },
+        ],
+      },
+    };
+    expect(() => createExperienceRegistry([unknownInteraction])).toThrow(
+      'unknown interaction invented_interaction',
+    );
+  });
+
+  it('rejects completion facts that no interaction declares', () => {
+    const invalid = {
+      ...experienceDefinition,
+      id: 'invalid-completion-fact',
+      story: {
+        ...experienceDefinition.story,
+        completionRequiredFactIds: ['invented_ending'],
+      },
+    };
+    expect(() => createExperienceRegistry([invalid])).toThrow(
+      'unknown completion fact invented_ending',
+    );
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export async function copyText(text: string): Promise<void> {
   if (!navigator.clipboard?.writeText)
@@ -8,34 +8,29 @@ export async function copyText(text: string): Promise<void> {
   return navigator.clipboard.writeText(text);
 }
 
-export function CopyTooltip({
-  id,
-  message,
-}: {
-  id: string;
-  message: string | null;
-}) {
-  if (!message) return null;
-  return (
-    <output aria-live="polite" className="copy-tooltip" id={id}>
-      {message}
-    </output>
-  );
-}
-
 export function CopyButton({
   text,
   idleLabel,
   className = '',
   onCopied,
+  onCopyFailed,
 }: {
   text: string;
   idleLabel: string;
   className?: string;
   onCopied?: () => void;
+  onCopyFailed?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
+  const fallbackRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!showFallback) return;
+    fallbackRef.current?.focus();
+    fallbackRef.current?.select();
+  }, [showFallback]);
+
   return (
     <>
       <button
@@ -48,7 +43,10 @@ export function CopyButton({
               onCopied?.();
               window.setTimeout(() => setCopied(false), 1800);
             })
-            .catch(() => setShowFallback(true))
+            .catch(() => {
+              setShowFallback(true);
+              onCopyFailed?.();
+            })
         }
       >
         {copied ? (
@@ -64,11 +62,9 @@ export function CopyButton({
           <span>Copy this message</span>
           <textarea
             readOnly
+            ref={fallbackRef}
             value={text}
-            onFocus={(event) => {
-              event.currentTarget.select();
-              onCopied?.();
-            }}
+            onFocus={(event) => event.currentTarget.select()}
           />
         </label>
       ) : null}

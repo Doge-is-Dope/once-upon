@@ -12,6 +12,8 @@ declare global {
   interface Window {
     __webMCPTools: Map<string, BrowserTool>;
     __connectionTools: Map<string, BrowserTool>;
+    __webMCPRegistrationHistory: string[];
+    __webMCPAbortHistory: string[];
     __mcpFailName: string | null;
     __mcpPermissionDenied: boolean;
   }
@@ -38,6 +40,8 @@ export interface ModelContextMockOptions {
   dispatchToolChange?: boolean;
   respectOptOut?: boolean;
   failureInjection?: boolean;
+  initialFailure?: 'permission' | 'error';
+  registrationBudget?: number;
 }
 
 export async function installModelContextMock(
@@ -48,6 +52,8 @@ export async function installModelContextMock(
     dispatchToolChange: false,
     respectOptOut: false,
     failureInjection: false,
+    initialFailure: undefined,
+    registrationBudget: 0,
     ...options,
   };
   await page.addInitScript((mock) => {
@@ -64,6 +70,9 @@ export async function installModelContextMock(
       ): unknown;
     };
     const tools = new Map<string, MockTool>();
+    const registrations: string[] = [];
+    const aborts: string[] = [];
+    let initialFailure = mock.initialFailure;
     const modelContext = new EventTarget() as EventTarget & {
       registerTool(
         tool: MockTool,
@@ -72,16 +81,30 @@ export async function installModelContextMock(
       getTools(): Promise<Array<{ name: string }>>;
     };
     modelContext.registerTool = async (tool, options) => {
+      if (initialFailure) {
+        const failure = initialFailure;
+        initialFailure = undefined;
+        if (failure === 'permission')
+          throw new DOMException('site tools are disabled', 'NotAllowedError');
+        throw new Error('registration refused');
+      }
+      if (
+        mock.registrationBudget > 0 &&
+        registrations.length >= mock.registrationBudget
+      )
+        throw new Error('WebMCP configuration exceeds supported limits.');
       if (mock.failureInjection) {
         if (window.__mcpPermissionDenied)
           throw new DOMException('site tools are disabled', 'NotAllowedError');
         if (window.__mcpFailName === tool.name)
           throw new Error('registration refused');
       }
+      registrations.push(tool.name);
       tools.set(tool.name, tool);
       options?.signal?.addEventListener(
         'abort',
         () => {
+          aborts.push(tool.name);
           if (tools.get(tool.name) === tool) tools.delete(tool.name);
         },
         { once: true },
@@ -102,6 +125,14 @@ export async function installModelContextMock(
     Object.defineProperty(window, mock.globalName, {
       configurable: true,
       value: tools,
+    });
+    Object.defineProperty(window, '__webMCPRegistrationHistory', {
+      configurable: true,
+      value: registrations,
+    });
+    Object.defineProperty(window, '__webMCPAbortHistory', {
+      configurable: true,
+      value: aborts,
     });
   }, config);
 }

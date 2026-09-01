@@ -1,21 +1,35 @@
 import type {
-  ActionInput,
+  AvailableInteraction,
+  BeginStoryTurnInput,
+  CommitStoryChapterInput,
+  DerivedInteractionSurface,
   EngineContext,
   ExperienceDefinition,
   ExperienceSession,
-  NarrationEntry,
-  NarrationInput,
+  InteractionEffectReceipt,
+  InvokeInteractionInput,
   OperationRecord,
-  ResultTier,
-  RollResult,
+  StoryChapter,
+  StoryInteractionDefinition,
   StoryStateSnapshot,
   ToolFailure,
   ToolResponse,
   ToolSuccess,
-  TurnResolution,
 } from './types';
 
-const MAX_LEDGER_RECORDS = 40;
+export const RUNTIME_LIMITS = {
+  operationIdMinLength: 6,
+  idMaxLength: 160,
+  chapterTitleMaxLength: 80,
+  chapterWordsMax: 500,
+  chapterParagraphsMax: 3,
+  summaryMaxLength: 700,
+  choiceMaxLength: 500,
+  ledgerRecordsMax: 60,
+} as const;
+const SNAPSHOT_SUMMARY_LENGTH = 520;
+const SNAPSHOT_EXCERPT_LENGTH = 280;
+const SNAPSHOT_CHOICE_LENGTH = 280;
 
 export const defaultEngineContext: EngineContext = {
   now: () => Date.now(),
@@ -24,360 +38,747 @@ export const defaultEngineContext: EngineContext = {
 
 export function createExperienceSession(
   definition: ExperienceDefinition,
-  name: string,
-  specialty: string,
   context: EngineContext = defaultEngineContext,
 ): ExperienceSession {
-  const initial = definition.story.createInitialState(name, specialty, context);
-  const openingPayload = definition.narration.normalize(initial.opening);
-  if (!openingPayload)
-    throw new Error(
-      `Experience ${definition.id} produced an opening that does not match its narration contract.`,
-    );
-  const opening: NarrationEntry = {
-    id: context.id('entry'),
-    turn: 0,
+  const chapter: StoryChapter = {
+    id: context.id('chapter'),
+    title: definition.story.prologue.title,
+    prose: definition.story.prologue.prose,
     createdAt: context.now(),
-    resolution: null,
-    payload: openingPayload,
+    turnId: null,
+    discoveryIds: [],
+    effectReceiptId: null,
   };
-
   return {
-    schemaVersion: 2,
     experienceId: definition.id,
     storyId: definition.story.id,
     sessionId: context.id('session'),
     revision: 1,
-    phase: 'READY_FOR_ACTION',
-    turn: 0,
-    clock: initial.clock,
-    resolve: initial.resolve,
-    character: initial.character,
-    stats: initial.stats,
-    locationId: initial.locationId,
-    inventoryIds: initial.inventoryIds,
-    clueIds: initial.clueIds,
-    unlockedAbilityIds: initial.unlockedAbilityIds,
-    usedAbilityIds: initial.usedAbilityIds,
-    narrationEntries: [opening],
-    pendingResolution: null,
-    endingId: null,
+    phase: 'READY',
+    continuitySummary: definition.story.prologue.continuitySummary,
+    chapters: [chapter],
+    discoveries: [],
+    facts: [],
+    interactionUses: [],
+    pendingTurn: null,
     operationLedger: [],
   };
+}
+
+export function availableInteractions(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+): StoryInteractionDefinition[] {
+  return deriveInteractionSurface(definition, session)
+    .filter(({ callable }) => callable)
+    .map(({ interaction }) => interaction);
+}
+
+export function deriveInteractionSurface(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+): DerivedInteractionSurface[] {
+  const discoveries = new Set(session.discoveries.map(({ id }) => id));
+  const facts = new Set(session.facts.map(({ id }) => id));
+  const completed = new Set(
+    session.interactionUses
+      .filter(({ status }) => status === 'retired')
+      .map(({ interactionId }) => interactionId),
+  );
+  return definition.story.interactions.map((interaction) => {
+    const use = session.interactionUses.find(
+      ({ interactionId }) => interactionId === interaction.id,
+    );
+    const prerequisitesMet =
+      interaction.requiredDiscoveryIds.every((id) => discoveries.has(id)) &&
+      interaction.requiredInteractionIds.every((id) => completed.has(id)) &&
+      interaction.requiredFactIds.every((id) => facts.has(id));
+    const registered = session.phase !== 'COMPLETE' && prerequisitesMet && !use;
+    return {
+      interaction,
+      prerequisitesMet,
+      registered,
+      callable: session.phase === 'READY' && registered,
+      useStatus: use?.status ?? 'unused',
+    };
+  });
+}
+
+export function deriveToolSurface(
+  definition: ExperienceDefinition,
+  session: ExperienceSession | null,
+): string[] {
+  if (!session) return [];
+  return [
+    'get_story_state',
+    'begin_story_turn',
+    'commit_story_chapter',
+    ...(session.phase !== 'COMPLETE'
+      ? deriveInteractionSurface(definition, session)
+          .filter(({ registered }) => registered)
+          .map(({ interaction }) => interaction.toolName)
+      : []),
+  ];
 }
 
 export function toStoryState(
   definition: ExperienceDefinition,
   session: ExperienceSession,
 ): StoryStateSnapshot {
+  const latest = session.chapters.at(-1)!;
+  const interactions = availableInteractions(definition, session).map(
+    ({ id, toolName, title, cue }): AvailableInteraction => ({
+      id,
+      toolName,
+      title,
+      cue,
+    }),
+  );
+  const mode =
+    session.phase === 'AWAITING_CHAPTER'
+      ? 'recovering'
+      : session.phase === 'COMPLETE'
+        ? 'complete'
+        : session.chapters.length === 1
+          ? 'opening'
+          : 'continuing';
   return {
     experienceId: session.experienceId,
     storyId: session.storyId,
     sessionId: session.sessionId,
     revision: session.revision,
     phase: session.phase,
-    requiredNextTool:
-      session.phase === 'AWAITING_NARRATION' ||
-      session.phase === 'AWAITING_FINAL_NARRATION'
-        ? 'commit_narration'
-        : session.phase === 'COMPLETE'
-          ? 'none'
-          : 'perform_action_or_unlocked_ability',
-    turn: session.turn,
-    clock: session.clock,
-    resolve: session.resolve,
-    character: session.character,
-    stats: session.stats,
-    location: {
-      id: session.locationId,
-      label: definition.story.locationLabel(session.locationId),
+    bootstrap: {
+      protocolVersion: 'living-manuscript-v1',
+      contractVersion: definition.agentContract.version,
+      instructions: definition.agentContract.instructions,
+      mode,
     },
-    inventory: session.inventoryIds.map((id) => ({
-      id,
-      label: definition.story.itemLabel(id),
-    })),
-    clues: session.clueIds.map((id) => ({
-      id,
-      label: definition.story.clueLabel(id),
-    })),
-    abilities: session.unlockedAbilityIds.map((id) => ({
-      id,
-      label: definition.story.abilityLabel(id),
-      used: session.usedAbilityIds.includes(id),
-    })),
-    affordances:
-      session.phase === 'READY_FOR_ACTION'
-        ? definition.story.getAffordances(session)
-        : [],
-    pendingResolution: session.pendingResolution,
-    ending: session.endingId
+    requiredNextTool:
+      session.phase === 'AWAITING_CHAPTER' ? 'commit_story_chapter' : 'none',
+    requiredChapterStatus: requiredChapterStatus(definition, session),
+    allowedNextTools:
+      session.phase === 'READY'
+        ? ['begin_story_turn', ...interactions.map(({ toolName }) => toolName)]
+        : session.phase === 'AWAITING_CHAPTER'
+          ? ['commit_story_chapter']
+          : [],
+    continuitySummary: session.continuitySummary.slice(
+      0,
+      SNAPSHOT_SUMMARY_LENGTH,
+    ),
+    latestChapter: {
+      title: latest.title,
+      excerpt: latest.prose.slice(-SNAPSHOT_EXCERPT_LENGTH),
+    },
+    pending: session.pendingTurn
       ? {
-          id: session.endingId,
-          label: definition.story.endingLabel(session.endingId),
+          turnId: session.pendingTurn.turnId,
+          kind: session.pendingTurn.kind,
+          playerChoice: session.pendingTurn.playerChoice.slice(
+            0,
+            SNAPSHOT_CHOICE_LENGTH,
+          ),
+          interactionId: session.pendingTurn.interactionId,
+          effectReceipt: session.pendingTurn.effectReceipt,
         }
       : null,
-    scenePrompt: definition.story.scenePrompt(session),
+    availableInteractions: interactions,
   };
 }
 
 export function getStateResponse(
   definition: ExperienceDefinition,
-  session: ExperienceSession | null,
+  session: ExperienceSession,
 ): ToolResponse {
-  if (!session)
-    return failure(
-      definition,
-      'NO_ACTIVE_SESSION',
-      'Begin the experience before asking for its story state.',
-    );
   return { ok: true, state: toStoryState(definition, session) };
 }
 
-export function resolveAction(
+export function beginStoryTurn(
   definition: ExperienceDefinition,
   session: ExperienceSession,
-  input: ActionInput,
-  die: number | (() => number),
+  input: BeginStoryTurnInput,
   context: EngineContext = defaultEngineContext,
 ): { session: ExperienceSession; response: ToolResponse } {
-  const fingerprint = stableFingerprint('action', input);
+  const staleSession = validateSessionIdentity(definition, session, input);
+  if (staleSession) return unchanged(session, staleSession);
+  const fingerprint = stableFingerprint('begin_turn', input);
   const duplicate = findOperation(session, input.operationId);
   if (duplicate)
     return replayOrReuseError(definition, session, duplicate, fingerprint);
-  if (
-    !validOperationId(input.operationId) ||
-    !Number.isInteger(input.expectedRevision) ||
-    !definition.story.isAttribute(input.approach) ||
-    !input.targetId ||
-    !input.intent.trim()
-  ) {
+  const invalid = validateCommonInput(definition, session, input);
+  if (invalid) return unchanged(session, invalid);
+  if (session.phase === 'AWAITING_CHAPTER')
     return unchanged(
       session,
       failure(
         definition,
-        'INVALID_INPUT',
-        'Provide a unique operationId, the current revision, a listed targetId, an approach, and a short intent.',
+        'CHAPTER_REQUIRED',
+        'Finish the saved turn with commit_story_chapter before starting another.',
         session,
       ),
     );
-  }
-  if (input.expectedRevision !== session.revision)
-    return unchanged(
-      session,
-      failure(
-        definition,
-        'STALE_STATE',
-        `Expected revision ${input.expectedRevision}, but the saved story is revision ${session.revision}. Read state again.`,
-        session,
-      ),
-    );
-  if (session.pendingResolution)
-    return unchanged(
-      session,
-      failure(
-        definition,
-        'NARRATION_REQUIRED',
-        'This result is already saved. Commit its narration before taking a new action.',
-        session,
-        session.pendingResolution,
-      ),
-    );
-  if (session.phase !== 'READY_FOR_ACTION')
+  if (session.phase !== 'READY')
     return unchanged(
       session,
       failure(
         definition,
         'ACTION_UNAVAILABLE',
-        'The story is not accepting another action right now.',
+        'This manuscript is complete and no longer accepts new turns.',
         session,
       ),
     );
 
-  const actionError = definition.story.validateAction(session, input.targetId);
-  if (actionError)
-    return unchanged(
-      session,
-      failure(definition, actionError.code, actionError.message, session),
-    );
-
   const next = structuredClone(session);
-  const resolutionId = context.id('resolution');
-  const dc = definition.story.actionDc(input.targetId);
-  const roll = makeRoll(
-    typeof die === 'function' ? die() : die,
-    input.approach,
-    next.stats[input.approach] ?? 0,
-    dc,
-  );
-
-  next.turn += 1;
-  const storyResult = definition.story.applyAction(
-    next,
-    input.targetId,
-    roll,
-    resolutionId,
-  );
-  next.endingId = storyResult.endingId;
-
-  const resolution: TurnResolution = {
-    resolutionId,
-    actionId: input.targetId,
-    intent: input.intent.trim().slice(0, 280),
-    turn: next.turn,
+  const turnId = context.id('turn');
+  next.pendingTurn = {
+    turnId,
+    kind: 'choice',
+    playerChoice: input.playerChoice
+      .trim()
+      .slice(0, RUNTIME_LIMITS.choiceMaxLength),
     createdAt: context.now(),
-    roll,
-    canonicalEvents: storyResult.canonicalEvents,
-    representedEventIds: storyResult.canonicalEvents.map((event) => event.id),
-    mustInclude: storyResult.canonicalEvents.map((event) => event.detail),
-    mustNotClaim: storyResult.mustNotClaim ?? [
-      'Do not invent additional items, clues, characters, exits, damage, or a different ending.',
-      'Do not change the die, modifier, DC, result tier, clock, Resolve, or saved state.',
-    ],
-    newAbilityIds: storyResult.newAbilityIds,
+    interactionId: null,
+    effectReceipt: null,
   };
-  next.pendingResolution = resolution;
-  next.phase = next.endingId
-    ? 'AWAITING_FINAL_NARRATION'
-    : 'AWAITING_NARRATION';
+  next.phase = 'AWAITING_CHAPTER';
   next.revision += 1;
-
   const response: ToolSuccess = {
     ok: true,
     state: toStoryState(definition, next),
-    resolution,
+    turnId,
   };
   recordOperation(next, {
     operationId: input.operationId,
     fingerprint,
-    kind: 'action',
-    result: response,
+    kind: 'begin_turn',
+    replay: { revision: next.revision, turnId },
   });
   return { session: next, response };
 }
 
-export function commitNarration(
+export function invokeStoryInteraction(
   definition: ExperienceDefinition,
   session: ExperienceSession,
-  input: NarrationInput,
+  input: InvokeInteractionInput,
   context: EngineContext = defaultEngineContext,
 ): { session: ExperienceSession; response: ToolResponse } {
-  const fingerprint = stableFingerprint('narration', input);
+  const staleSession = validateSessionIdentity(definition, session, input);
+  if (staleSession) return unchanged(session, staleSession);
+  const fingerprint = stableFingerprint('interaction', input);
   const duplicate = findOperation(session, input.operationId);
   if (duplicate)
     return replayOrReuseError(definition, session, duplicate, fingerprint);
-  if (
-    !validOperationId(input.operationId) ||
-    !Number.isInteger(input.expectedRevision) ||
-    !input.resolutionId ||
-    !Array.isArray(input.representedEventIds)
-  ) {
+  const invalid = validateCommonInput(definition, session, input);
+  if (invalid) return unchanged(session, invalid);
+  if (session.phase === 'AWAITING_CHAPTER')
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'CHAPTER_REQUIRED',
+        'Finish the saved turn before invoking a story object.',
+        session,
+      ),
+    );
+  if (session.phase !== 'READY')
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'ACTION_UNAVAILABLE',
+        'The completed manuscript cannot invoke another story object.',
+        session,
+      ),
+    );
+
+  const interaction = definition.story.interactions.find(
+    ({ id }) => id === input.interactionId,
+  );
+  if (!interaction)
     return unchanged(
       session,
       failure(
         definition,
         'INVALID_INPUT',
-        'Provide a unique operationId, current revision, resolutionId, representedEventIds, and a valid narration payload.',
+        'The requested interaction is not authored for this story.',
         session,
       ),
     );
-  }
-  if (input.expectedRevision !== session.revision)
+  if (
+    session.interactionUses.some(
+      ({ interactionId }) => interactionId === interaction.id,
+    )
+  )
     return unchanged(
       session,
       failure(
         definition,
-        'STALE_STATE',
-        `Expected revision ${input.expectedRevision}, but the saved story is revision ${session.revision}. Read state again.`,
+        'INTERACTION_USED',
+        `${interaction.title} has already changed the manuscript.`,
         session,
       ),
     );
-  const pending = session.pendingResolution;
   if (
-    !pending ||
-    (session.phase !== 'AWAITING_NARRATION' &&
-      session.phase !== 'AWAITING_FINAL_NARRATION')
+    !availableInteractions(definition, session).some(
+      ({ id }) => id === interaction.id,
+    )
+  )
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'INTERACTION_LOCKED',
+        `${interaction.title} is not available in the current story.`,
+        session,
+      ),
+    );
+
+  const next = structuredClone(session);
+  const now = context.now();
+  const receipt: InteractionEffectReceipt = {
+    receiptId: context.id('effect'),
+    interactionId: interaction.id,
+    presentation: interaction.presentation,
+    factIds: interaction.sealedFacts.map(({ id }) => id),
+    facts: interaction.sealedFacts.map(({ id, value }) => ({ id, value })),
+    createdAt: now,
+  };
+  for (const fact of interaction.sealedFacts) {
+    if (!next.facts.some(({ id }) => id === fact.id))
+      next.facts.push({
+        id: fact.id,
+        value: fact.value,
+        revealedByInteractionId: interaction.id,
+        revealedAt: now,
+      });
+  }
+  next.interactionUses.push({
+    interactionId: interaction.id,
+    status: 'pending',
+    invokedAt: now,
+    retiredAt: null,
+    receiptId: receipt.receiptId,
+  });
+  const turnId = context.id('turn');
+  next.pendingTurn = {
+    turnId,
+    kind: 'interaction',
+    playerChoice: input.playerChoice
+      .trim()
+      .slice(0, RUNTIME_LIMITS.choiceMaxLength),
+    createdAt: now,
+    interactionId: interaction.id,
+    effectReceipt: receipt,
+  };
+  next.phase = 'AWAITING_CHAPTER';
+  next.revision += 1;
+  const response: ToolSuccess = {
+    ok: true,
+    state: toStoryState(definition, next),
+    turnId,
+    effectReceipt: receipt,
+  };
+  recordOperation(next, {
+    operationId: input.operationId,
+    fingerprint,
+    kind: 'interaction',
+    replay: { revision: next.revision, turnId, receipt },
+  });
+  return { session: next, response };
+}
+
+export function commitStoryChapter(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+  input: CommitStoryChapterInput,
+  context: EngineContext = defaultEngineContext,
+): { session: ExperienceSession; response: ToolResponse } {
+  const staleSession = validateSessionIdentity(definition, session, input);
+  if (staleSession) return unchanged(session, staleSession);
+  const fingerprint = stableFingerprint('chapter', input);
+  const duplicate = findOperation(session, input.operationId);
+  if (duplicate)
+    return replayOrReuseError(definition, session, duplicate, fingerprint);
+  if (
+    !validOperationId(input.operationId) ||
+    !Number.isInteger(input.expectedRevision)
+  )
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'INVALID_INPUT',
+        'Provide a unique operationId and current revision.',
+        session,
+      ),
+    );
+  if (input.expectedRevision !== session.revision)
+    return unchanged(
+      session,
+      staleFailure(definition, session, input.expectedRevision),
+    );
+  const pending = session.pendingTurn;
+  if (!pending || session.phase !== 'AWAITING_CHAPTER')
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'ACTION_UNAVAILABLE',
+        'No saved turn is waiting for a chapter.',
+        session,
+      ),
+    );
+  if (input.turnId !== pending.turnId)
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'CHAPTER_REQUIRED',
+        `Commit the exact pending turn ${pending.turnId}.`,
+        session,
+      ),
+    );
+  const contentError = validateChapterContent(input);
+  if (contentError)
+    return unchanged(
+      session,
+      failure(definition, 'INVALID_INPUT', contentError, session),
+    );
+
+  const allowedDiscoveries = new Set(definition.story.discoveryIds);
+  const invalidDiscoveries = input.discoveryIds.filter(
+    (id) => !allowedDiscoveries.has(id),
+  );
+  if (invalidDiscoveries.length)
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'INVALID_DISCOVERY',
+        `Only authored discoveryIds are accepted. Invalid: ${invalidDiscoveries.join(', ')}.`,
+        session,
+      ),
+    );
+  const lockedDiscoveries = input.discoveryIds.filter((id) =>
+    isDiscoveryLocked(definition, session, id),
+  );
+  if (lockedDiscoveries.length)
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'INVALID_DISCOVERY',
+        `These discoveries are not available at the current story stage: ${lockedDiscoveries.join(', ')}.`,
+        session,
+      ),
+    );
+  const leak = findSealedLeak(
+    definition,
+    session,
+    `${input.title}\n${input.prose}\n${input.continuitySummary}`,
+  );
+  if (leak)
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'SEALED_FACT_LEAK',
+        'The chapter contains a protected story truth that has not been revealed by its interaction.',
+        session,
+      ),
+    );
+
+  const pendingReceipt = pending.effectReceipt;
+  const represented = new Set(input.representedFactIds ?? []);
+  if (pendingReceipt) {
+    if (input.effectReceiptId !== pendingReceipt.receiptId)
+      return unchanged(
+        session,
+        failure(
+          definition,
+          'CHAPTER_REQUIRED',
+          `Represent the exact effect receipt ${pendingReceipt.receiptId}.`,
+          session,
+        ),
+      );
+    const missing = pendingReceipt.factIds.filter((id) => !represented.has(id));
+    const unexpected = [...represented].filter(
+      (id) => !pendingReceipt.factIds.includes(id),
+    );
+    if (missing.length || unexpected.length)
+      return unchanged(
+        session,
+        failure(
+          definition,
+          'INVALID_INPUT',
+          [
+            missing.length ? `Missing: ${missing.join(', ')}.` : '',
+            unexpected.length ? `Unexpected: ${unexpected.join(', ')}.` : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+          session,
+        ),
+      );
+  } else if (input.effectReceiptId || represented.size) {
+    return unchanged(
+      session,
+      failure(
+        definition,
+        'INVALID_INPUT',
+        'This ordinary turn has no effect receipt or sealed facts.',
+        session,
+      ),
+    );
+  }
+
+  const requiredStatus = requiredChapterStatus(definition, session);
+  if (
+    (requiredStatus === 'continue' && input.status !== 'continue') ||
+    (requiredStatus === 'complete' && input.status !== 'complete')
   )
     return unchanged(
       session,
       failure(
         definition,
         'ACTION_UNAVAILABLE',
-        'No saved turn is waiting for narration.',
+        requiredStatus === 'complete'
+          ? 'This final reveal must close the manuscript with status complete.'
+          : 'This chapter must continue the manuscript before its ending.',
         session,
-      ),
-    );
-  if (pending.resolutionId !== input.resolutionId)
-    return unchanged(
-      session,
-      failure(
-        definition,
-        'NARRATION_REQUIRED',
-        `Commit narration for the exact saved resolution ${pending.resolutionId}.`,
-        session,
-        pending,
       ),
     );
 
-  const missing = pending.representedEventIds.filter(
-    (id) => !input.representedEventIds.includes(id),
-  );
-  const payload = definition.narration.normalize(input.payload);
-  if (missing.length > 0 || !payload) {
-    return unchanged(
-      session,
-      failure(
-        definition,
-        'INVALID_INPUT',
-        missing.length > 0
-          ? `The narration must acknowledge every canonical event ID. Missing: ${missing.join(', ')}.`
-          : definition.narration.instruction,
+  if (input.status === 'complete') {
+    const revealedFacts = new Set(session.facts.map(({ id }) => id));
+    const missingCompletionFacts =
+      definition.story.completionRequiredFactIds.filter(
+        (id) => !revealedFacts.has(id),
+      );
+    if (missingCompletionFacts.length)
+      return unchanged(
         session,
-        pending,
-      ),
-    );
+        failure(
+          definition,
+          'ACTION_UNAVAILABLE',
+          `The story cannot end before its required facts are revealed. Missing: ${missingCompletionFacts.join(', ')}.`,
+          session,
+        ),
+      );
   }
 
   const next = structuredClone(session);
-  const entry: NarrationEntry = {
-    id: context.id('entry'),
-    turn: pending.turn,
-    payload,
-    createdAt: context.now(),
-    resolution: pending,
+  const now = context.now();
+  const chapter: StoryChapter = {
+    id: context.id('chapter'),
+    title: input.title.trim(),
+    prose: normalizeParagraphs(input.prose),
+    createdAt: now,
+    turnId: pending.turnId,
+    discoveryIds: [...new Set(input.discoveryIds)],
+    effectReceiptId: pendingReceipt?.receiptId ?? null,
   };
-  next.narrationEntries.push(entry);
-  next.pendingResolution = null;
-  next.phase = next.endingId ? 'COMPLETE' : 'READY_FOR_ACTION';
+  next.chapters.push(chapter);
+  next.continuitySummary = input.continuitySummary.trim();
+  for (const id of chapter.discoveryIds) {
+    if (!next.discoveries.some((record) => record.id === id))
+      next.discoveries.push({
+        id,
+        chapterId: chapter.id,
+        discoveredAt: now,
+      });
+  }
+  if (pending.interactionId) {
+    const use = next.interactionUses.find(
+      ({ interactionId }) => interactionId === pending.interactionId,
+    );
+    if (use) {
+      use.status = 'retired';
+      use.retiredAt = now;
+    }
+  }
+  next.pendingTurn = null;
+  next.phase = input.status === 'complete' ? 'COMPLETE' : 'READY';
   next.revision += 1;
   const response: ToolSuccess = {
     ok: true,
     state: toStoryState(definition, next),
-    narrationEntry: entry,
+    chapter,
   };
   recordOperation(next, {
     operationId: input.operationId,
     fingerprint,
-    kind: 'narration',
-    result: response,
+    kind: 'chapter',
+    replay: { revision: next.revision, chapterId: chapter.id },
   });
   return { session: next, response };
 }
 
-function makeRoll(
-  die: number,
-  attribute: string,
-  modifier: number,
-  dc: number,
-): RollResult {
-  const bounded = Math.max(1, Math.min(20, Math.trunc(die)));
-  const total = bounded + modifier;
-  let tier: ResultTier;
-  if (bounded === 20) tier = 'critical_success';
-  else if (bounded === 1) tier = 'critical_setback';
-  else if (total >= dc) tier = 'success';
-  else if (total >= dc - 3) tier = 'costly_success';
-  else tier = 'setback';
-  return { die: bounded, attribute, modifier, total, dc, tier };
+function validateCommonInput(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+  input: BeginStoryTurnInput,
+): ToolFailure | null {
+  if (
+    !validOperationId(input.operationId) ||
+    !Number.isInteger(input.expectedRevision) ||
+    typeof input.playerChoice !== 'string' ||
+    !input.playerChoice.trim() ||
+    input.playerChoice.length > RUNTIME_LIMITS.choiceMaxLength
+  )
+    return failure(
+      definition,
+      'INVALID_INPUT',
+      'Provide a unique operationId, current revision, and the latest explicit player choice (500 characters or fewer).',
+      session,
+    );
+  if (input.expectedRevision !== session.revision)
+    return staleFailure(definition, session, input.expectedRevision);
+  return null;
+}
+
+function validateSessionIdentity(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+  input: { expectedSessionId: string },
+): ToolFailure | null {
+  if (
+    typeof input.expectedSessionId !== 'string' ||
+    input.expectedSessionId !== session.sessionId
+  )
+    return failure(
+      definition,
+      'STALE_SESSION',
+      'This call belongs to a previous manuscript. Read the current story state before making another change.',
+      session,
+    );
+  return null;
+}
+
+function validateChapterContent(input: CommitStoryChapterInput): string | null {
+  if (
+    !input.title?.trim() ||
+    input.title.trim().length > RUNTIME_LIMITS.chapterTitleMaxLength
+  )
+    return 'Use a short chapter title of 80 characters or fewer.';
+  if (!input.prose?.trim())
+    return 'Write the player choice into 1–3 short prose paragraphs.';
+  const paragraphs = input.prose
+    .trim()
+    .split(/\n\s*\n/)
+    .filter(Boolean);
+  if (
+    paragraphs.length < 1 ||
+    paragraphs.length > RUNTIME_LIMITS.chapterParagraphsMax
+  )
+    return 'Write 1–3 short prose paragraphs.';
+  const words = input.prose.trim().split(/\s+/).length;
+  if (words < 20 || words > RUNTIME_LIMITS.chapterWordsMax)
+    return `Keep the chapter between 20 and ${RUNTIME_LIMITS.chapterWordsMax} words.`;
+  if (
+    !input.continuitySummary?.trim() ||
+    input.continuitySummary.length > RUNTIME_LIMITS.summaryMaxLength
+  )
+    return `Provide a continuitySummary of ${RUNTIME_LIMITS.summaryMaxLength} characters or fewer.`;
+  if (!Array.isArray(input.discoveryIds))
+    return 'discoveryIds must be an array.';
+  if (input.status !== 'continue' && input.status !== 'complete')
+    return 'status must be continue or complete.';
+  return null;
+}
+
+function requiredChapterStatus(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+): StoryStateSnapshot['requiredChapterStatus'] {
+  if (session.phase !== 'AWAITING_CHAPTER' || !session.pendingTurn)
+    return 'none';
+
+  const pendingInteractionId = session.pendingTurn.interactionId;
+  if (!pendingInteractionId) {
+    const facts = new Set(session.facts.map(({ id }) => id));
+    return definition.story.completionRequiredFactIds.every((id) =>
+      facts.has(id),
+    )
+      ? 'either'
+      : 'continue';
+  }
+
+  const interaction = definition.story.interactions.find(
+    ({ id }) => id === pendingInteractionId,
+  );
+  if (!interaction || interaction.completionPolicy === 'must_continue')
+    return 'continue';
+  if (interaction.completionPolicy === 'must_complete') return 'complete';
+
+  const facts = new Set(session.facts.map(({ id }) => id));
+  return definition.story.completionRequiredFactIds.every((id) => facts.has(id))
+    ? 'either'
+    : 'continue';
+}
+
+function findSealedLeak(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+  text: string,
+): string | null {
+  const revealed = new Set(session.facts.map(({ id }) => id));
+  const lowered = text.toLocaleLowerCase();
+  for (const interaction of definition.story.interactions) {
+    for (const fact of interaction.sealedFacts) {
+      if (revealed.has(fact.id)) continue;
+      for (const term of fact.protectedTerms) {
+        if (lowered.includes(term.toLocaleLowerCase())) return term;
+      }
+    }
+  }
+  return null;
+}
+
+function isDiscoveryLocked(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+  discoveryId: string,
+): boolean {
+  if (session.discoveries.some(({ id }) => id === discoveryId)) return false;
+  const requirement = definition.story.discoveryRequirements.find(
+    ({ id }) => id === discoveryId,
+  );
+  if (!requirement) return false;
+  const facts = new Set(session.facts.map(({ id }) => id));
+  const completedInteractions = new Set(
+    session.interactionUses
+      .filter(({ status }) => status === 'retired')
+      .map(({ interactionId }) => interactionId),
+  );
+  return (
+    requirement.requiredFactIds.some((id) => !facts.has(id)) ||
+    requirement.requiredInteractionIds.some(
+      (id) => !completedInteractions.has(id),
+    )
+  );
+}
+
+function normalizeParagraphs(text: string): string {
+  return text
+    .trim()
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
+    .join('\n\n');
+}
+
+function staleFailure(
+  definition: ExperienceDefinition,
+  session: ExperienceSession,
+  expectedRevision: number,
+): ToolFailure {
+  return failure(
+    definition,
+    'STALE_STATE',
+    `Expected revision ${expectedRevision}, but the manuscript is revision ${session.revision}. Read state again.`,
+    session,
+  );
 }
 
 function recordOperation(
@@ -385,10 +786,10 @@ function recordOperation(
   record: OperationRecord,
 ): void {
   session.operationLedger.push(record);
-  if (session.operationLedger.length > MAX_LEDGER_RECORDS)
+  if (session.operationLedger.length > RUNTIME_LIMITS.ledgerRecordsMax)
     session.operationLedger.splice(
       0,
-      session.operationLedger.length - MAX_LEDGER_RECORDS,
+      session.operationLedger.length - RUNTIME_LIMITS.ledgerRecordsMax,
     );
 }
 
@@ -413,19 +814,28 @@ function replayOrReuseError(
       failure(
         definition,
         'OPERATION_ID_REUSED',
-        'This operationId was already used for a different request. Create a new unique ID.',
+        'This operationId belongs to a different request. Create a new unique ID.',
         session,
       ),
     );
+  const replayIsCurrent = session.revision === record.replay.revision;
+  const chapter = record.replay.chapterId
+    ? session.chapters.find(({ id }) => id === record.replay.chapterId)
+    : undefined;
   return {
     session,
-    response: record.result.ok
-      ? {
-          ...record.result,
-          state: toStoryState(definition, session),
-          idempotentReplay: true,
-        }
-      : record.result,
+    response: {
+      ok: true,
+      state: toStoryState(definition, session),
+      ...(replayIsCurrent && record.replay.turnId
+        ? { turnId: record.replay.turnId }
+        : {}),
+      ...(replayIsCurrent && record.replay.receipt
+        ? { effectReceipt: record.replay.receipt }
+        : {}),
+      ...(replayIsCurrent && chapter ? { chapter } : {}),
+      idempotentReplay: true,
+    },
   };
 }
 
@@ -450,14 +860,12 @@ function failure(
   code: ToolFailure['code'],
   message: string,
   session?: ExperienceSession,
-  pendingResolution?: TurnResolution,
 ): ToolFailure {
   return {
     ok: false,
     code,
     message,
     ...(session ? { state: toStoryState(definition, session) } : {}),
-    ...(pendingResolution ? { pendingResolution } : {}),
   };
 }
 
@@ -469,5 +877,8 @@ function unchanged(
 }
 
 function validOperationId(value: string): boolean {
-  return /^[a-zA-Z0-9][a-zA-Z0-9_-]{5,100}$/.test(value);
+  if (typeof value !== 'string') return false;
+  return new RegExp(
+    `^[a-zA-Z0-9][a-zA-Z0-9_-]{${RUNTIME_LIMITS.operationIdMinLength - 1},${RUNTIME_LIMITS.idMaxLength - 1}}$`,
+  ).test(value);
 }

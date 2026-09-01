@@ -1,21 +1,26 @@
 @layer base, frame;
-@import '../components/frames/book/styles/cover.css';
-@import '../components/frames/book/styles/reader.css';
-@import '../components/frames/book/styles/leaf.css';
-@import '../components/frames/book/styles/ledger.css';
-@import '../components/frames/book/styles/notices.css';
-@import '../components/frames/book/styles/onboarding.css';
-@import '../components/frames/book/styles/motion.css';
 @layer base {
   :root {
     color-scheme: dark;
-    --night: #151310;
-    --paper: #eee1c2;
-    --ink: #2b241b;
-    --muted-ink: #6e5c46;
+    --night: #11100e;
+    --night-soft: #1a1713;
+    --paper: #eadbb9;
+    --ink: #292117;
+    --muted-ink: #725f47;
     --gold: #d6a75e;
     --cream: #fff6df;
-    --focus: #ffd27a;
+    --focus: #ffcf75;
+    --parchment-muted: #bcae94;
+    --parchment-soft: #c9bda6;
+    --parchment-dim: #9e907a;
+    --font-serif: 'Literata Variable', Literata, Georgia, 'Times New Roman',
+      serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --font-hand: 'Caveat Variable', 'Bradley Hand', 'Comic Sans MS', cursive;
+    --font-type: 'Courier Prime', 'Courier New', Courier, monospace;
+    --lamp-glow: 42 33 22;
+    --lamp-strength: 0.55;
+    --lamp-spread: 46rem;
   }
   * {
     box-sizing: border-box;
@@ -27,9 +32,15 @@
     min-height: 100vh;
     margin: 0;
     color: var(--cream);
-    background: linear-gradient(145deg, #171511, #0d0c0a 70%);
+    background:
+      radial-gradient(
+          ellipse 130% 95% at 50% 12%,
+          transparent 52%,
+          rgb(4 3 2 / 62%) 100%
+        )
+        fixed,
+      linear-gradient(145deg, #171511, #0d0c0a 70%);
     font-family:
-      Inter,
       ui-sans-serif,
       system-ui,
       -apple-system,
@@ -37,12 +48,20 @@
       'Segoe UI',
       sans-serif;
   }
+  ::selection {
+    color: var(--cream);
+    background: #4a3a24;
+  }
   button,
-  input {
+  input,
+  textarea {
     font: inherit;
   }
   button:focus-visible,
-  input:focus-visible {
+  input:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible,
+  a:focus-visible {
     outline: 3px solid var(--focus);
     outline-offset: 3px;
   }

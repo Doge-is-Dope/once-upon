@@ -1,43 +1,48 @@
-# Once Upon interruption and recovery protocol
+# Same-page turn protocol
 
-The browser owns every canonical transition. The connected agent may stop at
-any point and recover without rerolling or replacing a saved result.
+The page owns canonical transitions only for the lifetime of the current
+document. Reloading, closing the page, or choosing Start over creates a new
+session at the prologue. Nothing attempts to restore a game save.
 
 ```mermaid
 stateDiagram-v2
-  READY_FOR_ACTION --> AWAITING_NARRATION: nonterminal action saved
-  READY_FOR_ACTION --> AWAITING_FINAL_NARRATION: terminal action saved
-  AWAITING_NARRATION --> AWAITING_NARRATION: stop, reload, stale call, or retry
-  AWAITING_NARRATION --> READY_FOR_ACTION: exact narration committed
-  AWAITING_FINAL_NARRATION --> AWAITING_FINAL_NARRATION: stop, reload, stale call, or retry
-  AWAITING_FINAL_NARRATION --> COMPLETE: final narration committed
+  READY --> AWAITING_CHAPTER: begin choice or invoke interaction
+  AWAITING_CHAPTER --> READY: commit continuing chapter
+  AWAITING_CHAPTER --> COMPLETE: commit required final chapter
+  READY --> READY: reload creates a new session
+  AWAITING_CHAPTER --> READY: reload creates a new session
+  COMPLETE --> READY: reload creates a new session
 ```
 
-## Recovery sequence
+## Agent sequence
 
-1. Call `get_story_state` after startup, reload, interruption, or a stale-state
-   response.
-2. Read `phase`, `revision`, and `requiredNextTool` from the returned state.
-3. If narration is pending, call `commit_narration` with the exact revision,
-   resolution ID, and every represented canonical event ID.
-4. Only call `perform_action` while the phase is `READY_FOR_ACTION`.
+1. Call `get_story_state` before every player turn.
+2. If `phase` is `AWAITING_CHAPTER`, commit the exact pending `turnId` before
+   beginning anything else.
+3. If the turn has an effect receipt, submit its exact `receiptId` and exact
+   fact-ID set. Do not invoke the story-object tool again.
+4. Obey `requiredChapterStatus`: Pencil and Memory must continue; the Last
+   Manuscript must complete.
+5. Use `allowedNextTools`, not mere registration presence, as authorization.
 
-Every mutating request carries a unique `operationId`. Retrying the same request
-with the same ID returns its previous result. Reusing that ID for different
-input is rejected.
+Every mutation carries the current `expectedSessionId`, `expectedRevision`, and
+a unique `operationId`. Identical same-page retries are idempotent. Reusing an
+operation ID for different input is rejected. A request from the previous page
+fails with `STALE_SESSION`, even when its revision number matches.
 
-## Error handling
+An execution `AbortSignal` can stop a request while it waits in the controller
+queue. After the last signal check, the engine transform is synchronous and is
+the commit point; later cancellation cannot undo it.
 
-| Code                  | Meaning                                          | Recovery                   |
-| --------------------- | ------------------------------------------------ | -------------------------- |
-| `NO_ACTIVE_SESSION`   | No story has started                             | Start the experience       |
-| `STALE_STATE`         | Revision no longer matches                       | Read story state again     |
-| `NARRATION_REQUIRED`  | Exact saved result still needs narration         | Commit that receipt        |
-| `ACTION_UNAVAILABLE`  | Current phase or target rejects the action       | Follow current affordances |
-| `ABILITY_LOCKED`      | Story ability is unavailable                     | Read current abilities     |
-| `INVALID_INPUT`       | Receipt, event IDs, or payload failed validation | Correct the same request   |
-| `OPERATION_ID_REUSED` | ID belongs to different input                    | Create a new operation ID  |
-
-Persistence failures are surfaced without pretending a mutation succeeded.
-Damaged version-2 saves may be quarantined under an experience-scoped corrupt
-key before the player starts over.
+| Code                  | Meaning                                       | Next action                         |
+| --------------------- | --------------------------------------------- | ----------------------------------- |
+| `STALE_SESSION`       | Request came from another page session        | Read the new state                  |
+| `STALE_STATE`         | Revision changed                              | Read state again                    |
+| `CHAPTER_REQUIRED`    | The same-page turn still needs prose          | Commit that exact turn              |
+| `INTERACTION_LOCKED`  | Authored prerequisites are not met            | Continue the story                  |
+| `INTERACTION_USED`    | One-shot interaction already changed the page | Use its pending or committed result |
+| `ACTION_UNAVAILABLE`  | Phase or terminal status is invalid           | Follow the returned state           |
+| `INVALID_INPUT`       | Shape, type, enum, ID, or receipt set failed  | Send the exact documented input     |
+| `INVALID_DISCOVERY`   | Discovery is unavailable or unknown           | Remove it                           |
+| `SEALED_FACT_LEAK`    | Prose revealed a protected truth too early    | Rewrite without the secret          |
+| `OPERATION_ID_REUSED` | ID belongs to different input                 | Create a new ID                     |

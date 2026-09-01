@@ -23,15 +23,15 @@ export class ExperienceErrorBoundary extends Component<
         <p className="eyebrow">This story paused unexpectedly</p>
         <h1>{this.props.experienceTitle}</h1>
         <p>
-          Something went wrong in this experience. Your saved progress remains
-          on this device — reload to continue.
+          Something went wrong in this experience. Reloading starts again from
+          the first page.
         </p>
         <button
           className="copy-button recovery-button"
           type="button"
           onClick={() => window.location.reload()}
         >
-          Reload the experience
+          Reload and start over
         </button>
       </main>
     );

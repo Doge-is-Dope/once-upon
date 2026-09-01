@@ -9,11 +9,6 @@ export function createExperienceRegistry(
 ): ReadonlyMap<string, ExperienceDefinition> {
   const registry = new Map<string, ExperienceDefinition>();
   for (const definition of entries) {
-    if (definition.frame.narrationFormat !== definition.narration.format) {
-      throw new Error(
-        `Experience ${definition.id} pairs incompatible frame and narration formats.`,
-      );
-    }
     if (registry.has(definition.id))
       throw new Error(`Duplicate experience ID: ${definition.id}`);
     validateStoryDefinition(definition);
@@ -24,26 +19,100 @@ export function createExperienceRegistry(
 
 function validateStoryDefinition(definition: ExperienceDefinition): void {
   const { story } = definition;
-  if (story.attributes.length === 0)
-    throw new Error(`Experience ${definition.id} declares no attributes.`);
-  const attributeIds = new Set(
-    story.attributes.map((attribute) => attribute.id),
-  );
-  if (attributeIds.size !== story.attributes.length)
+  if (!definition.startMessage.trim() || definition.startMessage.length > 180)
     throw new Error(
-      `Experience ${definition.id} declares duplicate attribute IDs.`,
+      `Experience ${definition.id} requires a short player-facing start message.`,
     );
-  const { maxTurns, maxClock, maxResolve } = story.limits;
-  for (const [name, value] of Object.entries({
-    maxTurns,
-    maxClock,
-    maxResolve,
-  })) {
-    if (!Number.isInteger(value) || value <= 0)
+  if (
+    !definition.agentContract.version.trim() ||
+    !definition.agentContract.instructions.trim()
+  )
+    throw new Error(
+      `Experience ${definition.id} requires a versioned agent contract.`,
+    );
+  if (!story.prologue.prose.trim())
+    throw new Error(`Experience ${definition.id} declares no prologue.`);
+  const discoveryIds = new Set(story.discoveryIds);
+  if (discoveryIds.size !== story.discoveryIds.length)
+    throw new Error(
+      `Experience ${definition.id} declares duplicate discoveries.`,
+    );
+  const interactionIds = new Set<string>();
+  const toolNames = new Set<string>();
+  const factIds = new Set<string>();
+  for (const interaction of story.interactions) {
+    if (
+      interactionIds.has(interaction.id) ||
+      toolNames.has(interaction.toolName)
+    )
       throw new Error(
-        `Experience ${definition.id} has an invalid limit ${name}: ${value}.`,
+        `Experience ${definition.id} declares duplicate interactions.`,
       );
+    interactionIds.add(interaction.id);
+    toolNames.add(interaction.toolName);
+    for (const fact of interaction.sealedFacts) factIds.add(fact.id);
   }
+  for (const interaction of story.interactions) {
+    for (const id of interaction.requiredDiscoveryIds)
+      if (!discoveryIds.has(id))
+        throw new Error(
+          `Interaction ${interaction.id} requires unknown discovery ${id}.`,
+        );
+    for (const id of interaction.requiredFactIds)
+      if (!factIds.has(id))
+        throw new Error(
+          `Interaction ${interaction.id} requires unknown fact ${id}.`,
+        );
+    for (const id of interaction.requiredInteractionIds)
+      if (!interactionIds.has(id))
+        throw new Error(
+          `Interaction ${interaction.id} requires unknown interaction ${id}.`,
+        );
+  }
+  const discoveryRequirementIds = new Set<string>();
+  for (const requirement of story.discoveryRequirements) {
+    if (!discoveryIds.has(requirement.id))
+      throw new Error(
+        `Story ${story.id} configures unknown discovery ${requirement.id}.`,
+      );
+    if (discoveryRequirementIds.has(requirement.id))
+      throw new Error(
+        `Story ${story.id} configures duplicate requirements for discovery ${requirement.id}.`,
+      );
+    discoveryRequirementIds.add(requirement.id);
+    for (const id of requirement.requiredInteractionIds)
+      if (!interactionIds.has(id))
+        throw new Error(
+          `Discovery ${requirement.id} requires unknown interaction ${id}.`,
+        );
+    for (const id of requirement.requiredFactIds)
+      if (!factIds.has(id))
+        throw new Error(
+          `Discovery ${requirement.id} requires unknown fact ${id}.`,
+        );
+  }
+  for (const id of story.completionRequiredFactIds)
+    if (!factIds.has(id))
+      throw new Error(
+        `Story ${story.id} requires unknown completion fact ${id}.`,
+      );
+
+  const completionFacts = new Set(story.completionRequiredFactIds);
+  const terminalInteractions = story.interactions.filter(
+    ({ completionPolicy }) => completionPolicy === 'must_complete',
+  );
+  if (terminalInteractions.length !== 1)
+    throw new Error(
+      `Story ${story.id} must declare exactly one must_complete interaction.`,
+    );
+  const terminalFactIds = new Set(
+    terminalInteractions[0].sealedFacts.map(({ id }) => id),
+  );
+  for (const id of completionFacts)
+    if (!terminalFactIds.has(id))
+      throw new Error(
+        `Story ${story.id} completion fact ${id} must be revealed by its must_complete interaction.`,
+      );
 }
 
 const registry = createExperienceRegistry(experienceDefinitions);

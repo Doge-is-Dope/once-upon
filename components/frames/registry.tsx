@@ -21,9 +21,7 @@ export function renderExperienceFrame(
 ) {
   const render = FRAME_RENDERERS[experience.frame.id];
   if (!render) {
-    throw new Error(
-      `Unsupported frame and narration pairing: ${experience.frame.id}/${experience.narration.format}`,
-    );
+    throw new Error(`Unsupported experience frame: ${experience.frame.id}`);
   }
   return render(experience, controller);
 }
