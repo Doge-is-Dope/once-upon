@@ -208,15 +208,23 @@ describe('WebMCP availability', () => {
   it('keeps a completed manuscript available without WebMCP', () => {
     const html = render(completeSession(), { status: 'unsupported' });
 
-    expect(html).toContain('<del>You leave </del>');
-    expect(html).toContain('<ins>The subject leaves </ins>');
-    expect(html).toContain('continues walking.');
-    expect(html).toContain('aria-hidden="true" class="record-revision"');
     expect(html).toContain(
-      '<span class="sr-only">The subject leaves the room and continues walking.</span>',
+      'The subject leaves the room and continues walking.',
     );
+    expect(html).not.toContain('<del>');
+    expect(html).not.toContain('<ins>');
+    expect(html).not.toContain('record-revision');
+    expect(html).toContain('You open your eyes.');
+    expect(html).not.toContain('The subject opens their eyes.');
     expect(html).not.toContain('The manuscript rests.');
     expect(html).not.toContain('webmcp-availability');
+    expect(html).toContain('Preparing a copy…');
+    expect(html).toContain('Pass the manuscript on');
+    expect(html).toContain(
+      'Let someone else read what happened. This copy disappears in 30 days.',
+    );
+    expect(html).not.toContain('>Create link</button>');
+    expect(html).not.toContain('>Share story</button>');
   });
 });
 

@@ -1,6 +1,15 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { CheckIcon } from '@phosphor-icons/react/dist/ssr/Check';
+import { CopySimpleIcon } from '@phosphor-icons/react/dist/ssr/CopySimple';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   createSharedStorySubmission,
   deriveManuscriptReadModel,
@@ -11,56 +20,75 @@ import type {
 } from '@/lib/runtime/types';
 import { copyText } from './copy-button';
 
-type PublishState = 'idle' | 'publishing' | 'published' | 'failed';
+type PublishState = 'publishing' | 'ready' | 'failed';
+
+const SHARE_REQUEST_STORAGE_PREFIX = 'once-upon:share-request:';
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function StoryShare({
   experience,
   session,
   onAnnounce,
+  onLayoutChange,
 }: {
   experience: ExperienceDefinition;
   session: ExperienceSession;
   onAnnounce: (message: string) => void;
+  onLayoutChange: (anchor: Element | null) => void;
 }) {
   const manuscript = useMemo(
     () => deriveManuscriptReadModel(experience, session),
     [experience, session],
   );
-  const requestId = useRef(crypto.randomUUID());
-  const [publishState, setPublishState] = useState<PublishState>('idle');
+  const requestId = useRef<string | null>(null);
+  const publishStarted = useRef(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const linkRowRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
+  const copyResetTimer = useRef<number | null>(null);
+  const [publishState, setPublishState] = useState<PublishState>('publishing');
   const [publicLink, setPublicLink] = useState('');
-  const [expiresAt, setExpiresAt] = useState('');
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
 
-  const shareLink = async (url: string) => {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: manuscript.title, url });
-        onAnnounce('The public story link was shared.');
-        return;
-      } catch (shareError) {
-        if (
-          shareError instanceof DOMException &&
-          shareError.name === 'AbortError'
-        )
-          return;
-      }
-    }
+  useLayoutEffect(() => {
+    onLayoutChange(linkRowRef.current ?? errorRef.current ?? rootRef.current);
+  }, [error, onLayoutChange, publicLink, publishState]);
+
+  useEffect(
+    () => () => {
+      if (copyResetTimer.current !== null)
+        window.clearTimeout(copyResetTimer.current);
+    },
+    [],
+  );
+
+  const copyPublicLink = async () => {
     try {
-      await copyText(url);
-      onAnnounce('The public story link was copied.');
+      await copyText(publicLink);
+      setCopied(true);
+      onAnnounce('The manuscript link was copied.');
+      if (copyResetTimer.current !== null)
+        window.clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = window.setTimeout(() => {
+        setCopied(false);
+        copyResetTimer.current = null;
+      }, 1800);
     } catch {
-      onAnnounce('The public link is ready, but it could not be copied.');
+      linkInputRef.current?.focus();
+      linkInputRef.current?.select();
+      onAnnounce(
+        'The manuscript link could not be copied. Select it to copy manually.',
+      );
     }
   };
 
-  const publish = async () => {
-    if (publicLink) {
-      await shareLink(publicLink);
-      return;
-    }
+  const publish = useCallback(async () => {
     setPublishState('publishing');
     setError('');
+    requestId.current ??= shareRequestId(session.sessionId);
     try {
       const response = await fetch('/api/shared-stories', {
         method: 'POST',
@@ -75,59 +103,106 @@ export function StoryShare({
         error?: string;
       };
       if (!response.ok || !result.path || !result.expiresAt)
-        throw new Error(
-          result.error || 'The public link could not be created.',
-        );
+        throw new Error(result.error || 'The copy could not be prepared.');
       const url = new URL(result.path, window.location.origin).toString();
       setPublicLink(url);
-      setExpiresAt(result.expiresAt);
-      setPublishState('published');
-      onAnnounce('A public link was created for the complete manuscript.');
-      await shareLink(url);
+      setPublishState('ready');
     } catch (publishError) {
       const message =
         publishError instanceof Error
           ? publishError.message
-          : 'The public link could not be created.';
+          : 'The copy could not be prepared.';
       setError(message);
       setPublishState('failed');
       onAnnounce(message);
     }
-  };
+  }, [manuscript, onAnnounce, session.sessionId]);
+
+  useEffect(() => {
+    if (publishStarted.current) return;
+    publishStarted.current = true;
+    void publish();
+  }, [publish]);
 
   return (
-    <div className="ending-share">
-      <p className="ending-kicker">Your story is complete</p>
-      <h2>Share this story</h2>
+    <div className="ending-share" ref={rootRef}>
+      <h2>Pass the manuscript on</h2>
       <p>
-        Create a unique link. Anyone who receives it can read this manuscript
-        and begin a story of their own. The link stays available for 30 days.
+        Let someone else read what happened. This copy disappears in 30 days.
       </p>
-      <div className="ending-share-actions">
-        <button
-          className="share-button"
-          disabled={publishState === 'publishing'}
-          type="button"
-          onClick={() => void publish()}
-        >
-          {publishState === 'publishing' ? 'Creating link…' : 'Share story'}
-        </button>
-      </div>
       {publicLink ? (
-        <div className="public-link-result">
-          <a href={publicLink}>{publicLink}</a>
-          <p>
-            Expires{' '}
-            <time dateTime={expiresAt}>
-              {new Intl.DateTimeFormat('en', { dateStyle: 'long' }).format(
-                new Date(expiresAt),
-              )}
-            </time>
-            .
-          </p>
+        <div className="public-link-result" ref={linkRowRef}>
+          <label className="sr-only" htmlFor="public-story-link">
+            Manuscript copy link
+          </label>
+          <input
+            id="public-story-link"
+            onFocus={(event) => event.currentTarget.select()}
+            readOnly
+            ref={linkInputRef}
+            value={publicLink}
+          />
+          <button
+            aria-label={
+              copied ? 'Manuscript link copied' : 'Copy manuscript link'
+            }
+            className="public-link-copy"
+            title={copied ? 'Copied' : 'Copy link'}
+            type="button"
+            onClick={() => void copyPublicLink()}
+          >
+            {copied ? (
+              <CheckIcon aria-hidden="true" size={19} weight="bold" />
+            ) : (
+              <CopySimpleIcon aria-hidden="true" size={19} />
+            )}
+          </button>
         </div>
+      ) : publishState === 'failed' ? (
+        <div className="ending-share-actions">
+          <button
+            className="share-button"
+            type="button"
+            onClick={() => void publish()}
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <div
+          aria-busy="true"
+          className="public-link-result is-loading"
+          ref={linkRowRef}
+        >
+          <span className="public-link-status">Preparing a copy…</span>
+          <button
+            aria-label="Copy manuscript link"
+            className="public-link-copy"
+            disabled
+            type="button"
+          >
+            <CopySimpleIcon aria-hidden="true" size={19} />
+          </button>
+        </div>
+      )}
+      {error ? (
+        <p className="share-feedback" ref={errorRef}>
+          {error}
+        </p>
       ) : null}
-      {error ? <p className="share-feedback">{error}</p> : null}
     </div>
   );
+}
+
+function shareRequestId(sessionId: string): string {
+  const fresh = crypto.randomUUID();
+  try {
+    const key = `${SHARE_REQUEST_STORAGE_PREFIX}${sessionId}`;
+    const stored = window.sessionStorage.getItem(key);
+    if (stored && UUID_PATTERN.test(stored)) return stored;
+    window.sessionStorage.setItem(key, fresh);
+  } catch {
+    // Storage can be unavailable in privacy-restricted browsing contexts.
+  }
+  return fresh;
 }

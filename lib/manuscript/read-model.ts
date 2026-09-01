@@ -135,6 +135,10 @@ export function effectFromReceipt(
 }
 
 export function manuscriptToText(model: ManuscriptReadModel): string {
+  const completionParagraphs = splitProse(model.completionPassage.prose);
+  const recordCompletionParagraphs = splitProse(
+    model.completionPassage.recordProse,
+  );
   return [
     model.title,
     ...model.chapters.flatMap((chapter) => [
@@ -142,12 +146,16 @@ export function manuscriptToText(model: ManuscriptReadModel): string {
       ...(chapter.effect
         ? [
             chapter.effect.title,
-            ...chapter.effect.facts.map(({ recordValue }) => recordValue),
+            ...chapter.effect.facts.map(({ value }) => value),
           ]
         : []),
-      chapter.recordProse,
+      chapter.prose,
     ]),
-    model.completionPassage.recordProse,
+    ...completionParagraphs.map((paragraph, index) =>
+      index === completionParagraphs.length - 1
+        ? (recordCompletionParagraphs[index] ?? paragraph)
+        : paragraph,
+    ),
   ]
     .map((part) => part.trim())
     .filter(Boolean)
@@ -172,4 +180,8 @@ export function createSharedStorySubmission(
     })),
     completionPassage: model.completionPassage,
   };
+}
+
+function splitProse(prose: string): string[] {
+  return prose.split(/\n\s*\n/);
 }

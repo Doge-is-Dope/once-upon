@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, RefObject } from 'react';
 import { availableInteractions } from '@/lib/runtime/engine';
 import {
@@ -13,8 +13,8 @@ import type {
   ExperienceSession,
 } from '@/lib/runtime/types';
 import type { WebMCPStatus } from '@/lib/webmcp/tools';
+import { BackspaceText, backspaceDuration } from './backspace-text';
 import { CopyButton } from './copy-button';
-import { RevisedText, revisionDuration } from './revised-text';
 import { StoryShare } from './story-share';
 import { usePagination } from './use-pagination';
 import { WebMCPAvailability } from './webmcp-notices';
@@ -40,8 +40,8 @@ export function StoryScroll({
   const latestChapterId = latestChapter?.id ?? null;
   const latestChapterProse = latestChapter?.prose ?? '';
   const latestChapterTitle = latestChapter?.title ?? '';
-  const [revisionStage, setRevisionStage] = useState<RevisionStage>(
-    session.phase === 'COMPLETE' ? 'all' : 'original',
+  const [endingStage, setEndingStage] = useState<EndingStage>(
+    session.phase === 'COMPLETE' ? 'complete' : 'original',
   );
   const typingPlan = useMemo(() => {
     if (!latestChapterId) return null;
@@ -72,7 +72,7 @@ export function StoryScroll({
   const contentKey = [
     manuscript.chapters.length,
     session.phase,
-    revisionStage,
+    endingStage,
     pendingEffect?.receiptId ?? '',
     webMCPStatus,
   ].join(':');
@@ -86,8 +86,13 @@ export function StoryScroll({
     goToNext,
     getCurrentPage,
     pageAt,
+    reflowTo,
     measure,
   } = usePagination();
+  const handlePaginatedLayoutChange = useCallback(
+    (anchor: Element | null) => reflowTo(anchor),
+    [reflowTo],
+  );
   const freshArticleRef = useRef<HTMLElement | null>(null);
   const caretRef = useRef<HTMLDivElement | null>(null);
   const firstContentKey = useRef(true);
@@ -100,7 +105,7 @@ export function StoryScroll({
       previousPhase.current !== 'COMPLETE' && session.phase === 'COMPLETE';
     previousPhase.current = session.phase;
     if (session.phase !== 'COMPLETE') {
-      setRevisionStage('original');
+      setEndingStage('original');
       return;
     }
     if (!enteredComplete) return;
@@ -109,28 +114,30 @@ export function StoryScroll({
       '(prefers-reduced-motion: reduce)',
     ).matches;
     if (reducedMotion || !typingPlan) {
-      setRevisionStage('all');
+      setEndingStage('complete');
       onAnnounce('The record revises its wording.');
       return;
     }
 
-    setRevisionStage('original');
-    const reviseAt = typingPlan.total + 900;
-    const currentTimer = window.setTimeout(() => {
-      setRevisionStage('current');
+    const paragraphs = splitProse(manuscript.completionPassage.prose);
+    const recordParagraphs = splitProse(
+      manuscript.completionPassage.recordProse,
+    );
+    const originalEnding = paragraphs.at(-1) ?? '';
+    const replacementEnding = recordParagraphs.at(-1) ?? originalEnding;
+    setEndingStage('original');
+    const rewriteAt = typingPlan.total + 900;
+    const rewriteTimer = window.setTimeout(() => {
+      setEndingStage('rewriting');
       onAnnounce('The record revises its wording.');
-    }, reviseAt);
-    const allTimer = window.setTimeout(
-      () => setRevisionStage('all'),
-      reviseAt +
-        passageRevisionDuration(
-          manuscript.completionPassage.prose,
-          manuscript.completionPassage.recordProse,
-        ),
+    }, rewriteAt);
+    const completeTimer = window.setTimeout(
+      () => setEndingStage('complete'),
+      rewriteAt + backspaceDuration(originalEnding, replacementEnding) + 100,
     );
     return () => {
-      window.clearTimeout(currentTimer);
-      window.clearTimeout(allTimer);
+      window.clearTimeout(rewriteTimer);
+      window.clearTimeout(completeTimer);
     };
   }, [
     manuscript.completionPassage.prose,
@@ -163,7 +170,7 @@ export function StoryScroll({
       return;
     }
     if (webMCPStatusChanged && !chapterArrived) return;
-    if (revisionStage !== 'original') {
+    if (endingStage !== 'original') {
       goToLastPage();
       return;
     }
@@ -267,84 +274,85 @@ export function StoryScroll({
           platen instead of sliding over the running head or off the paper. */}
       <div className="sheet-window">
         <div className="sheet-pager" ref={pagerRef}>
-        <div className="sheet-flow">
-          {manuscript.chapters.map((chapter, index) => {
-            const fresh = chapter.id === freshChapterId;
-            return (
-              <ChapterBlock
-                articleRef={fresh ? freshArticleRef : undefined}
-                chapter={chapter}
-                chapterIndex={index}
-                key={chapter.id}
-                plan={fresh && revisionStage === 'original' ? typingPlan : null}
-                revised={revisionStage === 'all'}
+          <div className="sheet-flow">
+            {manuscript.chapters.map((chapter, index) => {
+              const fresh = chapter.id === freshChapterId;
+              return (
+                <ChapterBlock
+                  articleRef={fresh ? freshArticleRef : undefined}
+                  chapter={chapter}
+                  chapterIndex={index}
+                  key={chapter.id}
+                  plan={fresh && endingStage === 'original' ? typingPlan : null}
+                />
+              );
+            })}
+
+            {pendingEffect ? (
+              <EffectPresentation
+                effect={pendingEffect}
+                fresh={pendingEffect.receiptId === freshReceiptId}
               />
-            );
-          })}
+            ) : null}
 
-          {pendingEffect ? (
-            <EffectPresentation
-              effect={pendingEffect}
-              fresh={pendingEffect.receiptId === freshReceiptId}
-            />
-          ) : null}
+            {session.phase === 'COMPLETE' ? (
+              <CompletionPassageBlock
+                passage={manuscript.completionPassage}
+                plan={
+                  freshChapterId && endingStage === 'original'
+                    ? typingPlan?.completionParagraphs
+                    : null
+                }
+                stage={endingStage}
+              />
+            ) : null}
 
-          {session.phase === 'COMPLETE' ? (
-            <CompletionPassageBlock
-              animateRevision={revisionStage === 'current'}
-              passage={manuscript.completionPassage}
-              plan={
-                freshChapterId && revisionStage === 'original'
-                  ? typingPlan?.completionParagraphs
-                  : null
-              }
-              revised={revisionStage !== 'original'}
-            />
-          ) : null}
-
-          {session.phase !== 'COMPLETE' && webMCPStatus !== 'connected' ? (
-            <WebMCPAvailability
-              onRetry={onRetryConnection}
-              status={webMCPStatus}
-            />
-          ) : null}
-          {session.phase === 'READY' && webMCPStatus === 'connected' ? (
-            <TurnGuide
-              agentActive={agentActive}
-              experience={experience}
-              onAnnounce={onAnnounce}
-              session={session}
-            />
-          ) : null}
-          {session.phase === 'AWAITING_CHAPTER' &&
-          webMCPStatus === 'connected' ? (
-            <PendingTurnGuide
-              agentActive={agentActive}
-              experience={experience}
-              onAnnounce={onAnnounce}
-              session={session}
-            />
-          ) : null}
-          {session.phase === 'COMPLETE' && revisionStage === 'all' ? (
-            <footer className="manuscript-ending">
-              <StoryShare
+            {session.phase !== 'COMPLETE' && webMCPStatus !== 'connected' ? (
+              <WebMCPAvailability
+                onRetry={onRetryConnection}
+                status={webMCPStatus}
+              />
+            ) : null}
+            {session.phase === 'READY' && webMCPStatus === 'connected' ? (
+              <TurnGuide
+                agentActive={agentActive}
+                experience={experience}
+                onAnnounce={onAnnounce}
+                onLayoutChange={handlePaginatedLayoutChange}
+                session={session}
+              />
+            ) : null}
+            {session.phase === 'AWAITING_CHAPTER' &&
+            webMCPStatus === 'connected' ? (
+              <PendingTurnGuide
+                agentActive={agentActive}
                 experience={experience}
                 onAnnounce={onAnnounce}
                 session={session}
               />
-            </footer>
-          ) : null}
-        </div>
-        {/* Multicol column boxes are anonymous and cannot carry
+            ) : null}
+            {session.phase === 'COMPLETE' && endingStage === 'complete' ? (
+              <footer className="manuscript-ending">
+                <StoryShare
+                  experience={experience}
+                  onAnnounce={onAnnounce}
+                  onLayoutChange={handlePaginatedLayoutChange}
+                  session={session}
+                />
+              </footer>
+            ) : null}
+          </div>
+          {/* Multicol column boxes are anonymous and cannot carry
             scroll-snap-align; these invisible rails give the pager one
             native snap area per page instead. */}
-        <div aria-hidden="true" className="snap-rails">
-          {Array.from({ length: pageCount }, (_, index) => (
-            <div
-              key={index}
-              style={{ '--page-index': index } as CSSProperties}
-            />
-          ))}
+          <div aria-hidden="true" className="snap-rails">
+            {Array.from({ length: pageCount }, (_, index) => (
+              <div
+                key={index}
+                style={{ '--page-index': index } as CSSProperties}
+              />
+            ))}
+          </div>
         </div>
       </div>
       <div aria-hidden="true" className="typing-caret" hidden ref={caretRef} />
@@ -374,11 +382,13 @@ function TurnGuide({
   agentActive,
   experience,
   onAnnounce,
+  onLayoutChange,
   session,
 }: {
   agentActive: boolean;
   experience: ExperienceDefinition;
   onAnnounce: (message: string) => void;
+  onLayoutChange: (anchor: Element | null) => void;
   session: ExperienceSession;
 }) {
   const opening = session.chapters.length === 1;
@@ -408,7 +418,13 @@ function TurnGuide({
           onAnnounce={onAnnounce}
         />
       ) : null}
-      <details className="story-hint">
+      <details
+        className="story-hint"
+        onToggle={(event) => {
+          const details = event.currentTarget;
+          onLayoutChange(details.querySelector(details.open ? 'p' : 'summary'));
+        }}
+      >
         <summary>Need a hint?</summary>
         <p>{hint}</p>
       </details>
@@ -511,16 +527,13 @@ function ChapterBlock({
   chapter,
   chapterIndex,
   plan = null,
-  revised = false,
 }: {
   articleRef?: RefObject<HTMLElement | null>;
   chapter: ReturnType<typeof deriveManuscriptReadModel>['chapters'][number];
   chapterIndex: number;
   plan?: TypingPlan | null;
-  revised?: boolean;
 }) {
   const paragraphs = splitProse(chapter.prose);
-  const recordParagraphs = splitProse(chapter.recordProse);
   return (
     <article
       className={`story-chapter${plan ? ' is-fresh' : ''}`}
@@ -536,17 +549,10 @@ function ChapterBlock({
           chapter.title
         )}
       </h2>
-      {chapter.effect ? (
-        <EffectPresentation effect={chapter.effect} revised={revised} />
-      ) : null}
+      {chapter.effect ? <EffectPresentation effect={chapter.effect} /> : null}
       {paragraphs.map((paragraph, index) => (
         <p key={`${chapter.id}-paragraph-${index}`}>
-          {revised ? (
-            <RevisedText
-              original={paragraph}
-              record={recordParagraphs[index] ?? paragraph}
-            />
-          ) : plan?.paragraphs[index] ? (
+          {plan?.paragraphs[index] ? (
             <TypedText chars={plan.paragraphs[index]} text={paragraph} />
           ) : (
             paragraph
@@ -558,49 +564,31 @@ function ChapterBlock({
 }
 
 function CompletionPassageBlock({
-  animateRevision,
   passage,
   plan,
-  revised,
+  stage,
 }: {
-  animateRevision: boolean;
   passage: { prose: string; recordProse: string };
   plan: number[][] | null | undefined;
-  revised: boolean;
+  stage: EndingStage;
 }) {
   const paragraphs = splitProse(passage.prose);
   const recordParagraphs = splitProse(passage.recordProse);
-  const revisions = paragraphs.map((original, index) => {
-    const record = recordParagraphs[index] ?? original;
-    const delayOffset = animateRevision
-      ? paragraphs
-          .slice(0, index)
-          .reduce(
-            (duration, preceding, beforeIndex) =>
-              duration +
-              revisionDuration(
-                preceding,
-                recordParagraphs[beforeIndex] ?? preceding,
-              ),
-            0,
-          )
-      : 0;
-    return { original, record, delayOffset };
-  });
+  const lastIndex = paragraphs.length - 1;
   return (
     <section
       aria-label="Completion"
       className={`completion-passage${plan ? ' is-fresh' : ''}`}
     >
-      {revisions.map(({ original, record, delayOffset: delay }, index) => (
+      {paragraphs.map((original, index) => (
         <p key={index}>
-          {revised ? (
-            <RevisedText
-              animate={animateRevision}
-              delayOffset={delay}
+          {index === lastIndex && stage === 'rewriting' ? (
+            <BackspaceText
               original={original}
-              record={record}
+              replacement={recordParagraphs[index] ?? original}
             />
+          ) : index === lastIndex && stage === 'complete' ? (
+            (recordParagraphs[index] ?? original)
           ) : plan?.[index] ? (
             <TypedText chars={plan[index]} text={original} />
           ) : (
@@ -642,31 +630,25 @@ function TypedText({
 function EffectPresentation({
   effect,
   fresh = false,
-  revised = false,
 }: {
   effect: ManuscriptEffect;
   fresh?: boolean;
-  revised?: boolean;
 }) {
   if (effect.presentation === 'memory_flashback')
-    return <MemoryFlashback effect={effect} fresh={fresh} revised={revised} />;
+    return <MemoryFlashback effect={effect} fresh={fresh} />;
   if (effect.presentation === 'pressed_writing')
-    return (
-      <PressedWritingArtifact effect={effect} fresh={fresh} revised={revised} />
-    );
+    return <PressedWritingArtifact effect={effect} fresh={fresh} />;
   if (effect.presentation === 'world_shift')
-    return <WorldShift effect={effect} revised={revised} />;
-  return <GenericStoryEffect effect={effect} revised={revised} />;
+    return <WorldShift effect={effect} />;
+  return <GenericStoryEffect effect={effect} />;
 }
 
 function MemoryFlashback({
   effect,
   fresh,
-  revised,
 }: {
   effect: ManuscriptEffect;
   fresh: boolean;
-  revised: boolean;
 }) {
   const memory = effect.facts.find(
     ({ id }) => id === 'north_station_flashback',
@@ -680,16 +662,7 @@ function MemoryFlashback({
       <h3>Memory</h3>
       <div className="memory-flashback-prose">
         {factParagraphs(memory.value).map((paragraph, index) => (
-          <p key={`${effect.receiptId}-memory-${index}`}>
-            {revised ? (
-              <RevisedText
-                original={paragraph}
-                record={factParagraphs(memory.recordValue)[index] ?? paragraph}
-              />
-            ) : (
-              paragraph
-            )}
-          </p>
+          <p key={`${effect.receiptId}-memory-${index}`}>{paragraph}</p>
         ))}
       </div>
     </section>
@@ -699,11 +672,9 @@ function MemoryFlashback({
 function PressedWritingArtifact({
   effect,
   fresh = false,
-  revised = false,
 }: {
   effect: ManuscriptEffect;
   fresh?: boolean;
-  revised?: boolean;
 }) {
   return (
     <figure
@@ -712,25 +683,10 @@ function PressedWritingArtifact({
       <figcaption>{effect.title}</figcaption>
       {effect.facts.map((fact) => {
         const { lead, note } = factLines(fact.value);
-        const record = factLines(fact.recordValue);
         return (
           <div key={fact.id}>
-            <p className="revealed-fragment">
-              {revised ? (
-                <RevisedText original={lead} record={record.lead} />
-              ) : (
-                lead
-              )}
-            </p>
-            {note ? (
-              <p>
-                {revised ? (
-                  <RevisedText original={note} record={record.note ?? note} />
-                ) : (
-                  note
-                )}
-              </p>
-            ) : null}
+            <p className="revealed-fragment">{lead}</p>
+            {note ? <p>{note}</p> : null}
           </div>
         );
       })}
@@ -738,56 +694,25 @@ function PressedWritingArtifact({
   );
 }
 
-function WorldShift({
-  effect,
-  revised,
-}: {
-  effect: ManuscriptEffect;
-  revised: boolean;
-}) {
+function WorldShift({ effect }: { effect: ManuscriptEffect }) {
   return (
     <section className="world-shift" data-effect-receipt={effect.receiptId}>
       <h3>{effect.title}</h3>
       {effect.facts.flatMap((fact) => {
-        const recordParagraphs = factParagraphs(fact.recordValue);
         return factParagraphs(fact.value).map((paragraph, index) => (
-          <p key={`${fact.id}-paragraph-${index}`}>
-            {revised ? (
-              <RevisedText
-                original={paragraph}
-                record={recordParagraphs[index] ?? paragraph}
-              />
-            ) : (
-              paragraph
-            )}
-          </p>
+          <p key={`${fact.id}-paragraph-${index}`}>{paragraph}</p>
         ));
       })}
     </section>
   );
 }
 
-function GenericStoryEffect({
-  effect,
-  revised,
-}: {
-  effect: ManuscriptEffect;
-  revised: boolean;
-}) {
+function GenericStoryEffect({ effect }: { effect: ManuscriptEffect }) {
   return (
     <section className="story-artifact generic-story-effect">
       <h3>{effect.title}</h3>
       {effectParagraphs(effect).map((paragraph, index) => (
-        <p key={`${effect.receiptId}-effect-${index}`}>
-          {revised ? (
-            <RevisedText
-              original={paragraph.original}
-              record={paragraph.record}
-            />
-          ) : (
-            paragraph.original
-          )}
-        </p>
+        <p key={`${effect.receiptId}-effect-${index}`}>{paragraph}</p>
       ))}
     </section>
   );
@@ -835,20 +760,10 @@ type TypingPlan = {
   total: number;
 };
 
-type RevisionStage = 'original' | 'current' | 'all';
+type EndingStage = 'original' | 'rewriting' | 'complete';
 
 function splitProse(prose: string): string[] {
   return prose.split(/\n\s*\n/);
-}
-
-function passageRevisionDuration(prose: string, recordProse: string): number {
-  const recordParagraphs = splitProse(recordProse);
-  return splitProse(prose).reduce(
-    (duration, paragraph, index) =>
-      duration +
-      revisionDuration(paragraph, recordParagraphs[index] ?? paragraph),
-    0,
-  );
 }
 
 /**
@@ -898,16 +813,8 @@ function pauseAfter(character: string): number {
   return 0;
 }
 
-function effectParagraphs(
-  effect: ManuscriptEffect,
-): Array<{ original: string; record: string }> {
-  return effect.facts.flatMap(({ value, recordValue }) => {
-    const record = factParagraphs(recordValue);
-    return factParagraphs(value).map((original, index) => ({
-      original,
-      record: record[index] ?? original,
-    }));
-  });
+function effectParagraphs(effect: ManuscriptEffect): string[] {
+  return effect.facts.flatMap(({ value }) => factParagraphs(value));
 }
 
 function factParagraphs(value: string): string[] {

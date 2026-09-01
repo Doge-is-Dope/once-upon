@@ -26,6 +26,7 @@ export function usePagination(): {
   goToNext: () => void;
   getCurrentPage: () => number;
   pageAt: (element: Element) => number;
+  reflowTo: (anchor: Element | null, mode?: 'swap' | 'jump') => void;
   measure: () => { count: number };
 } {
   const pagerRef = useRef<HTMLDivElement | null>(null);
@@ -147,6 +148,16 @@ export function usePagination(): {
     () => goToPage(targetPageRef.current + 1),
     [goToPage],
   );
+  const reflowTo = useCallback(
+    (anchor: Element | null, mode: 'swap' | 'jump' = 'jump') => {
+      const { count } = measure();
+      const target = anchor
+        ? pageAt(anchor)
+        : Math.min(targetPageRef.current, count - 1);
+      goToPage(Math.min(target, count - 1), mode);
+    },
+    [goToPage, measure, pageAt],
+  );
 
   // Track scroll position (touch swipes, browser auto-scrolls). Settling
   // on a whole page is CSS scroll snap's job — no JS correction here, so
@@ -222,6 +233,7 @@ export function usePagination(): {
     goToNext,
     getCurrentPage,
     pageAt,
+    reflowTo,
     measure,
   };
 }

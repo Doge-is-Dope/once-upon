@@ -26,17 +26,18 @@ describe('manuscript export', () => {
     });
     const model = deriveManuscriptReadModel(experienceDefinition, session);
     const text = manuscriptToText(model);
+    const completion = experienceDefinition.story.completionPassage;
+    const completionParagraphs = completion.prose.split(/\n\s*\n/);
+    const recordCompletionParagraphs = completion.recordProse.split(/\n\s*\n/);
 
     expect(text).toContain('Unicode survives — 記憶');
-    expect(text).toContain(
+    expect(text).toContain('The next page contains only reader-facing prose.');
+    expect(text).not.toContain(
       'The next page contains only official record prose.',
     );
-    expect(text).not.toContain(
-      'The next page contains only reader-facing prose.',
-    );
-    expect(text).toContain(
-      experienceDefinition.story.completionPassage.recordProse,
-    );
+    expect(text).toContain(completionParagraphs[0]);
+    expect(text).toContain(recordCompletionParagraphs.at(-1));
+    expect(text).not.toContain(recordCompletionParagraphs[0]);
     expect(text).not.toContain('chapter_internal');
     expect(text).not.toContain('turn_internal');
     expect(text).not.toContain(session.sessionId);

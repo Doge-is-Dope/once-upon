@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
 import { callTool, installModelContextMock } from './support/webmcp-mock';
 
@@ -97,6 +97,35 @@ test('keeps the prologue in view while the connection settles', async ({
   ).toBe(0);
 });
 
+test('keeps an expanded hint on the active sheet', async ({ page }) => {
+  await page.goto(EXPERIENCE_PATH);
+  await waitForTool(page, 'get_story_state');
+
+  const summary = page.getByText('Need a hint?', { exact: true });
+  const next = page.getByRole('button', { name: 'Next page' });
+  for (
+    let attempt = 0;
+    attempt < 8 && !(await summary.isVisible());
+    attempt++
+  ) {
+    if (await next.isDisabled()) break;
+    await next.click();
+    await page.waitForTimeout(850);
+  }
+
+  await expect(summary).toBeVisible();
+  await summary.click();
+  const hint = page.locator('.story-hint p');
+  await expect(hint).toBeVisible();
+  await expectElementInsideActiveSheet(hint);
+  await expectPaginationToMatchLayout(page);
+
+  await summary.click();
+  await expect(page.locator('.story-hint')).not.toHaveAttribute('open');
+  await expect(summary).toBeVisible();
+  await expectPaginationToMatchLayout(page);
+});
+
 test('turns pages from the keyboard without outlining the manuscript container', async ({
   page,
 }) => {
@@ -109,19 +138,24 @@ test('turns pages from the keyboard without outlining the manuscript container',
   await expect(manuscript).toHaveCSS('outline-style', 'none');
 
   const pageIndicator = page.locator('.sheet-page-indicator');
-  await expect(pageIndicator).toHaveText(/Page \d+ \/ \d+/);
-  const initialIndicator = await pageIndicator.textContent();
-  const [, currentPage, pageCount] =
-    initialIndicator!.match(/Page (\d+) \/ (\d+)/)!;
+  await expect(pageIndicator).toHaveText(/Sheet \d+ of \d+/);
+  const initialIndicator = await pageIndicator.innerText();
+  const currentPage = Number(initialIndicator.match(/\d+/)?.[0]);
 
   await page.locator('.once-upon-mark').click();
   await expect(manuscript).not.toBeFocused();
   await page.keyboard.press('ArrowRight');
-  await expect(pageIndicator).toHaveText(
-    `Page ${Number(currentPage) + 1} / ${pageCount}`,
-  );
+  await expect
+    .poll(async () =>
+      Number((await pageIndicator.innerText()).match(/\d+/)?.[0]),
+    )
+    .toBe(currentPage + 1);
   await page.keyboard.press('ArrowLeft');
-  await expect(pageIndicator).toHaveText(initialIndicator!);
+  await expect
+    .poll(async () =>
+      Number((await pageIndicator.innerText()).match(/\d+/)?.[0]),
+    )
+    .toBe(currentPage);
 });
 
 test('opens and dismisses the accessible settings panel', async ({ page }) => {
@@ -191,10 +225,23 @@ test('completes the story within six registrations and shares a unique story lin
       },
     });
   });
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
-    origin: 'http://localhost:3000',
+  const shareClientAddress = `completion-${crypto.randomUUID()}`;
+  await page.route('**/api/shared-stories', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    await route.continue({
+      headers: {
+        ...route.request().headers(),
+        'cf-connecting-ip': shareClientAddress,
+      },
+    });
   });
   await page.goto(EXPERIENCE_PATH);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+    origin: new URL(page.url()).origin,
+  });
   await waitForTool(page, 'get_story_state');
 
   let state = await readState(page);
@@ -245,22 +292,35 @@ test('completes the story within six registrations and shares a unique story lin
   await expect(
     page.locator('.completion-passage.is-fresh .tw-char'),
   ).not.toHaveCount(0);
-  await expect(page.locator('.completion-passage del')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Share story' })).toHaveCount(
-    0,
-  );
+  await expect(page.locator('.backspace-replacement')).toHaveCount(0);
   await expect(
-    page.locator('.completion-passage del').filter({ hasText: 'You keep' }),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(
-    page
-      .locator('.completion-passage ins')
-      .filter({ hasText: 'The subject continues' }),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('The manuscript rests.')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Share story' })).toBeVisible({
+    page.getByRole('textbox', { name: 'Manuscript copy link' }),
+  ).toHaveCount(0);
+  await expect(page.locator('.backspace-replacement')).toBeVisible({
     timeout: 30_000,
   });
+  await expect(page.locator('del, ins')).toHaveCount(0);
+  await expect(
+    page.getByRole('textbox', { name: 'Manuscript copy link' }),
+  ).toHaveCount(0);
+  await expect(page.locator('.backspace-replacement')).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  const completionParagraphs = page.locator('.completion-passage p');
+  await expect(completionParagraphs.first()).toContainText(
+    'No alarm follows you. No footsteps come after you.',
+  );
+  await expect(completionParagraphs.last()).toContainText(
+    'The subject continues walking.',
+  );
+  await expect(page.locator('.story-chapter').first()).toContainText(
+    'The question wakes you at a table.',
+  );
+  await expect(page.getByText('The manuscript rests.')).toHaveCount(0);
+  const publicLink = page.getByRole('textbox', {
+    name: 'Manuscript copy link',
+  });
+  await expect(publicLink).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Copy story' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Download .txt' })).toHaveCount(
     0,
@@ -278,20 +338,27 @@ test('completes the story within six registrations and shares a unique story lin
     'read_the_last_manuscript',
   ]);
 
-  await page.getByRole('button', { name: 'Share story' }).click();
-  const publicAnchor = page.locator('.public-link-result a');
-  await expect(publicAnchor).toBeVisible();
-  const publicUrl = await publicAnchor.getAttribute('href');
+  const publicUrl = await publicLink.inputValue();
   expect(publicUrl).toMatch(/\/s\/[A-Za-z0-9_-]{32}$/);
+  await expectElementInsideActiveSheet(publicLink);
+  await expectPaginationToMatchLayout(page);
   expect(
     await page.evaluate(
       () => (window as unknown as { __nativeShare?: ShareData }).__nativeShare,
     ),
-  ).toMatchObject({ url: publicUrl });
+  ).toBeUndefined();
+
+  await page.getByRole('button', { name: 'Copy manuscript link' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Manuscript link copied' }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(publicUrl);
 
   const readerContext = await context.browser()!.newContext();
   const reader = await readerContext.newPage();
-  const response = await reader.goto(publicUrl!);
+  const response = await reader.goto(publicUrl);
   expect(response?.headers()['cache-control']).toContain('no-store');
   await expect(
     reader.getByRole('heading', { level: 1, name: 'The Last Manuscript' }),
@@ -306,10 +373,23 @@ test('completes the story within six registrations and shares a unique story lin
     reader.getByText('The Last Manuscript', { exact: true }),
   ).toHaveCount(2);
   await expect(
-    reader.getByRole('link', { name: 'Start your own story' }),
+    reader.getByRole('link', { name: 'Enter Room Seven' }),
   ).toBeVisible();
-  await expect(reader.locator('del')).not.toHaveCount(0);
-  await expect(reader.locator('ins')).not.toHaveCount(0);
+  await expect(reader.getByText('A recovered record')).toBeVisible();
+  await expect(
+    reader.getByText(/This read-only copy is available until/),
+  ).toBeVisible();
+  expect(await reader.locator('body').innerText()).not.toContain('·');
+  await expect(reader.locator('del, ins')).toHaveCount(0);
+  await expect(reader.locator('.shared-chapter').first()).toContainText(
+    'The question wakes you at a table.',
+  );
+  await expect(reader.locator('.shared-completion p').first()).toContainText(
+    'No alarm follows you. No footsteps come after you.',
+  );
+  await expect(reader.locator('.shared-completion p').last()).toContainText(
+    'The subject continues walking.',
+  );
   await expect(reader.locator('meta[name="robots"]')).toHaveAttribute(
     'content',
     /noindex/,
@@ -424,6 +504,8 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
   request,
   context,
 }) => {
+  await page.goto(EXPERIENCE_PATH);
+  const allowedOrigin = new URL(page.url()).origin;
   const clientAddress = `test-${crypto.randomUUID()}`;
   const requestId = crypto.randomUUID();
   const submission = shareSubmission(requestId);
@@ -434,7 +516,7 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
   expect(denied.status()).toBe(403);
 
   const headers = {
-    Origin: 'http://localhost:3000',
+    Origin: allowedOrigin,
     'CF-Connecting-IP': clientAddress,
   };
   const created = await request.post('/api/shared-stories', {
@@ -479,9 +561,9 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
   const reader = await readerContext.newPage();
   await reader.goto(first.path);
   await expect(
-    reader
-      .locator('.record-revision')
-      .filter({ hasText: '<img src=x onerror="window.__sharedXss=true">' }),
+    reader.getByText('<img src=x onerror="window.__sharedXss=true">', {
+      exact: true,
+    }),
   ).toBeVisible();
   expect(
     await reader.evaluate(() =>
@@ -492,6 +574,42 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
 
   await page.goto(EXPERIENCE_PATH);
 });
+
+async function expectElementInsideActiveSheet(element: Locator): Promise<void> {
+  expect(
+    await element.evaluate((node) => {
+      const pager = node.closest('.sheet-pager');
+      if (!pager) return false;
+      const elementRect = node.getBoundingClientRect();
+      const pagerRect = pager.getBoundingClientRect();
+      return (
+        elementRect.left >= pagerRect.left - 1 &&
+        elementRect.right <= pagerRect.right + 1 &&
+        elementRect.top >= pagerRect.top - 1 &&
+        elementRect.bottom <= pagerRect.bottom + 1
+      );
+    }),
+  ).toBe(true);
+}
+
+async function expectPaginationToMatchLayout(page: Page): Promise<void> {
+  const layout = await page.locator('.sheet-pager').evaluate((pager) => {
+    const rootFontSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize,
+    );
+    const gap = 6 * rootFontSize;
+    const stride = pager.clientWidth + gap;
+    return {
+      current: Math.round(pager.scrollLeft / stride) + 1,
+      count: Math.max(1, Math.round((pager.scrollWidth + gap) / stride)),
+    };
+  });
+  const numbers = (await page.locator('.sheet-page-indicator').innerText())
+    .match(/\d+/g)
+    ?.map(Number);
+
+  expect(numbers).toEqual([layout.current, layout.count]);
+}
 
 async function readState(page: Page): Promise<StoryState> {
   const result = await callTool<ToolResult>(page, 'get_story_state', {});
