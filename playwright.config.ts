@@ -7,6 +7,12 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
+  reporter: process.env.CI
+    ? [
+        ['line'],
+        ['html', { open: 'never', outputFolder: 'playwright-report' }],
+      ]
+    : 'list',
   timeout: 30_000,
   expect: { timeout: 8_000 },
   use: {
@@ -19,8 +25,12 @@ export default defineConfig({
     ? undefined
     : {
         command: 'corepack pnpm@11.24.0 run dev',
+        env: {
+          SHARE_SIGNING_SECRET:
+            'once-upon-playwright-test-only-signing-key-v1',
+        },
         url: baseURL,
-        reuseExistingServer: true,
+        reuseExistingServer: !process.env.CI,
         timeout: 120_000,
       },
 });
