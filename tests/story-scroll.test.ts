@@ -40,7 +40,12 @@ const experience: ExperienceDefinition = {
     prologue: {
       title: 'The room',
       prose: 'The question waits.',
+      recordProse: 'The question waits.',
       continuitySummary: 'The question waits.',
+    },
+    completionPassage: {
+      prose: 'You leave the room and keep walking.',
+      recordProse: 'The subject leaves the room and continues walking.',
     },
     discoveryIds: [],
     discoveryRequirements: [],
@@ -59,11 +64,13 @@ const experience: ExperienceDefinition = {
           {
             id: 'north_station_flashback',
             value: effectReceipt.facts[0]!.value,
+            recordValue: effectReceipt.facts[0]!.value,
             protectedTerms: [],
           },
           {
             id: 'approved_north_station_account',
             value: effectReceipt.facts[1]!.value,
+            recordValue: effectReceipt.facts[1]!.value,
             protectedTerms: [],
           },
         ],
@@ -78,6 +85,7 @@ const prologue: StoryChapter = {
   id: 'chapter_prologue',
   title: 'The room',
   prose: 'The question waits.',
+  recordProse: 'The question waits.',
   createdAt: 1,
   turnId: null,
   discoveryIds: [],
@@ -113,6 +121,7 @@ describe('memory flashback presentation', () => {
     expect(chapterProse).toBeLessThan(laterHeading);
     expect(occurrences(laterRenderHtml, 'class="memory-flashback"')).toBe(1);
     expect(laterRenderHtml).not.toContain('memory-flashback is-fresh');
+    expect(html).not.toContain('The subject opens their eyes.');
   });
 });
 
@@ -199,7 +208,14 @@ describe('WebMCP availability', () => {
   it('keeps a completed manuscript available without WebMCP', () => {
     const html = render(completeSession(), { status: 'unsupported' });
 
-    expect(html).toContain('The manuscript rests.');
+    expect(html).toContain('<del>You leave </del>');
+    expect(html).toContain('<ins>The subject leaves </ins>');
+    expect(html).toContain('continues walking.');
+    expect(html).toContain('aria-hidden="true" class="record-revision"');
+    expect(html).toContain(
+      '<span class="sr-only">The subject leaves the room and continues walking.</span>',
+    );
+    expect(html).not.toContain('The manuscript rests.');
     expect(html).not.toContain('webmcp-availability');
   });
 });
@@ -259,6 +275,7 @@ function committedSession(): ExperienceSession {
         id: 'chapter_memory',
         title: 'The returned memory',
         prose: 'You open your eyes.',
+        recordProse: 'The subject opens their eyes.',
         createdAt: 3,
         turnId: 'turn_memory',
         discoveryIds: [],
@@ -268,6 +285,7 @@ function committedSession(): ExperienceSession {
         id: 'chapter_later',
         title: 'The wall panel',
         prose: 'The story continues.',
+        recordProse: 'The story continues.',
         createdAt: 4,
         turnId: 'turn_later',
         discoveryIds: [],

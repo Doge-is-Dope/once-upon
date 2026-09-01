@@ -1,8 +1,9 @@
 import { env } from 'cloudflare:workers';
 import { SCHEMA_STATEMENTS } from '@/db/schema';
 import {
+  parseSharedStoryDocument,
   SHARE_LIMITS,
-  type SharedStoryDocumentV1,
+  type SharedStoryDocument,
   type ValidatedShare,
 } from './document';
 
@@ -112,7 +113,7 @@ export async function publishSharedStory(
 export async function readSharedStory(
   token: string,
   now = Date.now(),
-): Promise<SharedStoryDocumentV1 | null> {
+): Promise<SharedStoryDocument | null> {
   if (!/^[A-Za-z0-9_-]{32,64}$/.test(token)) return null;
   const { DB } = bindings();
   await ensureSchema(DB);
@@ -154,8 +155,8 @@ async function cleanup(DB: D1Database, now: number): Promise<void> {
   ]);
 }
 
-function parseStoredDocument(value: string): SharedStoryDocumentV1 {
-  return JSON.parse(value) as SharedStoryDocumentV1;
+function parseStoredDocument(value: string): SharedStoryDocument {
+  return parseSharedStoryDocument(value);
 }
 
 async function shareToken(secret: string, requestId: string): Promise<string> {

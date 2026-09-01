@@ -177,10 +177,11 @@ test('opens and dismisses the accessible settings panel', async ({ page }) => {
   await expect(trigger).toBeFocused();
 });
 
-test('completes the story within six registrations and publishes a read-only copy', async ({
+test('completes the story within six registrations and shares a unique story link', async ({
   page,
   context,
 }) => {
+  test.slow();
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'share', {
       configurable: true,
@@ -241,19 +242,28 @@ test('completes the story within six registrations and publishes a read-only cop
     'complete',
   );
   expect(state.phase).toBe('COMPLETE');
-  await expect(page.getByText('The manuscript rests.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Copy story' })).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Create a public link' }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Copy story' }).click();
-  await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-    .toContain('The Last Manuscript');
-  const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download .txt' }).click();
-  expect((await downloadPromise).suggestedFilename()).toBe(
-    'the-last-manuscript.txt',
+    page.locator('.completion-passage.is-fresh .tw-char'),
+  ).not.toHaveCount(0);
+  await expect(page.locator('.completion-passage del')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Share story' })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.locator('.completion-passage del').filter({ hasText: 'You keep' }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page
+      .locator('.completion-passage ins')
+      .filter({ hasText: 'The subject continues' }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('The manuscript rests.')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Share story' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole('button', { name: 'Copy story' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Download .txt' })).toHaveCount(
+    0,
   );
 
   const registrations = await page.evaluate(
@@ -268,7 +278,7 @@ test('completes the story within six registrations and publishes a read-only cop
     'read_the_last_manuscript',
   ]);
 
-  await page.getByRole('button', { name: 'Create a public link' }).click();
+  await page.getByRole('button', { name: 'Share story' }).click();
   const publicAnchor = page.locator('.public-link-result a');
   await expect(publicAnchor).toBeVisible();
   const publicUrl = await publicAnchor.getAttribute('href');
@@ -296,8 +306,10 @@ test('completes the story within six registrations and publishes a read-only cop
     reader.getByText('The Last Manuscript', { exact: true }),
   ).toHaveCount(2);
   await expect(
-    reader.getByRole('link', { name: 'Play from the first page' }),
+    reader.getByRole('link', { name: 'Start your own story' }),
   ).toBeVisible();
+  await expect(reader.locator('del')).not.toHaveCount(0);
+  await expect(reader.locator('ins')).not.toHaveCount(0);
   await expect(reader.locator('meta[name="robots"]')).toHaveAttribute(
     'content',
     /noindex/,
@@ -467,9 +479,9 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
   const reader = await readerContext.newPage();
   await reader.goto(first.path);
   await expect(
-    reader.getByText('<img src=x onerror="window.__sharedXss=true">', {
-      exact: true,
-    }),
+    reader
+      .locator('.record-revision')
+      .filter({ hasText: '<img src=x onerror="window.__sharedXss=true">' }),
   ).toBeVisible();
   expect(
     await reader.evaluate(() =>
@@ -552,6 +564,8 @@ async function commit(
     title,
     prose:
       'You follow the choice through the quiet room and keep each physical detail in view. The wall speaker waits while the notepad, wardrobe, and handleless door remain where you left them. Nothing supplies an answer for you; the next fact comes only from what you examine.',
+    recordProse:
+      'The subject follows the choice through the quiet room and keeps each physical detail in view. The wall speaker waits while the notepad, wardrobe, and handleless door remain where the subject left them. Nothing supplies an answer for the subject; the next fact comes only from what the subject examines.',
     continuitySummary:
       'You remain in the room with the notepad, wardrobe, wall speaker, and handleless door, following the evidence in the order you found it.',
     discoveryIds,
@@ -581,7 +595,7 @@ function operationId(prefix: string): string {
 
 function shareSubmission(requestId: string) {
   return {
-    version: 1,
+    version: 2,
     requestId,
     experienceId: experienceDefinition.id,
     storyId: experienceDefinition.story.id,
@@ -590,23 +604,29 @@ function shareSubmission(requestId: string) {
       {
         title: experienceDefinition.story.prologue.title,
         prose: experienceDefinition.story.prologue.prose,
+        recordProse: experienceDefinition.story.prologue.recordProse,
         effectInteractionId: null,
       },
       {
         title: 'The pressed page',
         prose: 'The pencil reveals the marks on the missing page.',
+        recordProse: 'The pencil reveals the marks on the missing page.',
         effectInteractionId: 'pressed_writing',
       },
       {
         title: 'The memory',
         prose: 'The station sequence returns before you open your eyes.',
+        recordProse:
+          'The station sequence returns before the subject opens their eyes.',
         effectInteractionId: 'north_station_memory',
       },
       {
         title: 'The corridor',
         prose: '<img src=x onerror="window.__sharedXss=true">',
+        recordProse: '<img src=x onerror="window.__sharedXss=true">',
         effectInteractionId: 'last_manuscript',
       },
     ],
+    completionPassage: experienceDefinition.story.completionPassage,
   };
 }

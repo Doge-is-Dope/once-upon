@@ -4,7 +4,6 @@ import { useMemo, useRef, useState } from 'react';
 import {
   createSharedStorySubmission,
   deriveManuscriptReadModel,
-  manuscriptToText,
 } from '@/lib/manuscript/read-model';
 import type {
   ExperienceDefinition,
@@ -27,33 +26,11 @@ export function StoryShare({
     () => deriveManuscriptReadModel(experience, session),
     [experience, session],
   );
-  const text = useMemo(() => manuscriptToText(manuscript), [manuscript]);
   const requestId = useRef(crypto.randomUUID());
   const [publishState, setPublishState] = useState<PublishState>('idle');
   const [publicLink, setPublicLink] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [error, setError] = useState('');
-
-  const copyStory = async () => {
-    try {
-      await copyText(text);
-      onAnnounce('The complete story was copied.');
-    } catch {
-      onAnnounce('The story could not be copied.');
-    }
-  };
-
-  const downloadStory = () => {
-    const url = URL.createObjectURL(
-      new Blob([text], { type: 'text/plain;charset=utf-8' }),
-    );
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'the-last-manuscript.txt';
-    anchor.click();
-    URL.revokeObjectURL(url);
-    onAnnounce('The complete story was downloaded as a text file.');
-  };
 
   const shareLink = async (url: string) => {
     if (navigator.share) {
@@ -120,30 +97,20 @@ export function StoryShare({
 
   return (
     <div className="ending-share">
-      <p className="ending-kicker">Your complete manuscript</p>
-      <h2>Keep it private, or publish one unlisted copy.</h2>
+      <p className="ending-kicker">Your story is complete</p>
+      <h2>Share this story</h2>
       <p>
-        Creating a public link uploads the complete manuscript. Anyone with the
-        link can read it for 30 days. It cannot be edited or continued.
+        Create a unique link. Anyone who receives it can read this manuscript
+        and begin a story of their own. The link stays available for 30 days.
       </p>
       <div className="ending-share-actions">
-        <button type="button" onClick={() => void copyStory()}>
-          Copy story
-        </button>
-        <button type="button" onClick={downloadStory}>
-          Download .txt
-        </button>
         <button
           className="share-button"
           disabled={publishState === 'publishing'}
           type="button"
           onClick={() => void publish()}
         >
-          {publishState === 'publishing'
-            ? 'Creating link…'
-            : publicLink
-              ? 'Share public link'
-              : 'Create a public link'}
+          {publishState === 'publishing' ? 'Creating link…' : 'Share story'}
         </button>
       </div>
       {publicLink ? (

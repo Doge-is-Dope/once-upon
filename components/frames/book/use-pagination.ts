@@ -31,6 +31,7 @@ export function usePagination(): {
   const pagerRef = useRef<HTMLDivElement | null>(null);
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
+  const targetPageRef = useRef(0);
   const rollTimeouts = useRef<number[]>([]);
 
   const metrics = useCallback(() => {
@@ -98,7 +99,11 @@ export function usePagination(): {
       );
       const next = Math.min(Math.max(target, 0), count - 1);
       const left = next * m.stride;
+      targetPageRef.current = next;
       setPage(next);
+      // A new navigation intent supersedes any unfinished paper-roll timers,
+      // including when the sheet has not moved to the previous target yet.
+      clearRoll(m.pager);
       if (Math.abs(m.pager.scrollLeft - left) < 1) return;
       const reduced = window.matchMedia(
         '(prefers-reduced-motion: reduce)',
@@ -113,8 +118,9 @@ export function usePagination(): {
       }
       const pager = m.pager;
       const forward = left > pager.scrollLeft;
-      clearRoll(pager);
-      pager.classList.add(forward ? 'is-rolling-out-up' : 'is-rolling-out-down');
+      pager.classList.add(
+        forward ? 'is-rolling-out-up' : 'is-rolling-out-down',
+      );
       rollTimeouts.current.push(
         window.setTimeout(() => {
           pager.scrollTo({ left });
@@ -134,12 +140,12 @@ export function usePagination(): {
     [goToPage],
   );
   const goToPrevious = useCallback(
-    () => goToPage(getCurrentPage() - 1),
-    [getCurrentPage, goToPage],
+    () => goToPage(targetPageRef.current - 1),
+    [goToPage],
   );
   const goToNext = useCallback(
-    () => goToPage(getCurrentPage() + 1),
-    [getCurrentPage, goToPage],
+    () => goToPage(targetPageRef.current + 1),
+    [goToPage],
   );
 
   // Track scroll position (touch swipes, browser auto-scrolls). Settling
@@ -151,7 +157,11 @@ export function usePagination(): {
 
     const onScroll = () => {
       const m = metrics();
-      if (m) setPage(Math.round(m.pager.scrollLeft / m.stride));
+      if (m) {
+        const next = Math.round(m.pager.scrollLeft / m.stride);
+        targetPageRef.current = next;
+        setPage(next);
+      }
     };
 
     pager.addEventListener('scroll', onScroll, { passive: true });
@@ -196,11 +206,11 @@ export function usePagination(): {
       )
         return;
       event.preventDefault();
-      goToPage(getCurrentPage() + (event.key === 'ArrowLeft' ? -1 : 1));
+      goToPage(targetPageRef.current + (event.key === 'ArrowLeft' ? -1 : 1));
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [getCurrentPage, goToPage]);
+  }, [goToPage]);
 
   return {
     pagerRef,

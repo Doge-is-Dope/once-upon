@@ -12,7 +12,12 @@ import type {
   ExperienceSession,
 } from '../lib/runtime/types';
 import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
-import { operationId, ordinaryProse, testContext } from './helpers';
+import {
+  operationId,
+  ordinaryProse,
+  ordinaryRecordProse,
+  testContext,
+} from './helpers';
 
 function begin(
   session: ExperienceSession,
@@ -50,6 +55,7 @@ function commit(
       turnId: session.pendingTurn!.turnId,
       title: 'The room answers',
       prose: ordinaryProse,
+      recordProse: ordinaryRecordProse,
       continuitySummary:
         'You remain inside the room, following your own choices while the wall speaker waits and the ventilation moves air behind the wardrobe.',
       discoveryIds,
@@ -89,7 +95,7 @@ describe('living manuscript engine', () => {
     );
     expect(
       JSON.stringify(toStoryState(experienceDefinition, session)).length,
-    ).toBeLessThan(2_600);
+    ).toBeLessThan(3_200);
   });
 
   it('derives the exact tool surface for every phase', () => {
@@ -418,6 +424,45 @@ describe('living manuscript engine', () => {
     }
   });
 
+  it('requires a bounded, paragraph-matched official record with no second person', () => {
+    const initial = createExperienceSession(
+      experienceDefinition,
+      testContext(),
+    );
+    const pending = begin(
+      initial,
+      'I inspect the room.',
+      operationId('record_validation_begin'),
+    ).session;
+
+    for (const [index, recordProse] of [
+      '',
+      `${ordinaryRecordProse}\n\nA second official paragraph.`,
+      ordinaryProse,
+      Array.from({ length: 501 }, () => 'subject').join(' '),
+    ].entries()) {
+      const rejected = commit(
+        pending,
+        operationId('record_validation', index),
+        [],
+        { recordProse },
+      );
+      expect(rejected.response).toMatchObject({
+        ok: false,
+        code: 'INVALID_INPUT',
+      });
+      expect(rejected.session).toEqual(pending);
+    }
+
+    const leak = commit(pending, operationId('record_sealed_leak'), [], {
+      recordProse: `${ordinaryRecordProse} North Station reads 183/184.`,
+    });
+    expect(leak.response).toMatchObject({
+      ok: false,
+      code: 'SEALED_FACT_LEAK',
+    });
+  });
+
   it('rejects prompt-injected discoveries and cannot create a tool', () => {
     const initial = createExperienceSession(
       experienceDefinition,
@@ -525,6 +570,7 @@ describe('living manuscript engine', () => {
         turnId: 'turn_out_of_order',
         title: 'Wrong turn',
         prose: ordinaryProse,
+        recordProse: ordinaryRecordProse,
         continuitySummary: 'The wrong turn should never be committed.',
         discoveryIds: [],
         status: 'continue',
@@ -595,7 +641,12 @@ describe('living manuscript engine', () => {
         prologue: {
           title: 'A closed ending',
           prose: 'The final fact is still hidden somewhere in the room.',
+          recordProse: 'The final fact is still hidden somewhere in the room.',
           continuitySummary: 'The final fact has not been revealed.',
+        },
+        completionPassage: {
+          prose: 'The subject-facing ending is fixed.',
+          recordProse: 'The official ending is fixed.',
         },
         discoveryIds: [],
         discoveryRequirements: [],
@@ -614,6 +665,7 @@ describe('living manuscript engine', () => {
               {
                 id: 'ending_fact',
                 value: 'The final authored fact is now known.',
+                recordValue: 'The final authored fact is now known.',
                 protectedTerms: ['final authored fact'],
               },
             ],
@@ -643,6 +695,7 @@ describe('living manuscript engine', () => {
       turnId: pending.pendingTurn!.turnId,
       title: 'Too soon',
       prose: ordinaryProse,
+      recordProse: ordinaryRecordProse,
       continuitySummary: 'The final fact has not been revealed.',
       discoveryIds: [],
       status: 'complete' as const,
@@ -690,6 +743,7 @@ describe('living manuscript engine', () => {
       turnId: invoked.pendingTurn!.turnId,
       title: 'The ending opens',
       prose: `${ordinaryProse} The final authored fact is now known.`,
+      recordProse: `${ordinaryRecordProse} The final authored fact is now known.`,
       continuitySummary: 'The final authored fact has been revealed.',
       discoveryIds: [],
       status: 'complete' as const,

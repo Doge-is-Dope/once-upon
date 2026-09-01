@@ -8,7 +8,12 @@ import {
 import type { ExperienceSession } from '../lib/runtime/types';
 import { registerExperienceTools } from '../lib/webmcp/tools';
 import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
-import { operationId, ordinaryProse, testContext } from './helpers';
+import {
+  operationId,
+  ordinaryProse,
+  ordinaryRecordProse,
+  testContext,
+} from './helpers';
 
 type Registered = {
   tool: WebMCPToolDefinition;
@@ -143,6 +148,7 @@ function pencilAvailableSession() {
       turnId: session.pendingTurn!.turnId,
       title: 'A pencil in the drawer',
       prose: ordinaryProse,
+      recordProse: ordinaryRecordProse,
       continuitySummary:
         'You found a pencil near the table. The torn notebook, handleless door, wardrobe, and unanswered North Station question remain in the room.',
       discoveryIds: ['pencil_found'],
@@ -226,9 +232,9 @@ describe('WebMCP living tool surface', () => {
       };
     };
     expect(bootstrap.structuredContent.state.bootstrap).toEqual({
-      protocolVersion: 'living-manuscript-v1',
-      contractVersion: 'last-manuscript-agent-v1',
-      instructions: expect.stringContaining('close second-person novel prose'),
+      protocolVersion: 'living-manuscript-v2',
+      contractVersion: 'last-manuscript-agent-v2',
+      instructions: expect.stringContaining('recordProse'),
       mode: 'opening',
     });
     expect(bootstrap.structuredContent.state.requiredNextTool).toBe('none');
@@ -343,6 +349,7 @@ describe('WebMCP living tool surface', () => {
         turnId: pending.pendingTurn!.turnId,
         title: 'The room listens',
         prose: ordinaryProse,
+        recordProse: ordinaryRecordProse,
         continuitySummary:
           'You listened while the correction room stayed closed and quiet.',
         discoveryIds: [],
@@ -579,6 +586,7 @@ describe('WebMCP living tool surface', () => {
       turnId: pending.pendingTurn!.turnId,
       title: 'Strict input',
       prose: ordinaryProse,
+      recordProse: ordinaryRecordProse,
       continuitySummary: 'The room remains unchanged.',
       discoveryIds: ['pencil_found', 7],
       status: 'continue',

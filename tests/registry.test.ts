@@ -19,8 +19,8 @@ describe('experience registry', () => {
       /get_story_state|begin_story_turn|commit_story_chapter|revision|receipt/,
     );
     expect(experienceDefinition.agentContract).toMatchObject({
-      version: 'last-manuscript-agent-v1',
-      instructions: expect.stringContaining('close second-person novel prose'),
+      version: 'last-manuscript-agent-v2',
+      instructions: expect.stringContaining('recordProse'),
     });
     expect(experienceDefinition.agentContract.instructions).toContain(
       'interaction receipt is already visible prose',

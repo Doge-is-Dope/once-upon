@@ -1,5 +1,5 @@
 import { getExperience } from '@/experiences/registry';
-import type { SharedStorySubmissionV1 } from '@/lib/manuscript/read-model';
+import type { SharedStorySubmissionV2 } from '@/lib/manuscript/read-model';
 import type { InteractionEffectReceipt } from '@/lib/runtime/types';
 
 export const SHARE_LIMITS = {
@@ -28,9 +28,36 @@ export type SharedStoryDocumentV1 = {
   }>;
 };
 
+export type SharedRecordText = {
+  prose: string[];
+  recordProse: string[];
+};
+
+export type SharedStoryDocumentV2 = {
+  version: 2;
+  title: string;
+  createdAt: string;
+  expiresAt: string;
+  chapters: Array<{
+    label: string;
+    title: string;
+    prose: string[];
+    recordProse: string[];
+    effect: null | {
+      presentation: InteractionEffectReceipt['presentation'];
+      title: string;
+      paragraphs: string[];
+      recordParagraphs: string[];
+    };
+  }>;
+  completionPassage: SharedRecordText;
+};
+
+export type SharedStoryDocument = SharedStoryDocumentV1 | SharedStoryDocumentV2;
+
 export type ValidatedShare = {
-  submission: SharedStorySubmissionV1;
-  document: SharedStoryDocumentV1;
+  submission: SharedStorySubmissionV2;
+  document: SharedStoryDocumentV2;
 };
 
 export class ShareValidationError extends Error {
@@ -40,6 +67,26 @@ export class ShareValidationError extends Error {
   ) {
     super(message);
   }
+}
+
+export function parseSharedStoryDocument(value: string): SharedStoryDocument {
+  const document = JSON.parse(value) as unknown;
+  if (
+    !document ||
+    typeof document !== 'object' ||
+    !('version' in document) ||
+    (document.version !== 1 && document.version !== 2) ||
+    !('title' in document) ||
+    typeof document.title !== 'string' ||
+    !('createdAt' in document) ||
+    typeof document.createdAt !== 'string' ||
+    !('expiresAt' in document) ||
+    typeof document.expiresAt !== 'string' ||
+    !('chapters' in document) ||
+    !Array.isArray(document.chapters)
+  )
+    throw new ShareValidationError('The shared manuscript is invalid.', 500);
+  return document as SharedStoryDocument;
 }
 
 export function validateSharedStorySubmission(
@@ -53,8 +100,9 @@ export function validateSharedStorySubmission(
     'storyId',
     'status',
     'chapters',
+    'completionPassage',
   ]);
-  if (root.version !== 1) throw new ShareValidationError('Unknown version.');
+  if (root.version !== 2) throw new ShareValidationError('Unknown version.');
   if (!isUuid(root.requestId))
     throw new ShareValidationError('requestId must be a UUID.');
   if (typeof root.experienceId !== 'string')
@@ -73,6 +121,7 @@ export function validateSharedStorySubmission(
     const chapter = exactRecord(entry, [
       'title',
       'prose',
+      'recordProse',
       'effectInteractionId',
     ]);
     const title = boundedText(
@@ -85,6 +134,12 @@ export function validateSharedStorySubmission(
       'chapter prose',
       SHARE_LIMITS.proseMaxLength,
     );
+    const recordProse = boundedText(
+      chapter.recordProse,
+      'chapter recordProse',
+      SHARE_LIMITS.proseMaxLength,
+    );
+    validateRecordPair(prose, recordProse);
     if (
       chapter.effectInteractionId !== null &&
       typeof chapter.effectInteractionId !== 'string'
@@ -93,6 +148,7 @@ export function validateSharedStorySubmission(
     return {
       title,
       prose,
+      recordProse,
       effectInteractionId: chapter.effectInteractionId as string | null,
       index,
     };
@@ -102,9 +158,22 @@ export function validateSharedStorySubmission(
   if (
     prologue.title !== experience.story.prologue.title ||
     prologue.prose !== experience.story.prologue.prose ||
+    prologue.recordProse !== experience.story.prologue.recordProse ||
     prologue.effectInteractionId !== null
   )
     throw new ShareValidationError('The fixed prologue does not match.');
+
+  const completion = exactRecord(root.completionPassage, [
+    'prose',
+    'recordProse',
+  ]);
+  if (
+    completion.prose !== experience.story.completionPassage.prose ||
+    completion.recordProse !== experience.story.completionPassage.recordProse
+  )
+    throw new ShareValidationError(
+      'The fixed completion passage does not match.',
+    );
 
   const effectIds = chapters.flatMap(({ effectInteractionId }) =>
     effectInteractionId ? [effectInteractionId] : [],
@@ -117,14 +186,13 @@ export function validateSharedStorySubmission(
     throw new ShareValidationError(
       'The story interactions are incomplete or out of order.',
     );
-  const lastEffect = chapters.at(-1)?.effectInteractionId;
-  if (lastEffect !== authoredIds.at(-1))
+  if (chapters.at(-1)?.effectInteractionId !== authoredIds.at(-1))
     throw new ShareValidationError('The final interaction is missing.');
 
   const createdAt = new Date(now).toISOString();
   const expiresAt = new Date(now + SHARE_LIMITS.durationMs).toISOString();
-  const document: SharedStoryDocumentV1 = {
-    version: 1,
+  const document: SharedStoryDocumentV2 = {
+    version: 2,
     title: experience.title,
     createdAt,
     expiresAt,
@@ -138,6 +206,7 @@ export function validateSharedStorySubmission(
         label: index === 0 ? 'Prologue' : `Chapter ${index}`,
         title: chapter.title,
         prose: paragraphs(chapter.prose),
+        recordProse: paragraphs(chapter.recordProse),
         effect: interaction
           ? {
               presentation: interaction.presentation,
@@ -145,27 +214,52 @@ export function validateSharedStorySubmission(
               paragraphs: interaction.sealedFacts.flatMap(({ value }) =>
                 paragraphs(value),
               ),
+              recordParagraphs: interaction.sealedFacts.flatMap(
+                ({ recordValue }) => paragraphs(recordValue),
+              ),
             }
           : null,
       };
     }),
+    completionPassage: {
+      prose: paragraphs(experience.story.completionPassage.prose),
+      recordProse: paragraphs(experience.story.completionPassage.recordProse),
+    },
   };
 
   return {
     submission: {
-      version: 1,
+      version: 2,
       requestId: root.requestId as string,
       experienceId: experience.id,
       storyId: experience.story.id,
       status: 'COMPLETE',
-      chapters: chapters.map(({ title, prose, effectInteractionId }) => ({
-        title,
-        prose,
-        effectInteractionId,
-      })),
+      chapters: chapters.map(
+        ({ title, prose, recordProse, effectInteractionId }) => ({
+          title,
+          prose,
+          recordProse,
+          effectInteractionId,
+        }),
+      ),
+      completionPassage: {
+        prose: completion.prose as string,
+        recordProse: completion.recordProse as string,
+      },
     },
     document,
   };
+}
+
+function validateRecordPair(prose: string, recordProse: string): void {
+  if (paragraphs(prose).length !== paragraphs(recordProse).length)
+    throw new ShareValidationError(
+      'prose and recordProse must use the same paragraph structure.',
+    );
+  if (/\b(?:you|your|yours|yourself|yourselves)\b/iu.test(recordProse))
+    throw new ShareValidationError(
+      'recordProse contains a second-person pronoun.',
+    );
 }
 
 function exactRecord(

@@ -30,8 +30,18 @@ function validateStoryDefinition(definition: ExperienceDefinition): void {
     throw new Error(
       `Experience ${definition.id} requires a versioned agent contract.`,
     );
-  if (!story.prologue.prose.trim())
+  if (!story.prologue.prose.trim() || !story.prologue.recordProse.trim())
     throw new Error(`Experience ${definition.id} declares no prologue.`);
+  validateRecordText(
+    definition.id,
+    story.prologue.prose,
+    story.prologue.recordProse,
+  );
+  validateRecordText(
+    definition.id,
+    story.completionPassage.prose,
+    story.completionPassage.recordProse,
+  );
   const discoveryIds = new Set(story.discoveryIds);
   if (discoveryIds.size !== story.discoveryIds.length)
     throw new Error(
@@ -50,7 +60,10 @@ function validateStoryDefinition(definition: ExperienceDefinition): void {
       );
     interactionIds.add(interaction.id);
     toolNames.add(interaction.toolName);
-    for (const fact of interaction.sealedFacts) factIds.add(fact.id);
+    for (const fact of interaction.sealedFacts) {
+      factIds.add(fact.id);
+      validateRecordText(definition.id, fact.value, fact.recordValue);
+    }
   }
   for (const interaction of story.interactions) {
     for (const id of interaction.requiredDiscoveryIds)
@@ -113,6 +126,32 @@ function validateStoryDefinition(definition: ExperienceDefinition): void {
       throw new Error(
         `Story ${story.id} completion fact ${id} must be revealed by its must_complete interaction.`,
       );
+}
+
+function validateRecordText(
+  experienceId: string,
+  prose: string,
+  recordProse: string,
+): void {
+  if (!prose.trim() || !recordProse.trim())
+    throw new Error(
+      `Experience ${experienceId} requires both authored text versions.`,
+    );
+  if (paragraphCount(prose) !== paragraphCount(recordProse))
+    throw new Error(
+      `Experience ${experienceId} record text must preserve paragraph structure.`,
+    );
+  if (/\b(?:you|your|yours|yourself|yourselves)\b/iu.test(recordProse))
+    throw new Error(
+      `Experience ${experienceId} record text contains second person.`,
+    );
+}
+
+function paragraphCount(value: string): number {
+  return value
+    .trim()
+    .split(/\n\s*\n/)
+    .filter(Boolean).length;
 }
 
 const registry = createExperienceRegistry(experienceDefinitions);

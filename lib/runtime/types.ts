@@ -8,6 +8,7 @@ export interface StoryChapter {
   id: string;
   title: string;
   prose: string;
+  recordProse: string;
   createdAt: number;
   turnId: string | null;
   discoveryIds: DiscoveryId[];
@@ -94,6 +95,7 @@ export interface StoryInteractionDefinition {
   sealedFacts: ReadonlyArray<{
     id: FactId;
     value: string;
+    recordValue: string;
     protectedTerms: readonly string[];
   }>;
   presentation: InteractionEffectReceipt['presentation'];
@@ -116,7 +118,13 @@ export interface StoryDiscoveryRequirement {
 
 export interface StoryDefinition {
   id: string;
-  prologue: { title: string; prose: string; continuitySummary: string };
+  prologue: {
+    title: string;
+    prose: string;
+    recordProse: string;
+    continuitySummary: string;
+  };
+  completionPassage: { prose: string; recordProse: string };
   discoveryIds: readonly DiscoveryId[];
   discoveryRequirements: readonly StoryDiscoveryRequirement[];
   completionRequiredFactIds: readonly FactId[];
@@ -155,7 +163,7 @@ export interface StoryStateSnapshot {
   revision: number;
   phase: SessionPhase;
   bootstrap: {
-    protocolVersion: 'living-manuscript-v1';
+    protocolVersion: 'living-manuscript-v2';
     contractVersion: string;
     instructions: string;
     mode: 'opening' | 'continuing' | 'recovering' | 'complete';
@@ -221,6 +229,7 @@ export interface CommitStoryChapterInput {
   turnId: string;
   title: string;
   prose: string;
+  recordProse: string;
   continuitySummary: string;
   discoveryIds: DiscoveryId[];
   status: 'continue' | 'complete';

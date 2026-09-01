@@ -9,7 +9,7 @@ export type ManuscriptEffect = {
   interactionId: string;
   presentation: InteractionEffectReceipt['presentation'];
   title: string;
-  facts: Array<{ id: string; value: string }>;
+  facts: Array<{ id: string; value: string; recordValue: string }>;
 };
 
 export type ManuscriptChapterBlock = {
@@ -17,15 +17,17 @@ export type ManuscriptChapterBlock = {
   label: string;
   title: string;
   prose: string;
+  recordProse: string;
   effect: ManuscriptEffect | null;
 };
 
 export type ManuscriptReadModel = {
-  version: 1;
+  version: 2;
   experienceId: string;
   storyId: string;
   title: string;
   chapters: ManuscriptChapterBlock[];
+  completionPassage: { prose: string; recordProse: string };
 };
 
 export type SharedStorySubmissionV1 = {
@@ -41,13 +43,28 @@ export type SharedStorySubmissionV1 = {
   }>;
 };
 
+export type SharedStorySubmissionV2 = {
+  version: 2;
+  requestId: string;
+  experienceId: string;
+  storyId: string;
+  status: 'COMPLETE';
+  chapters: Array<{
+    title: string;
+    prose: string;
+    recordProse: string;
+    effectInteractionId: string | null;
+  }>;
+  completionPassage: { prose: string; recordProse: string };
+};
+
 export function deriveManuscriptReadModel(
   experience: ExperienceDefinition,
   session: ExperienceSession,
 ): ManuscriptReadModel {
   const effects = resolveChapterEffects(experience, session);
   return {
-    version: 1,
+    version: 2,
     experienceId: experience.id,
     storyId: experience.story.id,
     title: experience.title,
@@ -56,8 +73,10 @@ export function deriveManuscriptReadModel(
       label: index === 0 ? 'Prologue' : `Chapter ${index}`,
       title: chapter.title,
       prose: chapter.prose,
+      recordProse: chapter.recordProse,
       effect: effects.get(chapter.id) ?? null,
     })),
+    completionPassage: experience.story.completionPassage,
   };
 }
 
@@ -78,9 +97,9 @@ export function resolveChapterEffects(
       ({ id }) => id === use.interactionId,
     );
     if (!interaction) continue;
-    const facts = interaction.sealedFacts.flatMap(({ id }) => {
+    const facts = interaction.sealedFacts.flatMap(({ id, recordValue }) => {
       const fact = session.facts.find((candidate) => candidate.id === id);
-      return fact ? [{ id: fact.id, value: fact.value }] : [];
+      return fact ? [{ id: fact.id, value: fact.value, recordValue }] : [];
     });
     seenReceipts.add(chapter.effectReceiptId);
     effects.set(chapter.id, {
@@ -106,7 +125,12 @@ export function effectFromReceipt(
     interactionId: receipt.interactionId,
     presentation: receipt.presentation,
     title: interaction?.title ?? 'Story effect',
-    facts: receipt.facts,
+    facts: receipt.facts.map((fact) => ({
+      ...fact,
+      recordValue:
+        interaction?.sealedFacts.find(({ id }) => id === fact.id)
+          ?.recordValue ?? fact.value,
+    })),
   };
 }
 
@@ -118,11 +142,12 @@ export function manuscriptToText(model: ManuscriptReadModel): string {
       ...(chapter.effect
         ? [
             chapter.effect.title,
-            ...chapter.effect.facts.map(({ value }) => value),
+            ...chapter.effect.facts.map(({ recordValue }) => recordValue),
           ]
         : []),
-      chapter.prose,
+      chapter.recordProse,
     ]),
+    model.completionPassage.recordProse,
   ]
     .map((part) => part.trim())
     .filter(Boolean)
@@ -132,17 +157,19 @@ export function manuscriptToText(model: ManuscriptReadModel): string {
 export function createSharedStorySubmission(
   model: ManuscriptReadModel,
   requestId: string,
-): SharedStorySubmissionV1 {
+): SharedStorySubmissionV2 {
   return {
-    version: 1,
+    version: 2,
     requestId,
     experienceId: model.experienceId,
     storyId: model.storyId,
     status: 'COMPLETE',
-    chapters: model.chapters.map(({ title, prose, effect }) => ({
+    chapters: model.chapters.map(({ title, prose, recordProse, effect }) => ({
       title,
       prose,
+      recordProse,
       effectInteractionId: effect?.interactionId ?? null,
     })),
+    completionPassage: model.completionPassage,
   };
 }
