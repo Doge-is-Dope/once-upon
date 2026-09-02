@@ -12,6 +12,12 @@ import {
   resolveRecordedEnding,
   splitParagraphBlocks,
 } from '@/lib/manuscript/prose';
+import {
+  buildTypingPlan,
+  splitTypingTokens,
+  type TypingPlan,
+  type WordTiming,
+} from '@/lib/manuscript/typing-plan';
 import type {
   ExperienceDefinition,
   ExperienceSession,
@@ -21,32 +27,48 @@ import { BackspaceText, backspaceDuration } from './backspace-text';
 import { CopyButton } from './copy-button';
 import { StoryShare } from './story-share';
 import { usePagination } from './use-pagination';
-import type { WebMCPSetupHint } from './use-webmcp-connection';
+import type { AgentFailure, WebMCPSetupHint } from './use-webmcp-connection';
 import { WebMCPAvailability } from './webmcp-notices';
+
+type EndingStage = 'original' | 'rewriting' | 'complete';
 
 export function StoryScroll({
   agentActive,
+  agentFailure = null,
+  agentQuiet = false,
+  agentRunning = false,
   experience,
   onAnnounce,
   onPageChange,
+  onTypingChange,
+  pageNavigationEnabled,
   onRetryConnection,
   session,
   webMCPSetupHint,
   webMCPStatus,
 }: {
   agentActive: boolean;
+  agentFailure?: AgentFailure | null;
+  agentQuiet?: boolean;
+  agentRunning?: boolean;
   experience: ExperienceDefinition;
   onAnnounce: (message: string) => void;
   onPageChange: (page: number) => void;
+  onTypingChange?: (typing: boolean) => void;
+  pageNavigationEnabled: boolean;
   onRetryConnection: () => void;
   session: ExperienceSession;
   webMCPSetupHint: WebMCPSetupHint;
   webMCPStatus: WebMCPStatus;
 }) {
-  const manuscript = deriveManuscriptReadModel(experience, session);
+  const manuscript = useMemo(
+    () => deriveManuscriptReadModel(experience, session),
+    [experience, session],
+  );
   const availabilityVisible =
     session.phase !== 'COMPLETE' && webMCPStatus !== 'connected';
   const pendingEffect = resolvePendingEffect(experience, session);
+  const pendingReceiptId = pendingEffect?.receiptId ?? null;
   const latestChapter = manuscript.chapters.at(-1) ?? null;
   const latestChapterId = latestChapter?.id ?? null;
   const latestChapterProse = latestChapter?.prose ?? '';
@@ -75,17 +97,26 @@ export function StoryScroll({
     manuscript.completionPassage.prose,
     session.phase,
   ]);
-  const freshReceiptId = useFreshKey(pendingEffect?.receiptId ?? null, 1200);
-  const freshChapterId = useFreshKey(
+  const { key: freshReceiptId } = useFreshKey(pendingReceiptId, 1200);
+  const { key: freshChapterId, clear: settleFreshChapter } = useFreshKey(
     latestChapterId,
     (typingPlan?.total ?? 0) + 1200,
   );
+  // The page is "typing" while the newest entry is still being revealed.
+  // The next-move prompt, the hint, and the ending choreography all wait
+  // for this to end so chat and page do not compete for the reader.
+  const typingActive =
+    freshChapterId !== null &&
+    typingPlan !== null &&
+    endingStage === 'original';
+  const [newPagesAhead, setNewPagesAhead] = useState(false);
   const contentKey = [
     manuscript.chapters.length,
     session.phase,
     endingStage,
-    pendingEffect?.receiptId ?? '',
+    pendingReceiptId ?? '',
     webMCPStatus,
+    typingActive ? 'typing' : 'settled',
   ].join(':');
   const {
     pagerRef,
@@ -99,7 +130,9 @@ export function StoryScroll({
     pageAt,
     reflowTo,
     measure,
-  } = usePagination({ navigationEnabled: !availabilityVisible });
+  } = usePagination({
+    navigationEnabled: pageNavigationEnabled && !availabilityVisible,
+  });
   const handlePaginatedLayoutChange = useCallback(
     (anchor: Element | null) => reflowTo(anchor),
     [reflowTo],
@@ -108,18 +141,62 @@ export function StoryScroll({
   const caretRef = useRef<HTMLDivElement | null>(null);
   const firstContentKey = useRef(true);
   const previousLatestId = useRef<string | null>(null);
+  const previousReceiptId = useRef<string | null>(null);
   const previousWebMCPStatus = useRef(webMCPStatus);
   const previousPhase = useRef(session.phase);
+  const previousTypingActive = useRef(typingActive);
+  const previousTurnPhase = useRef(session.phase);
+  // True while the reader is still on the page the typing head occupies;
+  // a manual turn away hands control back to the reader.
+  const followingHead = useRef(true);
+  const endingTimers = useRef<number[]>([]);
 
   useEffect(() => {
     onPageChange(page);
   }, [onPageChange, page]);
 
   useEffect(() => {
+    onTypingChange?.(typingActive);
+  }, [onTypingChange, typingActive]);
+
+  useEffect(() => {
+    if (page >= pageCount - 1) setNewPagesAhead(false);
+  }, [page, pageCount]);
+
+  const clearEndingTimers = useCallback(() => {
+    for (const timer of endingTimers.current) window.clearTimeout(timer);
+    endingTimers.current = [];
+  }, []);
+
+  const beginRewrite = useCallback(() => {
+    const paragraphs = splitParagraphBlocks(manuscript.completionPassage.prose);
+    const recordParagraphs = splitParagraphBlocks(
+      manuscript.completionPassage.recordProse,
+    );
+    const originalEnding = paragraphs.at(-1) ?? '';
+    const replacementEnding = recordParagraphs.at(-1) ?? originalEnding;
+    clearEndingTimers();
+    setEndingStage('rewriting');
+    onAnnounce('The record revises its wording.');
+    endingTimers.current.push(
+      window.setTimeout(
+        () => setEndingStage('complete'),
+        backspaceDuration(originalEnding, replacementEnding) + 100,
+      ),
+    );
+  }, [
+    clearEndingTimers,
+    manuscript.completionPassage.prose,
+    manuscript.completionPassage.recordProse,
+    onAnnounce,
+  ]);
+
+  useEffect(() => {
     const enteredComplete =
       previousPhase.current !== 'COMPLETE' && session.phase === 'COMPLETE';
     previousPhase.current = session.phase;
     if (session.phase !== 'COMPLETE') {
+      clearEndingTimers();
       setEndingStage('original');
       return;
     }
@@ -133,33 +210,27 @@ export function StoryScroll({
       onAnnounce('The record revises its wording.');
       return;
     }
-
-    const paragraphs = splitParagraphBlocks(manuscript.completionPassage.prose);
-    const recordParagraphs = splitParagraphBlocks(
-      manuscript.completionPassage.recordProse,
-    );
-    const originalEnding = paragraphs.at(-1) ?? '';
-    const replacementEnding = recordParagraphs.at(-1) ?? originalEnding;
     setEndingStage('original');
-    const rewriteAt = typingPlan.total + 900;
-    const rewriteTimer = window.setTimeout(() => {
-      setEndingStage('rewriting');
-      onAnnounce('The record revises its wording.');
-    }, rewriteAt);
-    const completeTimer = window.setTimeout(
-      () => setEndingStage('complete'),
-      rewriteAt + backspaceDuration(originalEnding, replacementEnding) + 100,
+    clearEndingTimers();
+    endingTimers.current.push(
+      window.setTimeout(beginRewrite, typingPlan.total + 900),
     );
-    return () => {
-      window.clearTimeout(rewriteTimer);
-      window.clearTimeout(completeTimer);
-    };
+    return clearEndingTimers;
+  }, [beginRewrite, clearEndingTimers, onAnnounce, session.phase, typingPlan]);
+
+  // Lets the reader finish a chapter at their own pace: the words settle
+  // at once, the caret stops, and the ending moves on to its rewrite.
+  const finishTyping = useCallback(() => {
+    if (!typingActive) return;
+    settleFreshChapter();
+    if (session.phase === 'COMPLETE' && endingStage === 'original')
+      beginRewrite();
   }, [
-    manuscript.completionPassage.prose,
-    manuscript.completionPassage.recordProse,
-    onAnnounce,
+    beginRewrite,
+    endingStage,
     session.phase,
-    typingPlan,
+    settleFreshChapter,
+    typingActive,
   ]);
 
   // Swapping the trailing guide widgets (availability notice, turn guide)
@@ -167,52 +238,50 @@ export function StoryScroll({
   // reader; refresh the page count only.
   useEffect(() => {
     measure();
-  }, [agentActive, measure, webMCPStatus]);
+  }, [agentActive, measure, typingActive, webMCPStatus]);
 
-  // One place decides where the record turns to. A newly typed entry is
-  // followed like paper feeding through the machine: start at the entry's
-  // first page, ride the typing head with a single block caret, advance
-  // when the head crosses onto the next page, and finish on the last page
-  // where the next prompt waits. Everything else turns straight to the end.
+  // The typing follower: a newly typed entry is followed like paper feeding
+  // through the machine — start at the entry's first page, ride the typing
+  // head with a single block caret, advance when the head crosses onto the
+  // next page, and finish on the last page where the next prompt waits. It
+  // keys only on the fresh entry, so receipts or connection changes that
+  // arrive mid-pass never restart it.
   useEffect(() => {
-    measure();
-    const chapterArrived = latestChapter?.id !== previousLatestId.current;
-    const webMCPStatusChanged = webMCPStatus !== previousWebMCPStatus.current;
-    previousLatestId.current = latestChapter?.id ?? null;
-    previousWebMCPStatus.current = webMCPStatus;
-    if (firstContentKey.current) {
-      firstContentKey.current = false;
-      return;
-    }
-    if (webMCPStatusChanged && !chapterArrived) return;
-    if (endingStage !== 'original') {
-      goToLastPage();
-      return;
-    }
+    if (!freshChapterId || !typingPlan || endingStage !== 'original') return;
     const article = freshArticleRef.current;
-    if (!freshChapterId || !typingPlan || !article) {
-      // A brand-new chapter renders its fresh typing pass one commit
-      // later; wait for that run instead of turning to the end now.
-      if (!(chapterArrived && typingPlan)) goToLastPage();
-      return;
-    }
+    if (!article) return;
     const startPage = pageAt(article);
     goToPage(startPage);
+    followingHead.current = true;
     const caret = caretRef.current;
     const pager = pagerRef.current;
     const sheet = pager?.closest('.manuscript');
     const startedAt = performance.now();
-    const spans =
+    // The schedule is parsed once; the frame loop below never reads
+    // styles. Layout reads happen only when the head enters a new word
+    // or a page turn is settling — within a word the caret advances
+    // arithmetically (monospace glyphs share one width).
+    const words = Array.from(
       article.parentElement?.querySelectorAll<HTMLElement>(
-        '.story-chapter.is-fresh .tw-char, .completion-passage.is-fresh .tw-char',
-      ) ?? [];
+        '.story-chapter.is-fresh .tw-word, .completion-passage.is-fresh .tw-word',
+      ) ?? [],
+      (span) => ({
+        span,
+        start: parseFloat(span.style.getPropertyValue('--td')) || 0,
+        duration: parseFloat(span.style.getPropertyValue('--wd')) || 1,
+        chars: Number(span.style.getPropertyValue('--chars')) || 1,
+      }),
+    );
     let frame = 0;
     let headPage = startPage;
-    let head: HTMLElement | null = null;
+    let head: (typeof words)[number] | null = null;
     let cursor = 0;
     let lastPageCheck = 0;
-    let placedHead: HTMLElement | null = null;
-    let turnSettlesAt = 0;
+    let turnSettlesAt = startedAt + 800;
+    let headRect: DOMRect | null = null;
+    let pagerRect: DOMRect | null = null;
+    let sheetRect: DOMRect | null = null;
+    let glyphWidth = 0;
 
     const hideCaret = () => {
       if (caret) caret.hidden = true;
@@ -220,49 +289,51 @@ export function StoryScroll({
 
     const loop = (now: number) => {
       const elapsed = performance.now() - startedAt;
-      while (cursor < spans.length) {
-        const next = spans[cursor];
-        if (parseFloat(next.style.getPropertyValue('--td')) > elapsed) break;
-        head = next;
+      while (cursor < words.length && words[cursor].start <= elapsed) {
+        head = words[cursor];
         cursor += 1;
+        headRect = null;
       }
-      // Layout reads only when the head moved or a page turn is still
-      // settling; idle frames (punctuation pauses) cost nothing.
-      if (
-        head &&
-        caret &&
-        pager &&
-        sheet &&
-        (head !== placedHead || now < turnSettlesAt)
-      ) {
-        placedHead = head;
-        const headRect = head.getBoundingClientRect();
-        const pagerRect = pager.getBoundingClientRect();
-        const sheetRect = sheet.getBoundingClientRect();
-        const onScreen =
-          headRect.right >= pagerRect.left - 1 &&
-          headRect.right <= pagerRect.right + 1;
-        caret.hidden = !onScreen;
-        if (onScreen) {
-          caret.style.transform = `translate(${headRect.right - sheetRect.left}px, ${headRect.top - sheetRect.top}px)`;
+      if (head && caret && pager && sheet) {
+        if (!headRect || now < turnSettlesAt) {
+          headRect = head.span.getBoundingClientRect();
+          pagerRect = pager.getBoundingClientRect();
+          sheetRect = sheet.getBoundingClientRect();
+          glyphWidth = headRect.width / head.chars;
+        }
+        if (pagerRect && sheetRect) {
+          const stepMs = head.duration / head.chars;
+          const revealed = Math.min(
+            head.chars,
+            Math.max(0, Math.floor((elapsed - head.start) / stepMs)),
+          );
+          const x = headRect.left + revealed * glyphWidth;
+          const onScreen = x >= pagerRect.left - 1 && x <= pagerRect.right + 1;
+          caret.hidden = !onScreen;
+          if (onScreen) {
+            caret.style.transform = `translate(${x - sheetRect.left}px, ${headRect.top - sheetRect.top}px)`;
+          }
         }
       }
       if (head && now - lastPageCheck > 500) {
         lastPageCheck = now;
-        const nextPage = pageAt(head);
+        if (now > turnSettlesAt)
+          followingHead.current = getCurrentPage() === headPage;
+        const nextPage = pageAt(head.span);
         if (nextPage !== headPage) {
           // Follow only while the reader is still on the page the typing
           // head just left; a manual turn takes priority.
-          if (getCurrentPage() === headPage) {
+          if (followingHead.current) {
             goToPage(nextPage);
             turnSettlesAt = now + 800;
-          }
+          } else setNewPagesAhead(true);
           headPage = nextPage;
         }
       }
       if (elapsed > typingPlan.total + 400) {
         hideCaret();
-        goToLastPage();
+        if (followingHead.current) goToLastPage();
+        else setNewPagesAhead(true);
         return;
       }
       frame = requestAnimationFrame(loop);
@@ -274,15 +345,78 @@ export function StoryScroll({
       hideCaret();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentKey, freshChapterId]);
+  }, [freshChapterId, endingStage]);
+
+  // One place decides where the record turns to when content arrives
+  // outside a typing pass: the reader's own move and the objects they use
+  // always come into view; a chapter that lands while they are reading
+  // earlier pages is flagged instead of yanking them forward.
+  useEffect(() => {
+    measure();
+    const chapterArrived = latestChapterId !== previousLatestId.current;
+    const effectArrived =
+      pendingReceiptId !== null &&
+      pendingReceiptId !== previousReceiptId.current;
+    const webMCPStatusChanged = webMCPStatus !== previousWebMCPStatus.current;
+    const enteredAwaiting =
+      previousTurnPhase.current !== 'AWAITING_CHAPTER' &&
+      session.phase === 'AWAITING_CHAPTER';
+    const typingEnded = previousTypingActive.current && !typingActive;
+    previousLatestId.current = latestChapterId;
+    previousReceiptId.current = pendingReceiptId;
+    previousWebMCPStatus.current = webMCPStatus;
+    previousTurnPhase.current = session.phase;
+    previousTypingActive.current = typingActive;
+    if (firstContentKey.current) {
+      firstContentKey.current = false;
+      return;
+    }
+    if (webMCPStatusChanged && !chapterArrived && !effectArrived) return;
+    if (endingStage !== 'original') {
+      goToLastPage();
+      return;
+    }
+    if (enteredAwaiting || effectArrived) {
+      // The reader's own move or the object they just used: they are done
+      // with the chapter, so settle any typing and bring the change into
+      // view (the settled pass re-enters below as typingEnded).
+      followingHead.current = true;
+      if (typingActive) settleFreshChapter();
+      else goToLastPage();
+      return;
+    }
+    if (typingActive) return;
+    if (typingEnded) {
+      if (followingHead.current) goToLastPage();
+      return;
+    }
+    if (chapterArrived) {
+      // A brand-new chapter renders its fresh typing pass one commit
+      // later; wait for that run instead of turning to the end now.
+      if (typingPlan && !freshChapterId) return;
+      if (getCurrentPage() >= pageCount - 1) goToLastPage();
+      else setNewPagesAhead(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentKey]);
 
   return (
     <section className="manuscript" aria-label="The living manuscript">
+      {/* Pre-rendered light layers; state changes crossfade their opacity
+          instead of transitioning the sheet's own heavy shadows. */}
+      <div aria-hidden="true" className="manuscript-light-agent" />
+      <div aria-hidden="true" className="manuscript-light-shift" />
       <header className="sheet-head">
         <span>Record of proceedings</span>
-        <span className="sheet-page-indicator">
+        <span
+          className="sheet-page-indicator"
+          data-new-pages={newPagesAhead || undefined}
+        >
           Sheet {String(page + 1).padStart(2, '0')} of{' '}
           {String(pageCount).padStart(2, '0')}
+          {newPagesAhead ? (
+            <span className="sheet-new-pages"> · New</span>
+          ) : null}
         </span>
       </header>
       {/* The window clips the rolling pager so sheets feed through the
@@ -326,9 +460,12 @@ export function StoryScroll({
               />
             ) : null}
 
-            {session.phase === 'READY' && webMCPStatus === 'connected' ? (
+            {session.phase === 'READY' &&
+            webMCPStatus === 'connected' &&
+            !typingActive ? (
               <TurnGuide
                 agentActive={agentActive}
+                agentFailure={agentFailure}
                 experience={experience}
                 onAnnounce={onAnnounce}
                 session={session}
@@ -338,6 +475,9 @@ export function StoryScroll({
             webMCPStatus === 'connected' ? (
               <PendingTurnGuide
                 agentActive={agentActive}
+                agentFailure={agentFailure}
+                agentQuiet={agentQuiet}
+                agentRunning={agentRunning}
                 experience={experience}
                 onAnnounce={onAnnounce}
                 session={session}
@@ -379,7 +519,16 @@ export function StoryScroll({
       <div
         className="sheet-controls"
         data-navigation-disabled={availabilityVisible || undefined}
+        data-new-pages={newPagesAhead || undefined}
       >
+        <button
+          className="sheet-finish-typing"
+          hidden={!typingActive}
+          onClick={finishTyping}
+          type="button"
+        >
+          Finish typing
+        </button>
         <button
           aria-label="Previous page"
           disabled={availabilityVisible || page === 0}
@@ -389,7 +538,9 @@ export function StoryScroll({
           ‹
         </button>
         <button
-          aria-label="Next page"
+          aria-label={
+            newPagesAhead ? 'Next page, new writing ahead' : 'Next page'
+          }
           disabled={availabilityVisible || page >= pageCount - 1}
           onClick={goToNext}
           type="button"
@@ -403,11 +554,13 @@ export function StoryScroll({
 
 function TurnGuide({
   agentActive,
+  agentFailure,
   experience,
   onAnnounce,
   session,
 }: {
   agentActive: boolean;
+  agentFailure: AgentFailure | null;
   experience: ExperienceDefinition;
   onAnnounce: (message: string) => void;
   session: ExperienceSession;
@@ -425,6 +578,7 @@ function TurnGuide({
             ? 'The speaker is waiting.'
             : 'The room is waiting.'}
       </h2>
+      {agentFailure ? <AgentFailureNote failure={agentFailure} /> : null}
       {!agentActive ? (
         <AgentHandoff
           experience={experience}
@@ -438,36 +592,73 @@ function TurnGuide({
 
 function PendingTurnGuide({
   agentActive,
+  agentFailure,
+  agentQuiet,
+  agentRunning,
   experience,
   onAnnounce,
   session,
 }: {
   agentActive: boolean;
+  agentFailure: AgentFailure | null;
+  agentQuiet: boolean;
+  agentRunning: boolean;
   experience: ExperienceDefinition;
   onAnnounce: (message: string) => void;
   session: ExperienceSession;
 }) {
-  if (agentActive)
-    return (
-      <div className="writing-marker">
-        <span aria-hidden="true" />
-        <p>
-          {session.pendingTurn?.kind === 'interaction'
-            ? 'The page has changed. Waiting for your agent to add the next chapter…'
-            : 'Your move is saved. Waiting for your agent to add the next chapter…'}
-        </p>
-      </div>
-    );
+  const pending = session.pendingTurn;
+  const interactionTurn = pending?.kind === 'interaction';
+  const markerText = interactionTurn
+    ? agentRunning
+      ? 'The record has changed. Your agent is writing what follows…'
+      : 'The record has changed. Waiting for your agent to write what follows…'
+    : agentRunning
+      ? 'Your agent is writing the next chapter…'
+      : 'Waiting for your agent to write the next chapter…';
 
   return (
-    <div className="turn-guide pending-turn-guide" id="your-turn">
-      <h2 className="turn-guide-prompt">The page is unfinished.</h2>
-      <AgentHandoff
-        experience={experience}
-        mode="recover"
-        onAnnounce={onAnnounce}
-      />
+    <div className="pending-turn" id="your-turn">
+      {pending?.playerChoice ? (
+        <p className="pending-move">
+          <span aria-hidden="true">— </span>
+          <span className="sr-only">Your move: </span>
+          {pending.playerChoice}
+        </p>
+      ) : null}
+      {agentActive ? (
+        <div
+          className="writing-marker"
+          data-running={agentRunning || undefined}
+        >
+          <span aria-hidden="true" />
+          <p>{markerText}</p>
+        </div>
+      ) : null}
+      {agentFailure ? <AgentFailureNote failure={agentFailure} /> : null}
+      {!agentActive || agentQuiet ? (
+        <div className="turn-guide pending-turn-guide">
+          <h2 className="turn-guide-prompt">
+            {agentActive
+              ? 'Your agent has gone quiet.'
+              : 'The chapter is unwritten.'}
+          </h2>
+          <AgentHandoff
+            experience={experience}
+            mode="recover"
+            onAnnounce={onAnnounce}
+          />
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function AgentFailureNote({ failure }: { failure: AgentFailure }) {
+  return (
+    <output className="agent-failure-note" data-code={failure.code}>
+      The record refused the last entry. Ask your agent to try again.
+    </output>
   );
 }
 
@@ -485,10 +676,10 @@ function AgentHandoff({
     <div className="agent-handoff">
       <p className="agent-handoff-instruction">
         {mode === 'recover'
-          ? 'Your move is already here. Ask your agent to finish the chapter.'
+          ? 'Your move is on the page but nothing followed it. Ask your agent to finish it:'
           : mode === 'start'
-            ? 'Tell your agent what you inspect before you answer.'
-            : 'Tell your agent what you do next.'}
+            ? 'No agent has spoken yet. Send this to your agent to begin:'
+            : 'Your agent has not continued yet. Send this to resume:'}
       </p>
       <div className="agent-handoff-example">
         <p>{message}</p>
@@ -500,7 +691,7 @@ function AgentHandoff({
             onAnnounce(
               mode === 'recover'
                 ? 'Resume message copied.'
-                : 'Story starter copied. You can replace its final move when you message your agent.',
+                : 'Starter copied. Change the last sentence to your own move before sending.',
             )
           }
           onCopyFailed={() =>
@@ -543,7 +734,7 @@ function ChapterBlock({
       <p className="chapter-number">{chapter.label}</p>
       <h2>
         {plan ? (
-          <TypedText chars={plan.title} text={chapter.title} />
+          <TypedText text={chapter.title} words={plan.title} />
         ) : (
           chapter.title
         )}
@@ -552,7 +743,7 @@ function ChapterBlock({
       {paragraphs.map((paragraph, index) => (
         <p key={`${chapter.id}-paragraph-${index}`}>
           {plan?.paragraphs[index] ? (
-            <TypedText chars={plan.paragraphs[index]} text={paragraph} />
+            <TypedText text={paragraph} words={plan.paragraphs[index]} />
           ) : (
             paragraph
           )}
@@ -568,7 +759,7 @@ function CompletionPassageBlock({
   stage,
 }: {
   passage: { prose: string; recordProse: string };
-  plan: number[][] | null | undefined;
+  plan: WordTiming[][] | null | undefined;
   stage: EndingStage;
 }) {
   const paragraphs = splitParagraphBlocks(passage.prose);
@@ -593,7 +784,7 @@ function CompletionPassageBlock({
           ) : index === lastIndex && stage === 'complete' ? (
             completedParagraphs[index]
           ) : plan?.[index] ? (
-            <TypedText chars={plan[index]} text={original} />
+            <TypedText text={original} words={plan[index]} />
           ) : (
             original
           )}
@@ -604,26 +795,35 @@ function CompletionPassageBlock({
 }
 
 /**
- * Renders text as one span per character so a committed entry can be
- * hammered onto the page at typing speed. The full text is in the DOM
- * from the first frame; only its visibility is scheduled.
+ * Renders text as one span per word so a committed entry can be hammered
+ * onto the page at typing speed. The full text is in the DOM from the
+ * first frame; each word reveals its glyphs with a stepped clip-path on
+ * the schedule carried by its custom properties. Courier Prime is
+ * monospace, so per-word steps are pixel-identical to per-glyph opacity
+ * at a fraction of the node and animation count.
  */
 function TypedText({
-  chars,
   text,
+  words,
 }: {
-  chars: ReadonlyArray<number>;
   text: string;
+  words: ReadonlyArray<WordTiming>;
 }) {
   return (
     <>
-      {Array.from(text).map((character, index) => (
+      {splitTypingTokens(text).map((token, index) => (
         <span
-          className="tw-char"
+          className="tw-word"
           key={index}
-          style={{ '--td': `${chars[index] ?? 0}ms` } as CSSProperties}
+          style={
+            {
+              '--td': `${words[index]?.start ?? 0}ms`,
+              '--wd': `${words[index]?.duration ?? 1}ms`,
+              '--chars': `${words[index]?.chars ?? 1}`,
+            } as CSSProperties
+          }
         >
-          {character}
+          {token}
         </span>
       ))}
     </>
@@ -730,7 +930,10 @@ function resolvePendingEffect(
   return effectFromReceipt(experience, receipt);
 }
 
-function useFreshKey(key: string | null, ttl: number): string | null {
+function useFreshKey(
+  key: string | null,
+  ttl: number,
+): { key: string | null; clear: () => void } {
   const previousKey = useRef(key);
   const ttlRef = useRef(ttl);
   const [freshKey, setFreshKey] = useState<string | null>(null);
@@ -751,65 +954,9 @@ function useFreshKey(key: string | null, ttl: number): string | null {
     return () => window.clearTimeout(timeout);
   }, [freshKey]);
 
-  return freshKey;
-}
+  const clear = useCallback(() => setFreshKey(null), []);
 
-const TYPE_MS = 22;
-
-type TypingPlan = {
-  title: number[];
-  paragraphs: number[][];
-  completionParagraphs: number[][];
-  total: number;
-};
-
-type EndingStage = 'original' | 'rewriting' | 'complete';
-
-/**
- * Schedules every character of a committed entry at real typing speed
- * (~45 characters a second), with an uneven hand and pauses after
- * punctuation and between paragraphs.
- */
-function buildTypingPlan(
-  title: string,
-  paragraphs: string[],
-  completionParagraphs: string[],
-): TypingPlan {
-  let elapsed = 0;
-  let index = 0;
-  const schedule = (text: string) => {
-    const chars: number[] = [];
-    for (const character of text) {
-      chars.push(elapsed);
-      elapsed += TYPE_MS + ((index * 7919) % 13) + pauseAfter(character);
-      index += 1;
-    }
-    return chars;
-  };
-  const titleChars = schedule(title);
-  elapsed += 450;
-  const paragraphChars = paragraphs.map((paragraph) => {
-    const chars = schedule(paragraph);
-    elapsed += 450;
-    return chars;
-  });
-  const completionChars = completionParagraphs.map((paragraph) => {
-    const chars = schedule(paragraph);
-    elapsed += 450;
-    return chars;
-  });
-  return {
-    title: titleChars,
-    paragraphs: paragraphChars,
-    completionParagraphs: completionChars,
-    total: elapsed,
-  };
-}
-
-function pauseAfter(character: string): number {
-  if ('.?!'.includes(character)) return 260;
-  if (',;:'.includes(character)) return 130;
-  return 0;
+  return { key: freshKey, clear };
 }
 
 function effectParagraphs(effect: ManuscriptEffect): string[] {

@@ -62,6 +62,76 @@ describe('experience registry', () => {
     );
   });
 
+  it('rejects duplicate or incomplete authored clues', () => {
+    const clue = experienceDefinition.story.clues[0]!;
+    const duplicate = {
+      ...experienceDefinition,
+      id: 'duplicate-clues',
+      story: {
+        ...experienceDefinition.story,
+        clues: [clue, clue],
+      },
+    };
+    expect(() => createExperienceRegistry([duplicate])).toThrow(
+      `duplicate clue ${clue.id}`,
+    );
+
+    const incomplete = {
+      ...experienceDefinition,
+      id: 'incomplete-clue',
+      story: {
+        ...experienceDefinition.story,
+        clues: [{ ...clue, observation: ' ' }],
+      },
+    };
+    expect(() => createExperienceRegistry([incomplete])).toThrow(
+      'incomplete clue',
+    );
+  });
+
+  it('rejects clue references outside the authored story graph', () => {
+    const clue = experienceDefinition.story.clues[0]!;
+    const unknownFact = {
+      ...experienceDefinition,
+      id: 'unknown-clue-fact',
+      story: {
+        ...experienceDefinition.story,
+        clues: [
+          {
+            ...clue,
+            revealedBy: { kind: 'fact' as const, id: 'invented_fact' },
+          },
+        ],
+      },
+    };
+    expect(() => createExperienceRegistry([unknownFact])).toThrow(
+      'unknown fact invented_fact',
+    );
+
+    const unknownLead = {
+      ...experienceDefinition,
+      id: 'unknown-clue-lead',
+      story: {
+        ...experienceDefinition.story,
+        clues: [
+          {
+            ...clue,
+            lead: {
+              text: 'Follow it.',
+              target: {
+                kind: 'interaction' as const,
+                id: 'invented_interaction',
+              },
+            },
+          },
+        ],
+      },
+    };
+    expect(() => createExperienceRegistry([unknownLead])).toThrow(
+      'unknown interaction invented_interaction',
+    );
+  });
+
   it('rejects interaction prerequisites outside the authored allowlist', () => {
     const invalid = {
       ...experienceDefinition,

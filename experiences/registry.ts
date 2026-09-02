@@ -86,6 +86,43 @@ function validateStoryDefinition(definition: ExperienceDefinition): void {
           `Interaction ${interaction.id} requires unknown interaction ${id}.`,
         );
   }
+  const clueIds = new Set<string>();
+  for (const clue of story.clues) {
+    if (clueIds.has(clue.id))
+      throw new Error(`Story ${story.id} declares duplicate clue ${clue.id}.`);
+    clueIds.add(clue.id);
+    if (!clue.id.trim() || !clue.title.trim() || !clue.observation.trim())
+      throw new Error(`Story ${story.id} declares an incomplete clue.`);
+
+    if (
+      clue.revealedBy.kind === 'discovery' &&
+      !discoveryIds.has(clue.revealedBy.id)
+    )
+      throw new Error(
+        `Clue ${clue.id} reveals from unknown discovery ${clue.revealedBy.id}.`,
+      );
+    if (clue.revealedBy.kind === 'fact' && !factIds.has(clue.revealedBy.id))
+      throw new Error(
+        `Clue ${clue.id} reveals from unknown fact ${clue.revealedBy.id}.`,
+      );
+    if (!clue.lead) continue;
+    if (!clue.lead.text.trim())
+      throw new Error(`Clue ${clue.id} declares an empty lead.`);
+    if (
+      clue.lead.target.kind === 'discovery' &&
+      !discoveryIds.has(clue.lead.target.id)
+    )
+      throw new Error(
+        `Clue ${clue.id} leads to unknown discovery ${clue.lead.target.id}.`,
+      );
+    if (
+      clue.lead.target.kind === 'interaction' &&
+      !interactionIds.has(clue.lead.target.id)
+    )
+      throw new Error(
+        `Clue ${clue.id} leads to unknown interaction ${clue.lead.target.id}.`,
+      );
+  }
   const discoveryRequirementIds = new Set<string>();
   for (const requirement of story.discoveryRequirements) {
     if (!discoveryIds.has(requirement.id))

@@ -1,7 +1,8 @@
 'use client';
 
-import { BugIcon } from '@phosphor-icons/react/dist/ssr/Bug';
 import { GearSixIcon } from '@phosphor-icons/react/dist/ssr/GearSix';
+import { WrenchIcon } from '@phosphor-icons/react/dist/ssr/Wrench';
+import { useState } from 'react';
 import { useDismissiblePanel } from './use-dismissible-panel';
 
 const SETTINGS_PANEL_ID = 'story-settings-panel';
@@ -15,6 +16,8 @@ export function StorySettings({
   onDebugModeChange: (enabled: boolean) => void;
 }) {
   const { open, rootRef, triggerRef, close, toggle } = useDismissiblePanel();
+  const [confirmingRestart, setConfirmingRestart] = useState(false);
+  const showRestartConfirm = open && confirmingRestart;
 
   return (
     <div className="story-settings" ref={rootRef}>
@@ -23,7 +26,10 @@ export function StorySettings({
         aria-expanded={open}
         aria-label="Settings"
         className="story-settings-trigger"
-        onClick={toggle}
+        onClick={() => {
+          setConfirmingRestart(false);
+          toggle();
+        }}
         ref={triggerRef}
         title="Settings"
         type="button"
@@ -34,7 +40,10 @@ export function StorySettings({
         aria-hidden="true"
         className="settings-backdrop"
         data-open={open || undefined}
-        onPointerDown={close}
+        onPointerDown={() => {
+          setConfirmingRestart(false);
+          close();
+        }}
       />
       <div
         aria-hidden={!open}
@@ -48,16 +57,17 @@ export function StorySettings({
           <h2 id={SETTINGS_TITLE_ID}>Settings</h2>
         </div>
         <div className="setting-row">
-          <BugIcon
+          <WrenchIcon
             aria-hidden="true"
             className="setting-row-icon"
             size={19}
             weight="regular"
           />
           <div className="setting-row-copy">
-            <label htmlFor="debug-mode-toggle">Debug mode</label>
+            <label htmlFor="debug-mode-toggle">Tool inspector</label>
             <p id="debug-mode-description">
-              Show WebMCP tools and lifecycle details.
+              Show the page tools your agent can call and their lifecycle. For
+              judges and developers.
             </p>
           </div>
           <input
@@ -69,20 +79,38 @@ export function StorySettings({
             type="checkbox"
           />
         </div>
-        <button
-          className="settings-restart-button"
-          type="button"
-          onClick={() => {
-            if (
-              window.confirm(
-                'Reset? Your progress will be erased and this page will reload.',
-              )
-            )
-              window.location.reload();
-          }}
-        >
-          <strong>Reset</strong>
-        </button>
+        {showRestartConfirm ? (
+          <div className="settings-restart-confirm">
+            <p id="settings-restart-question">
+              Start over? This manuscript is erased and the prologue begins
+              again.
+            </p>
+            <div className="settings-restart-actions">
+              <button
+                className="settings-restart-button is-confirm"
+                type="button"
+                onClick={() => window.location.reload()}
+              >
+                <strong>Start over</strong>
+              </button>
+              <button
+                className="settings-restart-button is-cancel"
+                type="button"
+                onClick={() => setConfirmingRestart(false)}
+              >
+                <strong>Keep reading</strong>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className="settings-restart-button"
+            type="button"
+            onClick={() => setConfirmingRestart(true)}
+          >
+            <strong>Start over</strong>
+          </button>
+        )}
       </div>
     </div>
   );

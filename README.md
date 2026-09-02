@@ -19,11 +19,14 @@ action menu.
 
 For example:
 
-> Play The Last Manuscript with me through this page. I inspect the room before
-> answering.
+> Play The Last Manuscript with me through this page. I look around the room
+> before answering the speaker.
 
-The page offers this short starter as an optional copy helper; there is no setup
-prompt to paste.
+The page offers this short starter as an optional copy helper (from the agent
+status in the header and from the page itself); there is no setup prompt to
+paste. The header also shows what the agent is doing — reading, writing, or
+using a discovered object — and the page echoes each move you make while your
+agent writes the chapter.
 
 [WebMCP](https://webmachinelearning.github.io/webmcp/) is an evolving browser
 API for exposing page tools to agents. Availability depends on the browser or
@@ -42,8 +45,8 @@ The Last Manuscript → read the testimony hidden behind the wardrobe
 The final page opens the room onto a larger system, then stops before the player
 chooses what to do.
 
-Judges can enable **Settings → Debug mode** to inspect the real tool lifecycle.
-The panel stays out of the player experience by default.
+Judges can enable **Settings → Tool inspector** to inspect the real tool
+lifecycle. The panel stays out of the player experience by default.
 
 ## Human + AI + page
 
@@ -54,6 +57,12 @@ The panel stays out of the player experience by default.
 An interaction changes the page before AI writes the chapter. Its exact effect
 receipt stays in the current page's memory until that chapter is committed.
 Reloading, closing the tab, or choosing Start over opens the prologue again.
+
+The page paces the story. A committed chapter is typed onto the sheet at reading
+speed, and the commit result tells the agent how long that takes so it does not
+repeat the prose in chat or rush the next question; the reader can press
+**Finish typing** to settle the page at once. The next-move prompt and hint wait
+for the typing to end.
 
 ## WebMCP surface
 
@@ -99,10 +108,9 @@ rejected without consuming the pending receipt.
 ## Sharing a completed manuscript
 
 Nothing is uploaded during play. After completion, the player may explicitly
-choose **Create a public link**. The server validates and rebuilds the reader
-document, then stores only that anonymous, unlisted, read-only copy in D1. The
-link expires after 30 days. Copy story and Download `.txt` remain available
-without publishing.
+choose **Create a link**. The server validates and rebuilds the reader document,
+then stores only that anonymous, unlisted, read-only copy in D1. The link
+expires after 30 days.
 
 ## Project layout
 

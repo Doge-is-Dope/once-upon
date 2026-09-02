@@ -11,6 +11,66 @@ export const lastManuscriptStory: StoryDefinition = {
     continuitySummary:
       'You woke at a table in a single room while a wall speaker asked what happened at North Station at 5:41 p.m. on May twelfth. The room contains a torn notepad, a bed, a sink, a wardrobe, and a door with no handle. You know North Station should mean something to you, but no answer returns. When the ventilation runs, something taps behind the wardrobe.',
   },
+  clues: [
+    {
+      id: 'torn-page',
+      title: 'The Torn Page',
+      observation:
+        'The top sheet is gone. A ragged strip remains in the binding, and the page beneath it is indented.',
+      revealedBy: { kind: 'prologue' },
+    },
+    {
+      id: 'behind-wardrobe',
+      title: 'Behind the Wardrobe',
+      observation:
+        'The tapping begins with the ventilation and stops when it does. It comes from the narrow gap behind the wardrobe.',
+      revealedBy: { kind: 'prologue' },
+      lead: {
+        text: 'Move the wardrobe aside and search the narrow gap where the tapping came from.',
+        target: { kind: 'discovery', id: 'manuscript_found' },
+      },
+    },
+    {
+      id: 'pencil',
+      title: 'The Pencil',
+      observation:
+        'Freshly sharpened. Left just beneath the desk, where I could reach it.',
+      revealedBy: { kind: 'discovery', id: 'pencil_found' },
+      lead: {
+        text: 'Turn the pencil sideways and shade across the shallow grooves on the blank page.',
+        target: { kind: 'interaction', id: 'pressed_writing' },
+      },
+    },
+    {
+      id: 'impressed-note',
+      title: 'The Impressed Note',
+      observation:
+        'The missing page left a message in the paper beneath it: “Sixth time. Don’t answer yet.” It tells me to start with the announcement, look behind the wardrobe, and read all the papers first.',
+      revealedBy: { kind: 'fact', id: 'sixth_attempt_note' },
+      lead: {
+        text: 'Close my eyes and begin with the North Station announcement.',
+        target: { kind: 'interaction', id: 'north_station_memory' },
+      },
+    },
+    {
+      id: 'returned-memory',
+      title: 'The Returned Memory',
+      observation:
+        'At 5:41, the east gate was already descending. The first shot came before any smoke. The room’s approved story does not match what I remember.',
+      revealedBy: { kind: 'fact', id: 'north_station_flashback' },
+    },
+    {
+      id: 'sewn-manuscript',
+      title: 'The Sewn Manuscript',
+      observation:
+        'Pages from different forms have been sewn into one volume. It was hidden behind the wardrobe, where the tapping came from.',
+      revealedBy: { kind: 'discovery', id: 'manuscript_found' },
+      lead: {
+        text: 'Open the sewn volume and read all the papers before deciding what to tell the speaker.',
+        target: { kind: 'interaction', id: 'last_manuscript' },
+      },
+    },
+  ],
   completionPassage: {
     prose:
       'The elevator descends without stopping. Its doors open onto a narrow service lane wet with rain. No alarm follows you. No footsteps come after you.\n\nBy the next corner, the manuscript is hidden beneath your coat and the building looks like any other office after dark. You keep walking.',

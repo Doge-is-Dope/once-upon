@@ -116,6 +116,26 @@ export interface StoryDiscoveryRequirement {
   requiredFactIds: readonly FactId[];
 }
 
+export type StoryClueReveal =
+  | { kind: 'prologue' }
+  | { kind: 'discovery'; id: DiscoveryId }
+  | { kind: 'fact'; id: FactId };
+
+export type StoryClueLeadTarget =
+  | { kind: 'interaction'; id: InteractionId }
+  | { kind: 'discovery'; id: DiscoveryId };
+
+export interface StoryClueDefinition {
+  id: string;
+  title: string;
+  observation: string;
+  revealedBy: StoryClueReveal;
+  lead?: {
+    text: string;
+    target: StoryClueLeadTarget;
+  };
+}
+
 export interface StoryDefinition {
   id: string;
   prologue: {
@@ -124,6 +144,7 @@ export interface StoryDefinition {
     recordProse: string;
     continuitySummary: string;
   };
+  clues: readonly StoryClueDefinition[];
   completionPassage: { prose: string; recordProse: string };
   discoveryIds: readonly DiscoveryId[];
   discoveryRequirements: readonly StoryDiscoveryRequirement[];

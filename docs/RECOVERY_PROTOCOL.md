@@ -24,6 +24,11 @@ stateDiagram-v2
 4. Obey `requiredChapterStatus`: Pencil and Memory must continue; the Last
    Manuscript must complete.
 5. Use `allowedNextTools`, not mere registration presence, as authorization.
+6. After a successful commit, the page types the chapter at reading speed; the
+   result reports `pagePresentation.typingMs`. Reply with one short line and
+   never repeat the prose. A failed mutation is also shown to the reader on the
+   page ("The record refused the last entry"), so retry with corrected input
+   rather than narrating around it.
 
 Every mutation carries the current `expectedSessionId`, `expectedRevision`, and
 a unique `operationId`. Identical same-page retries are idempotent. Reusing an

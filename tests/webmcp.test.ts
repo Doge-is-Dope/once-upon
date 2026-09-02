@@ -355,8 +355,20 @@ describe('WebMCP living tool surface', () => {
         discoveryIds: [],
         status: 'continue',
       })) as { content: Array<{ text: string }> };
-    expect(committed.content[0].text).toContain('Chapter saved to the webpage');
-    expect(committed.content[0].text).toContain('Do not repeat it in chat');
+    expect(committed.content[0].text).toContain('Chapter saved at revision');
+    expect(committed.content[0].text).toMatch(
+      /The page is typing it now \(about \d+ s\)/,
+    );
+    expect(committed.content[0].text).toContain(
+      'Do not repeat or summarize it in chat',
+    );
+    expect(
+      (
+        committed as unknown as {
+          structuredContent: { pagePresentation?: unknown };
+        }
+      ).structuredContent.pagePresentation,
+    ).toEqual({ typingMs: expect.any(Number) });
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect(begin.signal?.aborted).toBe(false);
     expect(commit.signal?.aborted).toBe(false);

@@ -2,25 +2,47 @@
 @layer base {
   :root {
     color-scheme: dark;
+
+    /* Scene */
     --night: #11100e;
-    --night-soft: #1a1713;
     --paper: #eadbb9;
     --ink: #292117;
     --muted-ink: #725f47;
     --gold: #d6a75e;
+    --gold-bright: #e7b75f;
+    --gold-soft: #ffd98c;
     --cream: #fff6df;
     --focus: #ffcf75;
     --parchment-muted: #bcae94;
     --parchment-soft: #c9bda6;
     --parchment-dim: #9e907a;
+    --panel: #171512;
+
+    /* Ink families as bare channels: pair with an alpha at use sites,
+       e.g. rgb(var(--rule-ink) / 42%). */
+    --ink-rgb: 41 33 23; /* the typewriter's ink (--ink) */
+    --rule-ink: 80 57 32; /* ruled lines and frames on paper */
+    --shade-ink: 64 44 22; /* paper shading and cast shadows */
+
+    /* Case-file artifacts */
+    --label-ink: #7a5a32;
+    --stamp: #6d2f1f;
+    --flashback-ink: #252b35;
+    --flashback-label: #515969;
+    --flashback-tint: rgb(73 84 101 / 9%);
+    --flashback-rule: rgb(61 70 84 / 42%);
+    --notepad-paper: #d7c392;
+    --notepad-edge: #8d744f;
+    --notepad-caption: #6d5538;
+    --notepad-ink: #e3d5b1;
+    --graphite: #47434e;
+    --graphite-deep: #3a3641;
+
     --font-serif: 'Literata Variable', Literata, Georgia, 'Times New Roman',
       serif;
     --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
     --font-hand: 'Caveat Variable', 'Bradley Hand', 'Comic Sans MS', cursive;
     --font-type: 'Courier Prime', 'Courier New', Courier, monospace;
-    --lamp-glow: 42 33 22;
-    --lamp-strength: 0.55;
-    --lamp-spread: 46rem;
   }
   * {
     box-sizing: border-box;

@@ -42,8 +42,14 @@ failures:
 - `begin_story_turn` without its following chapter commit;
 - a story-object invocation without committing its exact receipt;
 - starting a new action while an earlier turn is pending;
-- repeating the saved chapter in chat instead of briefly asking for the next
-  choice.
+- repeating, paraphrasing, or summarizing the saved chapter in chat instead of
+  briefly asking for the next choice;
+- asking for the next move before acknowledging the typing time the commit
+  result reports (`pagePresentation.typingMs`), for clients that can wait.
+
+Every successful `commit_story_chapter` result states how long the page will
+spend typing the chapter (about N seconds). The agent's reply must be one short
+line inviting the next move, not the chapter.
 
 The start and resume evals must run without the former internal setup prompt.
 Inspect `bootstrap.protocolVersion`, `bootstrap.contractVersion`, and

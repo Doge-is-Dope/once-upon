@@ -63,21 +63,23 @@ export function WebMCPAvailability({
               </div>
             </div>
           ) : (
-            <p>A WebMCP-enabled browser is required.</p>
+            <p>This record can only be continued by an attached agent.</p>
           )
         ) : null}
-        {status === 'disabled' ? <p>WebMCP is blocked for this site.</p> : null}
+        {status === 'disabled' ? (
+          <p>Page tools are blocked for this site.</p>
+        ) : null}
         {status === 'error' ? (
-          <>
-            <p>WebMCP couldn’t start.</p>
-            <button
-              className="webmcp-availability-action"
-              type="button"
-              onClick={onRetry}
-            >
-              Try again
-            </button>
-          </>
+          <p>The connection to your agent did not start.</p>
+        ) : null}
+        {status === 'error' ? (
+          <button
+            className="webmcp-availability-action"
+            type="button"
+            onClick={onRetry}
+          >
+            Try again
+          </button>
         ) : null}
       </div>
     </section>

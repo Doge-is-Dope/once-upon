@@ -1,8 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ExperienceController } from '@/lib/runtime/controller';
-import { registerExperienceTools, type WebMCPStatus } from '@/lib/webmcp/tools';
+import {
+  registerExperienceTools,
+  type ToolActivity,
+  type WebMCPStatus,
+} from '@/lib/webmcp/tools';
 
 const WEBMCP_FLAG_MIN_CHROME_MAJOR = 146;
 const WEBMCP_FLAG_EXPIRY_CHROME_MAJOR = 155;
@@ -17,21 +21,42 @@ export type BrowserIdentity = {
   };
 };
 
+export type AgentFailure = {
+  toolName: string;
+  code: string;
+  message: string;
+  at: number;
+};
+
+export type WebMCPConnection = {
+  webMCPStatus: WebMCPStatus;
+  setupHint: WebMCPSetupHint;
+  /** True from the agent's first tool call this page load onward. */
+  agentActive: boolean;
+  /** The most recently invoked tool that is still running, if any. */
+  activeTool: string | null;
+  /** Number of tool calls currently in flight. */
+  runningCount: number;
+  /** Wall-clock time of the last tool call activity, or null. */
+  lastActivityAt: number | null;
+  /** The most recent failed tool call, cleared by the next success. */
+  lastFailure: AgentFailure | null;
+  retryConnection: () => void;
+};
+
 // Registers the experience's WebMCP tools once the session view is ready and
 // re-registers them on demand via retryConnection. `agentActive` flips to true
 // on the agent's first tool call this page load and stays true — restarting a
 // manuscript in the same chat keeps the agent attached.
-export function useWebMCPConnection(controller: ExperienceController): {
-  webMCPStatus: WebMCPStatus;
-  setupHint: WebMCPSetupHint;
-  agentActive: boolean;
-  activeTool: string | null;
-  retryConnection: () => void;
-} {
+export function useWebMCPConnection(
+  controller: ExperienceController,
+): WebMCPConnection {
   const [webMCPStatus, setWebMCPStatus] = useState<WebMCPStatus>('connecting');
   const [setupHint, setSetupHint] = useState<WebMCPSetupHint>('generic');
   const [agentActive, setAgentActive] = useState(false);
-  const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [running, setRunning] = useState<string[]>([]);
+  const [lastActivityAt, setLastActivityAt] = useState<number | null>(null);
+  const [lastFailure, setLastFailure] = useState<AgentFailure | null>(null);
   const [connectAttempt, setConnectAttempt] = useState(0);
 
   useEffect(() => {
@@ -49,7 +74,17 @@ export function useWebMCPConnection(controller: ExperienceController): {
       (activity) => {
         if (disposed) return;
         setAgentActive(true);
-        setActiveTool(activity.phase === 'invoked' ? activity.toolName : null);
+        setLastActivityAt(Date.now());
+        setRunning((current) => applyActivity(current, activity));
+        if (activity.phase !== 'settled' || activity.code === 'ABORTED') return;
+        if (activity.ok) setLastFailure(null);
+        else
+          setLastFailure({
+            toolName: activity.toolName,
+            code: activity.code ?? 'ERROR',
+            message: activity.message ?? '',
+            at: Date.now(),
+          });
       },
       lifecycle.signal,
     ).then((cleanup) => {
@@ -63,13 +98,31 @@ export function useWebMCPConnection(controller: ExperienceController): {
     };
   }, [controller, connectAttempt]);
 
+  const retryConnection = useCallback(
+    () => setConnectAttempt((attempt) => attempt + 1),
+    [],
+  );
+
   return {
     webMCPStatus,
     setupHint,
     agentActive,
-    activeTool,
-    retryConnection: () => setConnectAttempt((attempt) => attempt + 1),
+    activeTool: running.at(-1) ?? null,
+    runningCount: running.length,
+    lastActivityAt,
+    lastFailure,
+    retryConnection,
   };
+}
+
+export function applyActivity(
+  running: readonly string[],
+  activity: ToolActivity,
+): string[] {
+  if (activity.phase === 'invoked') return [...running, activity.toolName];
+  const index = running.lastIndexOf(activity.toolName);
+  if (index === -1) return [...running];
+  return [...running.slice(0, index), ...running.slice(index + 1)];
 }
 
 export function resolveWebMCPSetupHint(

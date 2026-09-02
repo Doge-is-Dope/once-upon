@@ -179,8 +179,11 @@ export function useLampLight(): RefObject<HTMLCanvasElement | null> {
     let rectDirty = 0;
     const paper = document.querySelector('.manuscript');
     const resize = () => {
-      width = Math.round(canvas.clientWidth * dpr);
-      height = Math.round(canvas.clientHeight * dpr);
+      const nextWidth = Math.round(canvas.clientWidth * dpr);
+      const nextHeight = Math.round(canvas.clientHeight * dpr);
+      if (nextWidth === width && nextHeight === height) return;
+      width = nextWidth;
+      height = nextHeight;
       canvas.width = width;
       canvas.height = height;
       gl.viewport(0, 0, width, height);
@@ -203,12 +206,30 @@ export function useLampLight(): RefObject<HTMLCanvasElement | null> {
     const sizeObserver = new ResizeObserver(() => {
       resize();
       measurePaper();
+      // Redraw in the same frame: resizing the buffer clears it, and
+      // until the throttled loop's next tick the compositor would show
+      // the cleared (or stale, stretched) frame through the overlay
+      // blend — a warm flash on every drag-resize tick. ResizeObserver
+      // callbacks run before paint, so drawing here removes the gap.
+      lastRender = performance.now();
+      render(lastRender);
     });
     sizeObserver.observe(canvas);
+    // The manuscript's own height clamp changes with the viewport without
+    // the fixed canvas ever resizing; watch the paper too.
+    if (paper) sizeObserver.observe(paper);
 
+    let heroRiding = false;
     const render = (now: number) => {
       agitation +=
         ((root.hasAttribute('data-agent-running') ? 1 : 0) - agitation) * 0.02;
+
+      // The hero-collapse FLIP moves the manuscript with a transform, so
+      // no scroll/resize/observer event fires; ride it frame by frame and
+      // settle with one final measure when it ends.
+      const riding = root.hasAttribute('data-hero-collapsing');
+      if (riding || heroRiding) measurePaper();
+      heroRiding = riding;
 
       if (paperRect) {
         gl.uniform4f(

@@ -8,11 +8,17 @@
 
   /* The desk lamp: a fixed pool of warm light on the table. It brightens
      when the agent arrives and leans in while the agent writes. */
+  /* The blended layers cover only the lamp's reach, not the whole
+     viewport, to keep the composited blend region small. */
   .frame-book::before,
   .frame-book::after {
     content: '';
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 50%;
+    width: min(100vw, 84rem);
+    height: min(100vh, 64rem);
+    transform: translateX(-50%);
     pointer-events: none;
     mix-blend-mode: screen;
     transition: opacity 700ms ease;
@@ -222,8 +228,9 @@
 
   .story-hint-trigger,
   .story-settings-trigger {
-    display: grid;
-    place-items: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: var(--parchment-muted);
     background: transparent;
     border: 1px solid transparent;
@@ -246,7 +253,7 @@
   }
 
   .story-hint-trigger[data-available] {
-    color: #e7b75f;
+    color: var(--gold-bright);
     background: transparent;
     border-color: transparent;
   }
@@ -255,6 +262,153 @@
     filter: drop-shadow(0 0 0.22rem rgb(231 183 95 / 55%))
       drop-shadow(0 0 0.65rem rgb(221 164 71 / 35%));
     transition: filter 160ms ease;
+  }
+
+  .story-hint-trigger:disabled {
+    color: var(--parchment-dim);
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  /* The agent beside the page: a small ribbon lamp that reads "no agent
+     yet", warms when one attaches, and breathes while it reads or writes. */
+  .agent-presence {
+    position: relative;
+    z-index: 40;
+  }
+
+  .agent-presence-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    padding: 0 0.7rem;
+    color: var(--parchment-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: default;
+    font-family: var(--font-type);
+    font-size: 0.74rem;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .agent-presence[data-presence='waiting'] .agent-presence-trigger {
+    cursor: pointer;
+    border-color: rgb(231 183 95 / 32%);
+  }
+
+  .agent-presence[data-presence='waiting'] .agent-presence-trigger:hover,
+  .agent-presence[data-presence='waiting']
+    .agent-presence-trigger[aria-expanded='true'] {
+    color: var(--cream);
+    background: rgb(255 255 255 / 4%);
+  }
+
+  .agent-presence-trigger:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 3px;
+  }
+
+  .agent-presence-lamp {
+    width: 0.55rem;
+    height: 0.55rem;
+    flex: 0 0 auto;
+    background: #5a5148;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
+    transition: background-color 240ms ease;
+  }
+
+  .agent-presence[data-presence='waiting'] .agent-presence-lamp {
+    background: #6a5a3c;
+    animation: presence-wait 2.4s ease-in-out infinite;
+  }
+
+  .agent-presence[data-presence='attached'] .agent-presence-lamp {
+    background: var(--gold);
+    box-shadow: 0 0 0.45rem rgb(221 164 71 / 55%);
+  }
+
+  .agent-presence[data-running] .agent-presence-lamp {
+    background: var(--gold-bright);
+    box-shadow: 0 0 0.7rem rgb(231 183 95 / 75%);
+    animation: presence-run 1s ease-in-out infinite;
+  }
+
+  .agent-presence[data-running] .agent-presence-label {
+    color: var(--gold-soft);
+  }
+
+  @keyframes presence-wait {
+    50% {
+      opacity: 0.45;
+    }
+  }
+
+  @keyframes presence-run {
+    50% {
+      transform: scale(0.72);
+      opacity: 0.7;
+    }
+  }
+
+  .agent-presence-panel {
+    position: absolute;
+    z-index: 2;
+    top: calc(100% + 0.55rem);
+    inset-inline-end: 0;
+    width: min(24rem, calc(100vw - 2rem));
+    padding: 1rem;
+    color: var(--parchment-soft);
+    background: var(--panel);
+    border: 1px solid rgb(231 183 95 / 28%);
+    border-radius: 0.4rem;
+    box-shadow:
+      0 0.9rem 2.4rem rgb(0 0 0 / 42%),
+      0 0 1.6rem rgb(221 164 71 / 8%);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    translate: 0 -0.3rem;
+    transition:
+      opacity 140ms ease,
+      translate 160ms ease,
+      visibility 0s linear 160ms;
+  }
+
+  .agent-presence-panel[data-open] {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    translate: 0;
+    transition-delay: 0s;
+  }
+
+  .agent-presence-panel p {
+    margin: 0;
+    font-family: var(--font-type);
+    font-size: 0.82rem;
+    line-height: 1.6;
+  }
+
+  .agent-presence-panel .agent-presence-kicker {
+    margin-bottom: 0.55rem;
+    color: var(--gold-bright);
+    font-size: 0.74rem;
+    font-weight: 700;
+  }
+
+  .agent-presence-panel .agent-handoff-example {
+    margin-top: 0.8rem;
+    color: var(--cream);
+    background: rgb(255 255 255 / 4%);
+    border-block-color: rgb(234 219 185 / 30%);
+  }
+
+  .agent-presence-panel .agent-handoff-example p {
+    color: var(--cream);
   }
 
   .story-settings-trigger:hover,
@@ -266,7 +420,7 @@
 
   .story-hint-trigger[data-available]:hover,
   .story-hint-trigger[data-available][aria-expanded='true'] {
-    color: #ffd98c;
+    color: var(--gold-soft);
     background: transparent;
     border-color: transparent;
   }
@@ -283,6 +437,409 @@
   .settings-restart-button:focus-visible {
     outline: 2px solid var(--gold);
     outline-offset: 3px;
+  }
+
+  .story-clues-control {
+    position: absolute;
+    z-index: 1;
+    right: 0.75rem;
+    bottom: 0;
+    width: 5.25rem;
+    height: 4.75rem;
+  }
+
+  .story-clues-trigger {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+    color: #eadfbe;
+    background:
+      url('/textures/paper-grain.webp') left top / 16rem 16rem repeat,
+      linear-gradient(145deg, #735a39, #46341f 78%);
+    border: 1px solid rgb(231 211 164 / 34%);
+    border-radius: 0.22rem 0.35rem 0.3rem 0.18rem;
+    box-shadow:
+      0 0.15rem 0.3rem rgb(8 5 2 / 32%),
+      0 0.65rem 1.2rem rgb(0 0 0 / 34%),
+      inset 0.3rem 0 0 rgb(37 24 13 / 22%),
+      inset 0 1px 0 rgb(255 245 211 / 14%);
+    cursor: pointer;
+    transform: rotate(1.4deg);
+    transform-origin: right bottom;
+    transition:
+      color 160ms ease,
+      transform 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .story-clues-trigger[data-new]::after {
+    content: '';
+    position: absolute;
+    top: 0.3rem;
+    right: 0.35rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--gold-bright);
+    border-radius: 50%;
+    box-shadow: 0 0 0.5rem rgb(231 183 95 / 70%);
+    animation: presence-wait 2s ease-in-out infinite;
+  }
+
+  .story-clues-cover-stitches {
+    position: absolute;
+    top: 0.45rem;
+    bottom: 0.45rem;
+    left: 0.62rem;
+    width: 0.5rem;
+    background: repeating-linear-gradient(
+      180deg,
+      transparent 0 0.35rem,
+      rgb(231 211 164 / 52%) 0.38rem 0.48rem
+    );
+    opacity: 0.72;
+  }
+
+  .story-clues-trigger-label {
+    position: absolute;
+    right: 0.7rem;
+    bottom: 0.5rem;
+    left: 1.25rem;
+    font-family: var(--font-hand);
+    font-size: 1.35rem;
+    font-weight: 500;
+    line-height: 1;
+    text-align: center;
+    text-underline-offset: 0.18em;
+    rotate: -1.5deg;
+  }
+
+  .story-clues-cover-corner {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 1.2rem;
+    height: 1.2rem;
+    background: linear-gradient(135deg, #c8b17b 48%, #342414 52%);
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    opacity: 0.3;
+    transform: scale(0.45);
+    transform-origin: right bottom;
+    transition:
+      opacity 180ms ease,
+      transform 180ms ease;
+  }
+
+  .story-clues-trigger:hover,
+  .story-clues-trigger[aria-expanded='true'] {
+    color: #fff4d7;
+    transform: translateY(-0.12rem) rotate(1deg);
+    box-shadow:
+      0 0.15rem 0.3rem rgb(8 5 2 / 28%),
+      0 0.85rem 1.45rem rgb(0 0 0 / 38%),
+      inset 0.3rem 0 0 rgb(37 24 13 / 22%),
+      inset 0 1px 0 rgb(255 245 211 / 18%);
+  }
+
+  .story-clues-trigger:focus-visible {
+    outline: none;
+  }
+
+  .story-clues-trigger:focus-visible .story-clues-trigger-label {
+    color: #fff7df;
+    text-decoration: underline;
+    text-decoration-thickness: 0.08em;
+  }
+
+  .story-clues-trigger[data-new='true'] {
+    animation: story-notebook-arrives 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .story-clues-trigger[data-new='true'] .story-clues-cover-corner {
+    opacity: 0.92;
+    transform: scale(1);
+  }
+
+  @keyframes story-notebook-arrives {
+    0%,
+    100% {
+      transform: rotate(1.4deg);
+    }
+
+    45% {
+      transform: translateY(-0.28rem) rotate(0.2deg);
+    }
+  }
+
+  .story-clues-popover {
+    position: fixed;
+    inset: 0;
+    width: 100dvw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    border: 0;
+    opacity: 0;
+    transition:
+      opacity 180ms ease,
+      display 220ms allow-discrete,
+      overlay 220ms allow-discrete;
+    transition-behavior: allow-discrete;
+  }
+
+  .story-clues-popover:popover-open {
+    opacity: 1;
+  }
+
+  @starting-style {
+    .story-clues-popover:popover-open {
+      opacity: 0;
+    }
+  }
+
+  .story-clues-popover::backdrop {
+    background: rgb(7 6 5 / 0%);
+    backdrop-filter: blur(0) saturate(1);
+    transition:
+      background 180ms ease,
+      backdrop-filter 180ms ease,
+      display 220ms allow-discrete,
+      overlay 220ms allow-discrete;
+    transition-behavior: allow-discrete;
+  }
+
+  .story-clues-popover:popover-open::backdrop {
+    background: rgb(7 6 5 / 46%);
+    backdrop-filter: blur(3px) saturate(0.82);
+  }
+
+  @starting-style {
+    .story-clues-popover:popover-open::backdrop {
+      background: rgb(7 6 5 / 0%);
+      backdrop-filter: blur(0) saturate(1);
+    }
+  }
+
+  .story-clues-sheet {
+    --story-clues-top: clamp(4.75rem, 10dvh, 6.5rem);
+    position: absolute;
+    top: var(--story-clues-top);
+    left: 50%;
+    width: min(25rem, calc(100dvw - 1.75rem));
+    max-height: calc(100dvh - var(--story-clues-top) - 1rem);
+    padding: 2rem 1.55rem 1.35rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    color: #352a1d;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        transparent 0 1.625rem,
+        rgb(101 76 43 / 8%) 1.6875rem
+      ),
+      linear-gradient(175deg, #eee3c2, #d8c9a2);
+    border: 1px solid rgb(255 246 223 / 32%);
+    border-radius: 0.125rem;
+    box-shadow:
+      -1.125rem 2rem 3.75rem rgb(0 0 0 / 52%),
+      0.3125rem 0.5rem 0 -0.25rem #ad9d78;
+    opacity: 0;
+    transform: translate(-50%, 1.25rem) rotate(-0.35deg) scale(0.98);
+    transform-origin: right bottom;
+    transition:
+      opacity 180ms ease,
+      transform 220ms ease;
+    scrollbar-color: rgb(94 74 48 / 48%) transparent;
+  }
+
+  .story-clues-popover:popover-open .story-clues-sheet {
+    opacity: 1;
+    transform: translate(-50%, 0) rotate(-0.35deg) scale(1);
+  }
+
+  @starting-style {
+    .story-clues-popover:popover-open .story-clues-sheet {
+      opacity: 0;
+      transform: translate(-50%, 1.25rem) rotate(-0.35deg) scale(0.98);
+    }
+  }
+
+  .story-clues-binding {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 0.82rem;
+    pointer-events: none;
+    background: linear-gradient(180deg, #f2e7c8, #d6c79f);
+    box-shadow: 0 0.16rem 0.24rem rgb(75 55 31 / 12%);
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 64%,
+      97% 78%,
+      93% 66%,
+      88% 82%,
+      82% 69%,
+      77% 84%,
+      71% 70%,
+      65% 86%,
+      59% 68%,
+      53% 82%,
+      47% 69%,
+      41% 85%,
+      35% 68%,
+      29% 82%,
+      23% 69%,
+      17% 84%,
+      11% 67%,
+      5% 82%,
+      0 68%
+    );
+  }
+
+  .story-clues-binding::before,
+  .story-clues-binding::after {
+    position: absolute;
+    top: 0.16rem;
+    width: 0.38rem;
+    height: 0.38rem;
+    background: #756347;
+    border: 1px solid rgb(67 49 29 / 48%);
+    border-radius: 50%;
+    box-shadow:
+      inset 0 0.08rem 0.12rem rgb(34 23 13 / 42%),
+      0 1px 0 rgb(255 248 222 / 42%);
+    content: '';
+  }
+
+  .story-clues-binding::before {
+    left: 38%;
+  }
+
+  .story-clues-binding::after {
+    right: 38%;
+  }
+
+  .story-clues-sheet:focus-visible {
+    outline: none;
+    filter: brightness(1.015);
+  }
+
+  .story-clues-sheet:focus-visible h2 {
+    text-decoration: underline;
+    text-decoration-color: rgb(77 56 33 / 38%);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.16em;
+  }
+
+  .story-clues-sheet-header {
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgb(93 68 39 / 28%);
+  }
+
+  .story-clues-eyebrow,
+  .story-clue-state {
+    font-family: var(--font-type);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .story-clues-eyebrow {
+    margin: 0 0 0.3rem;
+    color: #786747;
+  }
+
+  .story-clues-sheet h2 {
+    margin: 0;
+    font-family: var(--font-hand);
+    font-size: 2.25rem;
+    font-weight: 500;
+    line-height: 1;
+    rotate: -1deg;
+  }
+
+  .story-clues-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .story-clue-entry {
+    padding: 1.125rem 0;
+    border-bottom: 1px solid rgb(93 68 39 / 24%);
+  }
+
+  .story-clue-entry:last-child {
+    border-bottom: 0;
+  }
+
+  .story-clue-entry-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .story-clue-entry h3 {
+    margin: 0;
+    font-family: var(--font-hand);
+    font-size: 1.65rem;
+    font-weight: 500;
+    line-height: 1;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.25rem;
+  }
+
+  .story-clue-state {
+    color: #8b5718;
+    white-space: nowrap;
+  }
+
+  .story-clue-entry > p,
+  .story-clue-lead p {
+    margin: 0.45rem 0 0;
+    color: #473b2c;
+    font-family: var(--font-hand);
+    font-size: 1.375rem;
+    font-weight: 400;
+    line-height: 1.27;
+    text-wrap: pretty;
+  }
+
+  .story-clue-lead {
+    margin-top: 0.75rem;
+    padding: 0.625rem 0.25rem 0.2rem;
+    rotate: -0.5deg;
+  }
+
+  .story-clue-lead-label {
+    display: block;
+    margin-bottom: 0.1rem;
+    color: #7b4b12;
+    font-family: var(--font-hand);
+    font-size: 1.25rem;
+    font-weight: 500;
+  }
+
+  .story-clues-footnote {
+    margin: 1rem 0 0;
+    color: #665943;
+    font-family: var(--font-hand);
+    font-size: 1.1875rem;
+    line-height: 1.2;
+    rotate: -0.6deg;
   }
 
   .story-hint-panel,
@@ -314,7 +871,7 @@
     width: min(20rem, calc(100vw - 2rem));
     padding: 1rem;
     color: var(--parchment-soft);
-    background: #171512;
+    background: var(--panel);
     border: 1px solid rgb(231 183 95 / 28%);
     border-radius: 0.4rem;
     box-shadow:
@@ -329,7 +886,7 @@
 
   .story-hint-panel .story-hint-kicker {
     margin-bottom: 0.55rem;
-    color: #e7b75f;
+    color: var(--gold-bright);
     font-size: 0.74rem;
     font-weight: 700;
     letter-spacing: 0.02em;
@@ -370,7 +927,7 @@
     max-height: calc(100dvh - 6.5rem);
     overflow-y: auto;
     color: var(--parchment-soft);
-    background: #171512;
+    background: var(--panel);
     border: 1px solid rgb(234 219 185 / 18%);
     border-radius: 0.4rem;
     box-shadow: 0 0.9rem 2.4rem rgb(0 0 0 / 42%);
@@ -414,15 +971,17 @@
   .setting-row label {
     color: var(--cream);
     cursor: pointer;
-    font-size: 0.88rem;
-    font-weight: 600;
+    font-family: var(--font-type);
+    font-size: 0.86rem;
+    font-weight: 700;
   }
 
   .setting-row p {
     margin: 0.25rem 0 0;
     color: var(--parchment-dim);
-    font-size: 0.74rem;
-    line-height: 1.45;
+    font-family: var(--font-type);
+    font-size: 0.72rem;
+    line-height: 1.5;
   }
 
   .setting-switch {
@@ -489,14 +1048,61 @@
   }
 
   .settings-restart-button strong {
-    font-size: 0.82rem;
-    font-weight: 600;
+    font-family: var(--font-type);
+    font-size: 0.8rem;
+    font-weight: 700;
   }
 
+  .settings-restart-confirm {
+    margin: 0 1rem 1rem;
+    padding: 0.85rem 0.9rem;
+    background: rgb(164 81 55 / 7%);
+    border: 1px solid rgb(205 139 116 / 24%);
+    border-radius: 0.3rem;
+  }
+
+  .settings-restart-confirm p {
+    margin: 0 0 0.75rem;
+    color: var(--parchment-soft);
+    font-family: var(--font-type);
+    font-size: 0.76rem;
+    line-height: 1.5;
+  }
+
+  .settings-restart-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .settings-restart-actions .settings-restart-button {
+    width: auto;
+    margin: 0;
+  }
+
+  .settings-restart-button.is-confirm {
+    color: #f0d4c9;
+    background: rgb(164 81 55 / 22%);
+    border-color: rgb(205 139 116 / 45%);
+  }
+
+  .settings-restart-button.is-cancel {
+    color: var(--parchment-soft);
+    border-color: rgb(234 219 185 / 22%);
+  }
+
+  .settings-restart-button.is-cancel:hover {
+    color: var(--cream);
+    background: rgb(255 255 255 / 4%);
+    border-color: rgb(234 219 185 / 38%);
+  }
+
+  /* The hero collapse never animates layout: margins and grid rows jump
+     to their final values in one pass, and book-experience plays a FLIP
+     transform on the shell to carry the manuscript to its new position. */
   .story-shell {
     width: min(100% - 2rem, 58rem);
     margin: clamp(1rem, 2.5vw, 2rem) auto 4rem;
-    transition: margin-top 480ms cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .story-shell:focus {
@@ -505,6 +1111,22 @@
 
   .frame-book[data-story-started] .story-shell {
     margin-top: clamp(1.25rem, 3vw, 2.25rem);
+  }
+
+  .story-manuscript-stage {
+    position: relative;
+    width: min(100%, 48rem);
+    margin-inline: auto;
+    isolation: isolate;
+  }
+
+  .story-manuscript-stage[data-notes-available='true'] {
+    padding-bottom: 3.25rem;
+  }
+
+  .story-manuscript-content {
+    position: relative;
+    z-index: 2;
   }
 
   .title-block {
@@ -518,8 +1140,6 @@
     text-align: center;
     translate: 0 -0.75rem;
     transition:
-      grid-template-rows 480ms cubic-bezier(0.4, 0, 0.2, 1),
-      margin-block-end 480ms cubic-bezier(0.4, 0, 0.2, 1),
       opacity 220ms ease-out,
       translate 420ms cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -551,7 +1171,7 @@
   .eyebrow,
   .chapter-number {
     margin: 0 0 0.6rem;
-    color: #7a5a32;
+    color: var(--label-ink);
     font-family: var(--font-type);
     font-size: 0.72rem;
     font-weight: 700;
@@ -587,21 +1207,40 @@
 
   .manuscript,
   .shared-manuscript {
-    /* Sheets stacked beneath the top page. */
-    --sheet-stack:
-      0 2px 0 -1px #dccca7, 0 4px 0 -2px #d2c29d, 0 7px 0 -3px #c4b48f,
-      0 9px 0 -4px #6e6146;
-    /* Plain office stock under the lamp: fine grain, broad mottle,
-       light from above, a dimmer foot. */
+    /* Plain office stock under the lamp: a baked grain tile (see
+       scripts/generate-paper-texture.mjs — the old inline feTurbulence
+       layers re-rasterized on every repaint), light from above, a dimmer
+       foot. Every page of the pager lives on this one physical sheet, so
+       the grain is continuous across page turns by construction. */
     background:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.29 0 0 0 0 0.2 0 0 0 0 0.1 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)'/%3E%3C/svg%3E"),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.015' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.33 0 0 0 0 0.25 0 0 0 0 0.12 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23b)'/%3E%3C/svg%3E"),
+      url('/textures/paper-grain.webp') left top / 512px 512px repeat,
       radial-gradient(
         ellipse 85% 34% at 50% 0%,
         rgb(255 252 238 / 40%),
         transparent 74%
       ),
-      linear-gradient(180deg, transparent 68%, rgb(64 44 22 / 9%)), var(--paper);
+      linear-gradient(180deg, transparent 68%, rgb(var(--shade-ink) / 9%)),
+      var(--paper);
+  }
+
+  /* A raking sheen across the sheet: contained by the manuscript's
+     isolation, painted once, never animated. */
+  .manuscript::before,
+  .shared-manuscript::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      115deg,
+      rgb(255 253 244 / 5%),
+      transparent 38%,
+      transparent 72%,
+      rgb(var(--shade-ink) / 4%)
+    );
+    mix-blend-mode: soft-light;
   }
 
   .manuscript {
@@ -617,14 +1256,44 @@
     color: var(--ink);
     border: 1px solid rgb(255 246 223 / 18%);
     border-radius: 0.2rem;
+    /* The sheet's shadows are static; state light rides the
+       .manuscript-light-* layers below as opacity crossfades. The drop
+       shadow layers share the lamp's overhead light: tight and warm at
+       contact, wide and dark at distance. The insets shape the paper: a
+       hairline top-edge highlight, a shaded foot, and faint side
+       falloff, instead of one flat inner wash. */
     box-shadow:
-      var(--sheet-stack),
-      0 2rem 6rem rgb(0 0 0 / 45%),
-      inset 0 0 5rem rgb(85 52 20 / 10%);
+      0 2px 4px rgb(24 14 6 / 30%),
+      0 10px 20px rgb(18 11 5 / 30%),
+      0 32px 64px rgb(0 0 0 / 38%),
+      inset 0 1px 0 rgb(255 252 238 / 30%),
+      inset 0 -18px 24px -18px rgb(var(--shade-ink) / 16%),
+      inset 14px 0 24px -18px rgb(var(--shade-ink) / 8%),
+      inset -14px 0 24px -18px rgb(var(--shade-ink) / 8%);
+    isolation: isolate;
     animation: manuscript-open 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-    transition:
-      box-shadow 700ms ease,
-      border-color 700ms ease;
+    transition: border-color 700ms ease;
+  }
+
+  .manuscript-light-agent,
+  .manuscript-light-shift {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 700ms ease;
+  }
+
+  .manuscript-light-agent {
+    box-shadow: 0 0 3.5rem rgb(214 167 94 / 10%);
+  }
+
+  .manuscript-light-shift {
+    box-shadow:
+      0 0 5rem rgb(214 167 94 / 15%),
+      inset 0 0 4rem rgb(255 255 255 / 18%);
   }
 
   /* Typed running head, repeated on every page like a stamped case file. */
@@ -635,7 +1304,7 @@
     gap: 1rem;
     margin-bottom: 1.25rem;
     padding-bottom: 0.8rem;
-    border-bottom: 1px solid rgb(80 57 32 / 30%);
+    border-bottom: 1px solid rgb(var(--rule-ink) / 30%);
     color: var(--muted-ink);
     font-family: var(--font-type);
     font-size: 0.72rem;
@@ -672,6 +1341,10 @@
     overscroll-behavior-x: contain;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
+    /* The pager is the size container: the column flow and snap rails
+       derive the page stride from `100cqi`, so their geometry is exact
+       (sub-pixel) and needs no JS-written widths. */
+    container-type: inline-size;
   }
 
   .sheet-pager::-webkit-scrollbar {
@@ -691,63 +1364,66 @@
   .snap-rails > div {
     position: absolute;
     top: 0;
-    left: calc(
-      var(--page-index) * (var(--page-width, 60rem) + var(--page-gap))
-    );
-    width: var(--page-width, 60rem);
+    left: calc(var(--page-index) * (100cqi + var(--page-gap)));
+    width: 100cqi;
     height: 100%;
     pointer-events: none;
     scroll-snap-align: start;
   }
 
-  /* Page turns feed paper through the platen. Forward: the finished
-     sheet is drawn up and out, the next sheet ratchets up into view
-     line by line. Backward: the roller reverses. The scroll position
-     jumps while no paper is visible. */
-  .sheet-pager.is-rolling-out-up {
-    animation: roll-out-up 260ms ease-in both;
+  /* Page turns slide the finished sheet aside along the reading
+     direction: a brief fade-glide out, the scroll position jumps while
+     nothing is visible, and the next sheet settles in from the opposite
+     side on a long decelerating ease. Quiet and directional — the pile
+     of sheets shuffles sideways across the desk. */
+  .sheet-pager.is-turning-out-forward {
+    animation: page-exit-forward 150ms cubic-bezier(0.4, 0, 1, 1) both;
   }
 
-  .sheet-pager.is-rolling-out-down {
-    animation: roll-out-down 260ms ease-in both;
+  .sheet-pager.is-turning-out-back {
+    animation: page-exit-back 150ms cubic-bezier(0.4, 0, 1, 1) both;
   }
 
-  .sheet-pager.is-rolling-in-up {
-    animation: roll-in-up 460ms steps(12, end) both;
+  .sheet-pager.is-turning-in-forward {
+    animation: page-enter-forward 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
-  .sheet-pager.is-rolling-in-down {
-    animation: roll-in-down 460ms steps(12, end) both;
+  .sheet-pager.is-turning-in-back {
+    animation: page-enter-back 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
-  @keyframes roll-out-up {
+  @keyframes page-exit-forward {
     to {
-      transform: translateY(-103%);
+      opacity: 0;
+      transform: translateX(-1.25rem);
     }
   }
 
-  @keyframes roll-out-down {
+  @keyframes page-exit-back {
     to {
-      transform: translateY(103%);
+      opacity: 0;
+      transform: translateX(1.25rem);
     }
   }
 
-  @keyframes roll-in-up {
+  @keyframes page-enter-forward {
     from {
-      transform: translateY(103%);
+      opacity: 0;
+      transform: translateX(1.75rem);
     }
   }
 
-  @keyframes roll-in-down {
+  @keyframes page-enter-back {
     from {
-      transform: translateY(-103%);
+      opacity: 0;
+      transform: translateX(-1.75rem);
     }
   }
 
   .sheet-flow {
     height: 100%;
     margin-inline: var(--page-inline-gutter);
-    column-width: calc(var(--page-width, 60rem) - var(--page-inline-gutters));
+    column-width: calc(100cqi - var(--page-inline-gutters));
     column-gap: calc(var(--page-gap) + var(--page-inline-gutters));
     column-fill: auto;
   }
@@ -764,17 +1440,60 @@
     pointer-events: none;
   }
 
+  .sheet-page-indicator[data-new-pages] {
+    color: var(--ink);
+  }
+
+  .sheet-new-pages {
+    color: var(--stamp);
+    font-weight: 700;
+    animation: new-pages-pulse 1.6s ease-in-out 3;
+  }
+
+  /* A page turned toward unread writing: the next key glows once. */
+  .sheet-controls[data-new-pages] button:last-child:not(:disabled) {
+    color: var(--ink);
+    border-color: var(--ink);
+    box-shadow:
+      inset 0 -2px 0 rgb(var(--rule-ink) / 18%),
+      0 0 0.7rem rgb(221 164 71 / 45%);
+    animation: new-pages-pulse 1.6s ease-in-out 3;
+  }
+
+  @keyframes new-pages-pulse {
+    50% {
+      opacity: 0.55;
+    }
+  }
+
+  .sheet-finish-typing {
+    margin-inline-end: auto;
+    padding-inline: 0.85rem;
+    color: var(--muted-ink);
+    font-size: 0.78rem !important;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* Page-turn keys press like typewriter keys: a firm downstroke, no
+     floating. */
   .sheet-controls button {
     min-width: 2.75rem;
     min-height: 2.75rem;
     color: var(--muted-ink);
     background: transparent;
-    border: 1px solid rgb(80 57 32 / 35%);
+    border: 1px solid rgb(var(--rule-ink) / 35%);
     border-radius: 0.15rem;
     cursor: pointer;
     font-family: var(--font-type);
     font-size: 1.15rem;
     line-height: 1;
+    box-shadow: inset 0 -2px 0 rgb(var(--rule-ink) / 18%);
+    transition:
+      color 120ms ease,
+      border-color 120ms ease,
+      transform 120ms ease,
+      box-shadow 120ms ease;
   }
 
   .sheet-controls button:disabled {
@@ -787,23 +1506,25 @@
     border-color: var(--ink);
   }
 
+  .sheet-controls button:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: inset 0 1px 2px rgb(var(--rule-ink) / 28%);
+  }
+
   [data-agent-active] .manuscript {
     border-color: rgb(255 231 187 / 26%);
-    box-shadow:
-      var(--sheet-stack),
-      0 2rem 6rem rgb(0 0 0 / 45%),
-      0 0 3.5rem rgb(214 167 94 / 10%),
-      inset 0 0 5rem rgb(85 52 20 / 10%);
   }
 
-  [data-story-presentations~='world_shift'] .manuscript {
-    box-shadow:
-      var(--sheet-stack),
-      0 2.5rem 7rem rgb(0 0 0 / 38%),
-      0 0 5rem rgb(214 167 94 / 15%),
-      inset 0 0 4rem rgb(255 255 255 / 18%);
+  [data-agent-active] .manuscript .manuscript-light-agent,
+  [data-story-presentations~='world_shift']
+    .manuscript
+    .manuscript-light-shift {
+    opacity: 1;
   }
 
+  /* The guide may fragment across pages — a monolithic block taller than
+     one column would be clipped by the sheet window on short viewports.
+     Only its small leaf widgets stay atomic. */
   .turn-guide {
     --focus: #6d3d0f;
     position: relative;
@@ -812,9 +1533,8 @@
     padding: 1.35rem 0.15rem 0;
     background: transparent;
     border: 0;
-    border-block-start: 1px solid rgb(80 57 32 / 42%);
+    border-block-start: 1px solid rgb(var(--rule-ink) / 42%);
     border-radius: 0;
-    break-inside: avoid;
   }
 
   .webmcp-availability {
@@ -832,8 +1552,22 @@
         rgb(255 252 238 / 38%),
         transparent 72%
       ),
-      linear-gradient(180deg, transparent 70%, rgb(64 44 22 / 7%)), var(--paper);
+      linear-gradient(180deg, transparent 70%, rgb(var(--shade-ink) / 7%)),
+      rgb(234 219 185 / 84%);
+    backdrop-filter: blur(1.5px);
     isolation: isolate;
+  }
+
+  /* A supported browser settles within a few hundred milliseconds; the
+     slip only stamps in if the check is still unresolved after that. */
+  .webmcp-availability-connecting {
+    animation: availability-appear 1ms linear 600ms both;
+  }
+
+  @keyframes availability-appear {
+    from {
+      opacity: 0;
+    }
   }
 
   .webmcp-redactions {
@@ -851,11 +1585,24 @@
     gap: clamp(0.48rem, 1.5vh, 0.82rem);
   }
 
+  /* Redaction bars read as marker ink: starved by the same tooth mask
+     as the stamp, each bar minutely off-axis like a hand-drawn stroke. */
   .webmcp-redaction-group span {
     width: 92%;
     height: clamp(0.55rem, 1.5vw, 0.78rem);
     background: #201a13;
     box-shadow: 0 1px 0 rgb(255 255 255 / 8%);
+    mask-image: url('/textures/stamp-grain.webp');
+    mask-size: 256px 256px;
+  }
+
+  .webmcp-redaction-group span:nth-child(odd) {
+    transform: rotate(0.2deg);
+  }
+
+  .webmcp-redaction-group span:nth-child(even) {
+    transform: rotate(-0.15deg);
+    mask-position: 128px 64px;
   }
 
   .webmcp-redaction-group span:nth-child(2) {
@@ -877,28 +1624,70 @@
     transform: scaleX(-1);
   }
 
+  /* The connection gate is a filed routing slip: same paper stock,
+     perforated top and bottom edges, an overprinted rubber stamp. */
   .webmcp-availability-copy {
     position: relative;
     z-index: 1;
     width: min(100%, 30rem);
-    padding: clamp(1rem, 3vw, 1.6rem);
+    padding: clamp(1.35rem, 3.5vw, 1.9rem) clamp(1rem, 3vw, 1.6rem);
     text-align: center;
-    background: rgb(239 229 201 / 98%);
-    border-block: 2px solid rgb(41 33 23 / 86%);
-    box-shadow:
-      0 0 0 0.45rem rgb(239 229 201 / 80%),
-      0 0.5rem 2rem rgb(64 44 22 / 12%);
+    box-shadow: 0 0.6rem 2rem rgb(var(--shade-ink) / 20%);
+    transform: rotate(0.4deg);
   }
 
+  /* The slip's paper carries the perforation mask; the drop shadow
+     stays on the element itself, outside the masked region. */
+  .webmcp-availability-copy::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background:
+      url('/textures/paper-grain.webp') left top / 512px 512px repeat,
+      rgb(239 229 201 / 99%);
+    border-block: 2px solid rgb(var(--ink-rgb) / 86%);
+    mask-image:
+      linear-gradient(#000 0 0),
+      radial-gradient(circle at 50% 50%, #000 0.13rem, transparent 0.14rem),
+      radial-gradient(circle at 50% 50%, #000 0.13rem, transparent 0.14rem);
+    mask-size:
+      auto,
+      0.7rem 0.3rem,
+      0.7rem 0.3rem;
+    mask-position:
+      0 0,
+      0 -0.15rem,
+      0 calc(100% + 0.15rem);
+    mask-repeat: no-repeat, repeat-x, repeat-x;
+    mask-composite: subtract;
+  }
+
+  /* Overprinted stamp: ink starved by the paper tooth (the mask tile),
+     thumped on once when the slip appears. */
   .webmcp-availability h2 {
+    display: inline-block;
     margin: 0;
-    color: var(--ink);
+    padding: 0.45rem 0.85rem;
+    color: var(--stamp);
+    border: 3px double currentColor;
     font-family: var(--font-type);
     font-size: clamp(1.02rem, 2.4vw, 1.2rem);
-    letter-spacing: 0.1em;
-    line-height: 1.4;
+    letter-spacing: 0.12em;
+    line-height: 1.3;
     text-transform: uppercase;
     text-wrap: balance;
+    transform: rotate(-3.5deg);
+    mask-image: url('/textures/stamp-grain.webp');
+    mask-size: 256px 256px;
+    animation: stamp-in 240ms cubic-bezier(0.2, 0.9, 0.2, 1) 150ms both;
+  }
+
+  @keyframes stamp-in {
+    from {
+      opacity: 0;
+      transform: rotate(-2deg) scale(1.12);
+    }
   }
 
   .webmcp-availability p {
@@ -938,9 +1727,9 @@
     background: linear-gradient(
       90deg,
       rgb(255 255 255 / 20%),
-      rgb(80 57 32 / 4%)
+      rgb(var(--rule-ink) / 4%)
     );
-    border-block: 1px solid rgb(41 33 23 / 50%);
+    border-block: 1px solid rgb(var(--ink-rgb) / 50%);
   }
 
   .webmcp-flag-result code {
@@ -965,7 +1754,7 @@
     color: var(--ink);
     background: transparent;
     border: 0;
-    border-inline-start: 1px solid rgb(41 33 23 / 35%);
+    border-inline-start: 1px solid rgb(var(--ink-rgb) / 35%);
     border-radius: 0;
     touch-action: manipulation;
   }
@@ -973,7 +1762,7 @@
   .inline-copy-action:hover:not(:disabled),
   .copy-button.inline-copy-action:hover:not(:disabled) {
     color: var(--ink);
-    background: rgb(41 33 23 / 8%);
+    background: rgb(var(--ink-rgb) / 8%);
     transform: none;
   }
 
@@ -997,7 +1786,7 @@
     grid-column: 1 / -1;
     margin: 0;
     padding: 0.8rem;
-    border-block-start: 1px solid rgb(41 33 23 / 24%);
+    border-block-start: 1px solid rgb(var(--ink-rgb) / 24%);
   }
 
   .webmcp-availability-action {
@@ -1006,7 +1795,7 @@
     padding: 0.55rem 0.75rem;
     color: var(--ink);
     background: transparent;
-    border: 1px solid rgb(80 57 32 / 38%);
+    border: 1px solid rgb(var(--rule-ink) / 38%);
     border-radius: 0.2rem;
     cursor: pointer;
     font-family: var(--font-type);
@@ -1033,6 +1822,7 @@
     letter-spacing: 0.04em;
     line-height: 1.3;
     text-wrap: balance;
+    break-after: avoid;
   }
 
   .agent-handoff {
@@ -1061,9 +1851,9 @@
     background: linear-gradient(
       90deg,
       rgb(255 255 255 / 20%),
-      rgb(80 57 32 / 4%)
+      rgb(var(--rule-ink) / 4%)
     );
-    border-block: 1px solid rgb(41 33 23 / 50%);
+    border-block: 1px solid rgb(var(--ink-rgb) / 50%);
     break-inside: avoid;
   }
 
@@ -1080,6 +1870,8 @@
     margin-top: 1.5rem;
   }
 
+  /* Primary actions press down into the paper rather than floating off
+     it: hover warms the ink, the downstroke is firm. */
   .copy-button,
   .message-screen button,
   .share-button {
@@ -1091,19 +1883,21 @@
     border: 1px solid var(--ink);
     border-radius: 0.2rem;
     cursor: pointer;
-    transition: transform 160ms ease;
+    transition:
+      background-color 160ms ease,
+      transform 120ms ease;
   }
 
   .copy-button:hover:not(:disabled),
   .message-screen button:hover:not(:disabled),
   .share-button:hover:not(:disabled) {
-    transform: translateY(-2px);
+    background: #3b3020;
   }
 
   .copy-button:active:not(:disabled),
   .message-screen button:active:not(:disabled),
   .share-button:active:not(:disabled) {
-    transform: translateY(0);
+    transform: translateY(1px);
   }
 
   .copy-button.is-copied {
@@ -1119,7 +1913,7 @@
     grid-column: 1 / -1;
     margin: 0;
     padding: 0.8rem;
-    border-block-start: 1px solid rgb(41 33 23 / 24%);
+    border-block-start: 1px solid rgb(var(--ink-rgb) / 24%);
   }
 
   .copy-fallback {
@@ -1148,29 +1942,42 @@
     margin-top: 2.5rem;
   }
 
-  /* A committed entry is typed onto the page character by character:
-     each glyph becomes visible at its scheduled moment. The block caret
-     riding the newest glyph is a single element driven by the typing
-     follower in story-scroll. */
-  .story-chapter.is-fresh .tw-char,
-  .completion-passage.is-fresh .tw-char {
-    animation: char-in 80ms linear both;
-    animation-delay: var(--td, 0ms);
+  /* A committed entry is typed onto the page word by word: each word
+     span reveals its glyphs with a stepped clip-path on its scheduled
+     start (`--td`), duration (`--wd`), and glyph count (`--chars`). In a
+     monospace face this is pixel-identical to per-glyph reveals with a
+     fraction of the boxes and animations. The hidden state lives in the
+     keyframe, so with animations disabled the words are simply visible.
+     The block caret riding the newest glyph is a single element driven
+     by the typing follower in story-scroll. */
+  .story-chapter.is-fresh .tw-word,
+  .completion-passage.is-fresh .tw-word {
+    animation: word-type var(--wd, 80ms) steps(var(--chars, 1), end)
+      var(--td, 0ms) both;
   }
 
-  @keyframes char-in {
+  @keyframes word-type {
     from {
-      opacity: 0;
+      clip-path: inset(0 100% 0 0);
+    }
+
+    to {
+      clip-path: inset(0 -0.05em 0 0);
     }
   }
 
   .typing-caret {
     position: absolute;
     z-index: 3;
+    /* Anchor at the sheet's corner so the follower's translate() is the
+       glyph's exact offset; without this the caret's static position
+       (the flex content box) shifts it by the sheet's padding. */
+    top: 0;
+    left: 0;
     width: 0.55em;
     height: 1.05em;
     pointer-events: none;
-    background: rgb(41 33 23 / 80%);
+    background: rgb(var(--ink-rgb) / 80%);
   }
 
   .story-chapter h2 {
@@ -1194,7 +2001,7 @@
     font-family: var(--font-type);
     font-size: clamp(0.92rem, 2.2vw, 1rem);
     line-height: 1.75;
-    text-shadow: 0 0 0.5px rgb(41 33 23 / 35%);
+    text-shadow: 0 0 0.5px rgb(var(--ink-rgb) / 35%);
   }
 
   .completion-passage {
@@ -1209,10 +2016,11 @@
     font-family: var(--font-type);
     font-size: clamp(0.92rem, 2.2vw, 1rem);
     line-height: 1.75;
-    text-shadow: 0 0 0.5px rgb(41 33 23 / 35%);
+    text-shadow: 0 0 0.5px rgb(var(--ink-rgb) / 35%);
   }
 
   .backspace-replacement {
+    position: relative;
     display: inline-grid;
     inline-size: 100%;
     vertical-align: top;
@@ -1227,12 +2035,44 @@
     visibility: hidden;
   }
 
+  /* Erase right-to-left, pause, then retype: per-glyph opacity flips on
+     a CSS-delay schedule. The base styles are the finished state, so with
+     animations disabled the record simply shows its revised wording. */
+  .backspace-original > span {
+    opacity: 0;
+    animation: backspace-erase 1ms steps(1, end) var(--td, 0ms) both;
+  }
+
+  .backspace-typed > span {
+    animation: backspace-type 1ms steps(1, end) var(--td, 0ms) both;
+  }
+
+  @keyframes backspace-erase {
+    from {
+      opacity: 1;
+    }
+
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes backspace-type {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* The operator's caret rides the erase/retype head on a transform
+     written by backspace-text; no layout is read while it moves. */
   .backspace-caret {
+    position: absolute;
+    top: 0;
+    left: 0;
     display: inline-block;
     width: 0.08em;
     height: 1.05em;
     margin-inline-start: 0.08em;
-    vertical-align: -0.14em;
     background: currentColor;
     animation: backspace-caret-blink 700ms steps(1, end) infinite;
   }
@@ -1243,27 +2083,29 @@
     }
   }
 
+  /* Effect surfaces fragment like ordinary prose; their tinted
+     backgrounds and block borders slice cleanly at column edges. Only
+     the torn notepad must stay whole (its clip-path cannot fragment). */
   .story-artifact,
   .world-shift,
   .memory-flashback {
     position: relative;
     z-index: 2;
     margin: 1.75rem 0;
-    break-inside: avoid;
   }
 
   .memory-flashback {
     padding: clamp(1.25rem, 4vw, 2rem);
-    color: #252b35;
-    background: rgb(73 84 101 / 9%);
-    border-block: 1px solid rgb(61 70 84 / 42%);
+    color: var(--flashback-ink);
+    background: var(--flashback-tint);
+    border-block: 1px solid var(--flashback-rule);
   }
 
   .memory-flashback h3,
   .generic-story-effect h3,
   .world-shift h3 {
     margin: 0;
-    color: #515969;
+    color: var(--flashback-label);
     font-family: var(--font-type);
     font-size: 0.72rem;
     font-weight: 700;
@@ -1273,6 +2115,14 @@
 
   .memory-flashback-prose {
     margin-top: 1rem;
+  }
+
+  .memory-flashback h3 {
+    break-after: avoid;
+  }
+
+  .memory-flashback-prose p:first-child {
+    break-before: avoid;
   }
 
   .memory-flashback p,
@@ -1306,6 +2156,7 @@
   .notepad-artifact {
     min-height: 8rem;
     padding: 2rem 2rem 1.5rem;
+    break-inside: avoid;
     background:
       linear-gradient(
         180deg,
@@ -1313,8 +2164,8 @@
         transparent 3rem,
         rgb(62 39 17 / 6%)
       ),
-      #d7c392;
-    border: 1px solid #8d744f;
+      var(--notepad-paper);
+    border: 1px solid var(--notepad-edge);
     /* Torn top edge where the written page was ripped away. */
     clip-path: polygon(
       0% 9px,
@@ -1344,7 +2195,7 @@
   }
 
   .notepad-artifact figcaption {
-    color: #6d5538;
+    color: var(--notepad-caption);
     font-family: var(--font-type);
     font-size: 0.7rem;
     font-weight: 600;
@@ -1364,9 +2215,9 @@
     width: fit-content;
     max-width: 100%;
     padding: 0.5em 0.7em;
-    color: #e3d5b1;
+    color: var(--notepad-ink);
     background:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.87 0 0 0 0 0.8 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23s)'/%3E%3C/svg%3E"),
+      url('/textures/graphite-grain.webp') left top / 256px 256px repeat,
       repeating-linear-gradient(
         100deg,
         rgb(255 255 255 / 4%) 0 2px,
@@ -1374,8 +2225,8 @@
       ),
       radial-gradient(
         ellipse 100% 130% at 50% 45%,
-        #47434e 55%,
-        #3a3641 76%,
+        var(--graphite) 55%,
+        var(--graphite-deep) 76%,
         rgb(58 54 65 / 0%) 98%
       );
     border-radius: 8% 14% 10% 16% / 42% 30% 46% 34%;
@@ -1383,10 +2234,11 @@
     font-size: clamp(2.1rem, 7vw, 3.4rem);
     font-style: normal;
     font-weight: 600;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.12em;
     line-height: 1.1;
     text-shadow: 0 1px 0 rgb(0 0 0 / 25%);
     transform: rotate(-0.8deg);
+    transform-origin: left center;
   }
 
   .notepad-artifact.is-revealed {
@@ -1400,16 +2252,19 @@
     animation: graphite-rubbing 900ms ease-out both;
   }
 
+  /* The stroke sweeps in via mask-position while the rubbing settles
+     with a compositor-only squeeze; letter-spacing stays fixed so the
+     multicol flow never re-fragments mid-reveal. */
   @keyframes graphite-rubbing {
     from {
       opacity: 0.15;
-      letter-spacing: 0.2em;
+      transform: rotate(-0.8deg) scaleX(1.05);
       mask-position: 100% 0;
     }
 
     to {
       opacity: 1;
-      letter-spacing: 0.12em;
+      transform: rotate(-0.8deg) scaleX(1);
       mask-position: 0% 0;
     }
   }
@@ -1428,15 +2283,63 @@
     text-wrap: pretty;
   }
 
+  .pending-turn {
+    position: relative;
+    z-index: 2;
+    margin-top: 1.75rem;
+  }
+
+  /* The reader's own move, as they said it, in the margin hand. */
+  .pending-move {
+    max-width: 60ch;
+    margin: 0 0 0.35rem;
+    padding-inline-start: 0.15rem;
+    color: var(--graphite-ink, var(--ink));
+    font-family: var(--font-hand);
+    font-size: clamp(1.15rem, 2.8vw, 1.35rem);
+    line-height: 1.35;
+    rotate: -0.4deg;
+    break-inside: avoid;
+    animation: pending-move-arrives 420ms ease-out both;
+  }
+
+  @keyframes pending-move-arrives {
+    from {
+      opacity: 0;
+      translate: 0 0.2rem;
+    }
+  }
+
+  .agent-failure-note {
+    display: block;
+    max-width: 58ch;
+    margin: 0.75rem 0 0;
+    padding: 0.55rem 0.75rem;
+    color: var(--stamp);
+    font-family: var(--font-type);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    border-inline-start: 3px solid var(--stamp);
+    break-inside: avoid;
+  }
+
   .writing-marker {
     position: relative;
     z-index: 2;
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    margin: 1.75rem 0 1rem;
+    margin: 0.75rem 0 1rem;
     color: var(--muted-ink);
     break-inside: avoid;
+  }
+
+  .writing-marker[data-running] {
+    color: var(--ink);
+  }
+
+  .writing-marker[data-running] span {
+    animation-duration: 0.55s;
   }
 
   /* The recorder's typing cursor, blinking at the end of the record. */
@@ -1466,7 +2369,6 @@
     z-index: 2;
     margin-top: 2rem;
     text-align: center;
-    break-inside: avoid;
   }
 
   /* A manuscript copy prepared at the foot of the record. */
@@ -1477,7 +2379,7 @@
     text-align: left;
     color: var(--ink);
     border: 0;
-    border-block-start: 1px solid rgb(80 57 32 / 42%);
+    border-block-start: 1px solid rgb(var(--rule-ink) / 42%);
     outline: 0;
     border-radius: 0;
     font-family: var(--font-type);
@@ -1492,6 +2394,7 @@
     letter-spacing: 0.04em;
     line-height: 1.3;
     text-wrap: balance;
+    break-after: avoid;
   }
 
   .ending-share > p {
@@ -1548,7 +2451,7 @@
     padding: 0.55rem 0.8rem;
     color: var(--ink);
     background: transparent;
-    border: 1px solid rgb(41 33 23 / 55%);
+    border: 1px solid rgb(var(--ink-rgb) / 55%);
     border-radius: 0.1rem;
     cursor: pointer;
     font-family: var(--font-type);
@@ -1578,10 +2481,10 @@
     background: linear-gradient(
       90deg,
       rgb(255 255 255 / 20%),
-      rgb(80 57 32 / 4%)
+      rgb(var(--rule-ink) / 4%)
     );
     border: 0;
-    border-block: 1px solid rgb(41 33 23 / 50%);
+    border-block: 1px solid rgb(var(--ink-rgb) / 50%);
     border-radius: 0;
     font-family: var(--font-type);
     break-inside: avoid;
@@ -1650,20 +2553,34 @@
     padding: 1rem 1.2rem;
     color: var(--cream);
     cursor: pointer;
+    font-family: var(--font-type);
+    font-size: 0.86rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
   }
 
   .webmcp-inspector > summary small {
     color: var(--parchment-dim);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 400;
   }
 
   .inspector-body {
     padding: 0 1.2rem 1.2rem;
     border-top: 1px solid rgb(234 219 185 / 10%);
+    font-family: var(--font-type);
   }
 
   .inspector-intro {
     max-width: 64ch;
+    font-size: 0.84rem;
     line-height: 1.6;
+  }
+
+  .webmcp-inspector code {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
   }
 
   .tool-group {
@@ -1785,9 +2702,65 @@
     }
   }
 
+  /* A mid step between desktop and the 40rem phone layout, so the sheet
+     narrows gradually instead of cliff-dropping. */
+  @media (40rem < width <= 64rem) {
+    .manuscript {
+      padding-inline: clamp(1.5rem, 4vw, 2.75rem);
+    }
+
+    .title-block h1 {
+      font-size: clamp(1.6rem, 3.8vw, 2.4rem);
+    }
+  }
+
   @media (max-width: 40rem) {
     .story-header {
       min-height: 4.5rem;
+    }
+
+    .story-header-actions {
+      gap: 0.3rem;
+    }
+
+    .agent-presence-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .agent-presence-trigger {
+      min-width: 2.5rem;
+      padding: 0;
+      justify-content: center;
+    }
+
+    .story-clues-control {
+      right: 0.5rem;
+    }
+
+    .story-clues-sheet {
+      top: 5rem;
+      left: 0.625rem;
+      right: 0.625rem;
+      bottom: 0.625rem;
+      width: auto;
+      max-height: none;
+      padding: 1.875rem 1.25rem 1.125rem;
+      transform: rotate(-0.2deg) translateY(calc(100% + 2rem));
+    }
+
+    .story-clues-popover:popover-open .story-clues-sheet {
+      transform: rotate(-0.2deg) translateY(0);
+    }
+
+    @starting-style {
+      .story-clues-popover:popover-open .story-clues-sheet {
+        transform: rotate(-0.2deg) translateY(calc(100% + 2rem));
+      }
     }
 
     .title-deck {
@@ -1797,6 +2770,17 @@
     .manuscript {
       height: clamp(30rem, calc(100dvh - 11rem), 50rem);
       padding: 1.25rem 1.25rem 0.85rem;
+    }
+
+    /* The torn notepad cannot fragment, so on short columns it must
+       shrink enough to always fit one page. */
+    .notepad-artifact {
+      min-height: 5rem;
+      padding: 1.25rem 1.25rem 1rem;
+    }
+
+    .notepad-artifact .revealed-fragment {
+      font-size: clamp(1.6rem, 7vw, 3.4rem);
     }
 
     .tool-group,
@@ -1828,6 +2812,7 @@
 
   .shared-manuscript {
     --focus: #6d3d0f;
+    position: relative;
     width: min(100%, 48rem);
     margin-inline: auto;
     padding: clamp(1.5rem, 6vw, 4rem) clamp(1.5rem, 6vw, 4.5rem)
@@ -1835,13 +2820,19 @@
     color: var(--ink);
     border-radius: 0.2rem;
     box-shadow:
-      var(--sheet-stack),
-      0 2rem 6rem rgb(0 0 0 / 45%);
+      0 2px 4px rgb(24 14 6 / 30%),
+      0 10px 20px rgb(18 11 5 / 30%),
+      0 32px 64px rgb(0 0 0 / 38%),
+      inset 0 1px 0 rgb(255 252 238 / 30%),
+      inset 0 -18px 24px -18px rgb(var(--shade-ink) / 16%),
+      inset 14px 0 24px -18px rgb(var(--shade-ink) / 8%),
+      inset -14px 0 24px -18px rgb(var(--shade-ink) / 8%);
+    isolation: isolate;
   }
 
   .shared-manuscript > header {
     padding-bottom: 2.5rem;
-    border-bottom: 1px solid rgb(80 57 32 / 24%);
+    border-bottom: 1px solid rgb(var(--rule-ink) / 24%);
   }
 
   .shared-manuscript h1,
@@ -1865,14 +2856,24 @@
     line-height: 1.75;
   }
 
-  .shared-chapter {
-    padding-block: 2.25rem;
-    border-bottom: 1px solid rgb(80 57 32 / 18%);
-  }
-
+  /* Chapters separate with a typed divider, keeping the recovered copy
+     reading as one continuous typed record rather than ruled sections. */
+  .shared-chapter,
   .shared-completion {
     padding-block: 2.25rem;
-    border-bottom: 1px solid rgb(80 57 32 / 18%);
+  }
+
+  .shared-chapter::after,
+  .shared-completion::after {
+    content: '* * *';
+    content: '* * *' / '';
+    display: block;
+    margin-top: 2.25rem;
+    color: var(--muted-ink);
+    font-family: var(--font-type);
+    font-size: 0.8rem;
+    letter-spacing: 0.6em;
+    text-align: center;
   }
 
   .shared-chapter h2 {
@@ -1888,7 +2889,7 @@
     margin-block: 1.5rem;
     padding: 1.25rem;
     background: rgb(255 250 235 / 28%);
-    border: 1px solid rgb(80 57 32 / 22%);
+    border: 1px solid rgb(var(--rule-ink) / 22%);
   }
 
   .shared-story-footer {
@@ -1906,6 +2907,7 @@
 
   @media (prefers-contrast: more) {
     .memory-flashback,
+    .story-clues-sheet,
     .story-hint-panel,
     .webmcp-inspector,
     .settings-panel,
@@ -1913,14 +2915,26 @@
       border-color: var(--parchment-soft);
     }
 
+    .story-clues-trigger {
+      border-color: currentColor;
+    }
+
     .frame-book::before,
     .frame-book::after,
-    .lamp-canvas {
+    .lamp-canvas,
+    .manuscript::before,
+    .shared-manuscript::before {
       display: none;
     }
 
     .manuscript {
       border-color: var(--parchment-soft);
+    }
+
+    /* Solid ink beats material nuance in high contrast. */
+    .webmcp-redaction-group span,
+    .webmcp-availability h2 {
+      mask-image: none;
     }
   }
 }

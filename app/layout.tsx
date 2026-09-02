@@ -39,6 +39,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
+      <head>
+        {/* The manuscript's paper grain paints on first render. */}
+        <link as="image" href="/textures/paper-grain.webp" rel="preload" />
+      </head>
       <body>{children}</body>
     </html>
   );

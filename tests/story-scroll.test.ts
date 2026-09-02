@@ -43,6 +43,7 @@ const experience: ExperienceDefinition = {
       recordProse: 'The question waits.',
       continuitySummary: 'The question waits.',
     },
+    clues: [],
     completionPassage: {
       prose: 'You leave the room and keep walking.',
       recordProse: 'The subject leaves the room and continues walking.',
@@ -131,7 +132,7 @@ describe('agent handoff', () => {
 
     expect(html).toContain('The speaker is waiting.');
     expect(html).toContain(
-      'Tell your agent what you inspect before you answer.',
+      'No agent has spoken yet. Send this to your agent to begin:',
     );
     expect(html).toContain('Copy example message');
     expect(html).toContain(experience.startMessage);
@@ -150,11 +151,13 @@ describe('agent handoff', () => {
   it('offers a recovery message instead of claiming an absent agent is writing', () => {
     const html = render(pendingSession(), { agentActive: false });
 
-    expect(html).toContain('The page is unfinished.');
+    expect(html).toContain('The chapter is unwritten.');
     expect(html).toContain(
-      'Your move is already here. Ask your agent to finish the chapter.',
+      'Your move is on the page but nothing followed it. Ask your agent to finish it:',
     );
     expect(html).toContain('Finish the saved turn first.');
+    expect(html).toContain('class="pending-move"');
+    expect(html).toContain(pendingSession().pendingTurn!.playerChoice);
     expect(html).not.toContain('class="writing-marker"');
     expect(html).not.toContain('ChatGPT');
   });
@@ -188,7 +191,7 @@ describe('WebMCP availability', () => {
     },
   );
 
-  it('keeps the generic unsupported state short and non-actionable', () => {
+  it('keeps the generic unsupported state short, in-world, and non-actionable', () => {
     const html = render(baseSession(), {
       agentActive: false,
       status: 'unsupported',
@@ -196,7 +199,10 @@ describe('WebMCP availability', () => {
     const availability = availabilityMarkup(html);
 
     expect(availability).toContain('Access restricted');
-    expect(availability).toContain('A WebMCP-enabled browser is required.');
+    expect(availability).toContain(
+      'This record can only be continued by an attached agent.',
+    );
+    expect(availability).not.toContain('WebMCP');
     expect(availability).not.toContain('chrome://flags');
     expect(availability).not.toContain('href=');
     expect(availability).not.toContain('<button');
@@ -220,22 +226,31 @@ describe('WebMCP availability', () => {
     expect(occurrences(availability, '<button')).toBe(1);
   });
 
-  it('does not offer Check again when WebMCP is blocked', () => {
+  it('keeps a blocked site short and non-actionable', () => {
     const html = render(baseSession(), { status: 'disabled' });
     const availability = availabilityMarkup(html);
 
     expect(availability).toContain('Access restricted');
-    expect(availability).toContain('WebMCP is blocked for this site.');
-    expect(availability).not.toContain('Check again');
+    expect(availability).toContain('Page tools are blocked for this site.');
+    expect(availability).not.toContain('WebMCP');
     expect(availability).not.toContain('<button');
   });
 
-  it('keeps Try again only for a startup error', () => {
+  it('keeps Try again for a startup error', () => {
     const html = render(baseSession(), { status: 'error' });
 
     expect(html).toContain('Access interrupted');
-    expect(html).toContain('WebMCP couldn’t start.');
+    expect(html).toContain('The connection to your agent did not start.');
     expect(html).toContain('>Try again</button>');
+  });
+
+  it('never stamps the slip while still checking', () => {
+    const html = render(baseSession(), { status: 'connecting' });
+    const availability = availabilityMarkup(html);
+
+    expect(availability).toContain('webmcp-availability-connecting');
+    expect(availability).toContain('Checking access…');
+    expect(availability).not.toContain('<button');
   });
 
   it('keeps a completed manuscript available without WebMCP', () => {
@@ -251,12 +266,10 @@ describe('WebMCP availability', () => {
     expect(html).not.toContain('The subject opens their eyes.');
     expect(html).not.toContain('The manuscript rests.');
     expect(html).not.toContain('webmcp-availability');
-    expect(html).toContain('Preparing a copy…');
+    expect(html).not.toContain('Preparing a copy…');
     expect(html).toContain('Pass the manuscript on');
-    expect(html).toContain(
-      'Let someone else read what happened. This copy disappears in 30 days.',
-    );
-    expect(html).not.toContain('>Create link</button>');
+    expect(html).toContain('Nothing is uploaded until you choose to.');
+    expect(html).toContain('>Create a link</button>');
     expect(html).not.toContain('>Share story</button>');
   });
 });
@@ -275,6 +288,7 @@ function render(
       experience,
       onAnnounce: () => undefined,
       onPageChange: () => undefined,
+      pageNavigationEnabled: true,
       onRetryConnection: () => undefined,
       session,
       webMCPSetupHint: options.setupHint ?? 'generic',

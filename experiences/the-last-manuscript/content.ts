@@ -1,5 +1,5 @@
 export const START_MESSAGE =
-  'Explore the room with me through this page. I look around before answering the speaker.';
+  'Play The Last Manuscript with me through this page. I look around the room before answering the speaker.';
 
 export const AGENT_CONTRACT = {
   version: 'last-manuscript-agent-v2',

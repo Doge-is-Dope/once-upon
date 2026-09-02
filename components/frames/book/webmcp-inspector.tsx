@@ -34,13 +34,13 @@ export function WebMCPInspector({
   return (
     <details className="webmcp-inspector">
       <summary>
-        <span>How AI enters the story</span>
+        <span>Page tools</span>
         <small>{statusLabel(status, activeTool)}</small>
       </summary>
       <div className="inspector-body">
         <p className="inspector-intro">
-          Core manuscript tools define the stable surface. Story objects can
-          become new verbs, then disappear after use.
+          Three core tools stay for the whole session. Each discovered object
+          adds one tool, which disappears after it is used.
         </p>
         <ToolGroup label="Active" tools={active} activeTool={activeTool} />
         <ToolGroup label="Pending chapter" tools={pending} />
@@ -72,7 +72,7 @@ function ToolGroup({
   activeTool?: string | null;
 }) {
   return (
-    <section className="tool-group" aria-label={`${label} WebMCP tools`}>
+    <section className="tool-group" aria-label={`${label} page tools`}>
       <h2>{label}</h2>
       {tools.length ? (
         <ul>
@@ -123,8 +123,8 @@ function InteractionTimeline({
 }
 
 function statusLabel(status: WebMCPStatus, activeTool: string | null): string {
-  if (activeTool) return 'Tool running';
-  if (status === 'connected') return 'Tools registered';
-  if (status === 'connecting') return 'Registering tools…';
-  return 'Tools unavailable';
+  if (activeTool) return `Agent calling ${activeTool}`;
+  if (status === 'connected') return 'Ready';
+  if (status === 'connecting') return 'Preparing…';
+  return 'No agent connection';
 }

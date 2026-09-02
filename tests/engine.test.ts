@@ -615,6 +615,7 @@ describe('living manuscript engine', () => {
           recordProse: 'The final fact is still hidden somewhere in the room.',
           continuitySummary: 'The final fact has not been revealed.',
         },
+        clues: [],
         completionPassage: {
           prose: 'The subject-facing ending is fixed.',
           recordProse: 'The official ending is fixed.',

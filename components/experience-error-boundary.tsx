@@ -20,18 +20,18 @@ export class ExperienceErrorBoundary extends Component<
     if (!this.state.failed) return this.props.children;
     return (
       <main className="message-screen">
-        <p className="eyebrow">This story paused unexpectedly</p>
+        <p className="eyebrow">The record has been interrupted.</p>
         <h1>{this.props.experienceTitle}</h1>
         <p>
-          Something went wrong in this experience. Reloading starts again from
-          the first page.
+          Something went wrong. Reloading begins a new manuscript from the
+          prologue.
         </p>
         <button
           className="copy-button recovery-button"
           type="button"
           onClick={() => window.location.reload()}
         >
-          Reload and start over
+          Start over
         </button>
       </main>
     );

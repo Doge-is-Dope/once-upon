@@ -16,9 +16,11 @@ test('redacts the first sheet when WebMCP is unavailable', async ({ page }) => {
     }),
   ).toBeVisible();
   await expect(availability).toContainText(
-    'A WebMCP-enabled browser is required.',
+    'This record can only be continued by an attached agent.',
   );
+  await expect(availability).not.toContainText('WebMCP');
   await expect(availability.getByRole('button')).toHaveCount(0);
+  await expect(page.locator('.agent-presence')).toHaveCount(0);
   await expect(availability.getByRole('link')).toHaveCount(0);
   await expect(
     availability.locator('.webmcp-redaction-group span'),
@@ -66,6 +68,10 @@ test('redacts the first sheet when WebMCP is unavailable', async ({ page }) => {
   ).toHaveCount(0);
   await expect(page.locator('[role="alert"]')).toHaveCount(0);
   await expect(page.locator('main')).not.toContainText('ChatGPT');
+  await expect(
+    page.getByRole('button', { name: /^Open clue notebook/ }),
+  ).toHaveCount(0);
+  await expect(page.locator('.story-clues-sheet')).toHaveCount(0);
 
   expect(
     await page.evaluate(
@@ -112,6 +118,7 @@ test('copies the temporary Chrome flag without a relaunch prompt', async ({
     'chrome://flags/#enable-webmcp-testing',
   );
   await expect(availability).toContainText('Enable the Chrome flag:');
+  await expect(availability).not.toContainText('Check again');
   await expect(availability).not.toContainText('relaunch');
   await page.getByRole('button', { name: 'Copy Chrome flag' }).click();
   await expect(
@@ -122,7 +129,9 @@ test('copies the temporary Chrome flag without a relaunch prompt', async ({
     .toBe('chrome://flags/#enable-webmcp-testing');
 });
 
-test('keeps a blocked WebMCP registration non-actionable', async ({ page }) => {
+test('keeps a blocked WebMCP registration short and non-actionable', async ({
+  page,
+}) => {
   await installModelContextMock(page, {
     dispatchToolChange: true,
     globalName: '__webMCPTools',
@@ -135,9 +144,11 @@ test('keeps a blocked WebMCP registration non-actionable', async ({ page }) => {
   await expect(
     availability.getByRole('heading', { name: 'Access restricted' }),
   ).toBeVisible();
-  await expect(availability).toContainText('WebMCP is blocked for this site.');
+  await expect(availability).toContainText(
+    'Page tools are blocked for this site.',
+  );
+  await expect(availability).not.toContainText('WebMCP');
   await expect(availability.getByRole('button')).toHaveCount(0);
-  await expect(availability).not.toContainText('Check again');
 });
 
 test('recovers from an initial WebMCP startup error', async ({ page }) => {
@@ -162,7 +173,11 @@ test('recovers from an initial WebMCP startup error', async ({ page }) => {
     page.getByRole('heading', { name: 'The speaker is waiting.' }),
   ).toBeVisible();
   await expect(page.locator('.sr-live')).toHaveText(
-    'Agent tools are ready. You can continue in one message.',
+    'Your agent can now read and write this record.',
+  );
+  await expect(page.locator('.agent-presence')).toHaveAttribute(
+    'data-presence',
+    'waiting',
   );
   await expect(page.locator('#your-turn')).toHaveCount(1);
   await expect(page.locator('.sheet-page-indicator')).toContainText('Sheet 01');

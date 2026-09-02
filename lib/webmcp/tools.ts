@@ -1,10 +1,16 @@
 import { deriveToolSurface } from '../runtime/engine';
 import { CORE_TOOL_NAMES, RUNTIME_LIMITS } from '../runtime/protocol';
 import type { ExperienceController } from '../runtime/controller';
+import {
+  describeTypingSeconds,
+  estimateTypingMs,
+} from '../manuscript/typing-plan';
 import type {
   BeginStoryTurnInput,
   CommitStoryChapterInput,
+  ExperienceDefinition,
   StoryStateSnapshot,
+  ToolFailure,
   ToolResponse,
 } from '../runtime/types';
 
@@ -60,12 +66,17 @@ const TURN_INPUT_SCHEMA = {
   additionalProperties: false,
 };
 const LIVING_MANUSCRIPT_PROTOCOL =
-  "The webpage is the canonical story. Read its state before every player turn. If the state is AWAITING_CHAPTER, commit that exact pending turn before any narrative, question, or new action. If it is READY and the user's latest message already contains an explicit character action, carry it out immediately instead of asking them to repeat it. Use a currently available story-object tool only when that latest message explicitly performs the action in its description; a mention, question, or recollection is not permission to consume it. Otherwise use begin_story_turn with the player's choice verbatim. After either mutation, call commit_story_chapter in the same assistant response and put all 1–3 prose paragraphs there. Submit an equivalent official recordProse with identical events and paragraph structure, changing every second-person reference—including quotations, notes, and testimony—to grammatically complete third-person references to the subject. Never add a new event or reveal the hidden rewrite. Never leave new story prose only in chat. Do not reply with narrative or another question until the commit succeeds. After a successful commit, do not repeat the saved prose in chat; briefly ask for the next choice. If the user has not supplied a character action, ask what they do.";
+  "The webpage is the canonical story. Read its state before every player turn. If the state is AWAITING_CHAPTER, commit that exact pending turn before any narrative, question, or new action. If it is READY and the user's latest message already contains an explicit character action, carry it out immediately instead of asking them to repeat it. Use a currently available story-object tool only when that latest message explicitly performs the action in its description; a mention, question, or recollection is not permission to consume it. Otherwise use begin_story_turn with the player's choice verbatim. After either mutation, call commit_story_chapter in the same assistant response and put all 1–3 prose paragraphs there. Submit an equivalent official recordProse with identical events and paragraph structure, changing every second-person reference—including quotations, notes, and testimony—to grammatically complete third-person references to the subject. Never add a new event or reveal the hidden rewrite. Never leave new story prose only in chat. Do not reply with narrative or another question until the commit succeeds. After a successful commit the page reveals the chapter at reading speed and the player reads it there; never paste, paraphrase, or summarize the saved prose in chat. Reply with one short line inviting the next move. If the user has not supplied a character action, ask what they do.";
 
-export type ToolActivity = {
-  toolName: string;
-  phase: 'invoked' | 'settled';
-};
+export type ToolActivity =
+  | { toolName: string; phase: 'invoked' }
+  | {
+      toolName: string;
+      phase: 'settled';
+      ok: boolean;
+      code?: ToolFailure['code'] | 'ABORTED' | 'ERROR';
+      message?: string;
+    };
 
 export async function registerExperienceTools(
   controller: ExperienceController,
@@ -127,13 +138,33 @@ export async function registerExperienceTools(
     assertNotAborted(signal);
     executing.set(toolName, (executing.get(toolName) ?? 0) + 1);
     onToolActivity?.({ toolName, phase: 'invoked' });
+    let settled: Extract<ToolActivity, { phase: 'settled' }> = {
+      toolName,
+      phase: 'settled',
+      ok: false,
+      code: 'ERROR',
+    };
     try {
-      return webMCPResult(await work(), Boolean(signal));
+      const response = await work();
+      settled = response.ok
+        ? { toolName, phase: 'settled', ok: true }
+        : {
+            toolName,
+            phase: 'settled',
+            ok: false,
+            code: response.code,
+            message: response.message,
+          };
+      return webMCPResult(response, Boolean(signal), controller.definition);
+    } catch (error) {
+      if (isAbortError(error))
+        settled = { toolName, phase: 'settled', ok: false, code: 'ABORTED' };
+      throw error;
     } finally {
       const remaining = (executing.get(toolName) ?? 1) - 1;
       if (remaining > 0) executing.set(toolName, remaining);
       else executing.delete(toolName);
-      onToolActivity?.({ toolName, phase: 'settled' });
+      onToolActivity?.(settled);
       if (reconcileAgain && !disposed) {
         reconcileAgain = false;
         globalThis.setTimeout(scheduleReconcile, 0);
@@ -482,22 +513,38 @@ function readChapter(
   };
 }
 
+export type WebMCPToolResult = {
+  content: Array<{ type: 'text'; text: string }>;
+  structuredContent: ToolResponse & {
+    clientCancellation: string;
+    pagePresentation?: { typingMs: number };
+  };
+};
+
 function webMCPResult(
   result: ToolResponse,
   hasExecutionSignal: boolean,
-): {
-  content: Array<{ type: 'text'; text: string }>;
-  structuredContent: ToolResponse & { clientCancellation: string };
-} {
+  definition: ExperienceDefinition,
+): WebMCPToolResult {
+  const typingMs =
+    result.ok && result.chapter
+      ? estimateTypingMs(
+          result.chapter.title,
+          result.chapter.prose,
+          result.state.phase === 'COMPLETE'
+            ? definition.story.completionPassage.prose
+            : '',
+        )
+      : null;
   const text = result.ok
     ? result.effectReceipt
       ? `The page changed. REQUIRED NEXT: commit receipt ${result.effectReceipt.receiptId} and its exact facts before any narrative or question.`
       : result.chapter
         ? result.state.phase === 'COMPLETE'
-          ? 'Final chapter saved to the webpage. The story is complete.'
-          : `Chapter saved to the webpage at revision ${result.state.revision}. Do not repeat it in chat; briefly ask for the next choice.`
+          ? `Final chapter saved. The page will finish the ending on its own (about ${describeTypingSeconds(typingMs ?? 0)} s). Reply with one short closing line and do not describe the ending.`
+          : `Chapter saved at revision ${result.state.revision}. The page is typing it now (about ${describeTypingSeconds(typingMs ?? 0)} s) and the player is reading it there. Do not repeat or summarize it in chat. Reply with one short line inviting the next move.`
         : result.turnId
-          ? `Player choice saved as turn ${result.turnId}. REQUIRED NEXT: call commit_story_chapter now, before any narrative or question.`
+          ? `Player choice saved as turn ${result.turnId}. REQUIRED NEXT: call commit_story_chapter now, before any narrative or question. The player sees their move on the page and is waiting for the chapter.`
           : stateGuidance(result.state)
     : `${result.code}: ${result.message}${result.state?.phase === 'AWAITING_CHAPTER' ? ' Do not narrate or ask a new question; finish the pending chapter first.' : ''}`;
   return {
@@ -507,6 +554,7 @@ function webMCPResult(
       clientCancellation: hasExecutionSignal
         ? 'before_commit_point'
         : 'unavailable_device_local_only',
+      ...(typingMs !== null ? { pagePresentation: { typingMs } } : {}),
     },
   };
 }
@@ -524,6 +572,15 @@ function stateGuidance(state: StoryStateSnapshot): string {
     ? ` An explicitly matching story-object action may use ${storyObjectTools.join(', ')}; otherwise use begin_story_turn.`
     : ' Use begin_story_turn for an explicit character action.';
   return `${contract}\n\nStory state read.${objectGuidance} If the latest user message contains no character action, ask what they do.`;
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    error.name === 'AbortError'
+  );
 }
 
 function isPermissionDenied(error: unknown): boolean {
