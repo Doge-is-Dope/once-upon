@@ -1546,15 +1546,9 @@
     overflow: hidden;
     padding: clamp(1rem, 4vw, 2.5rem);
     color: var(--ink);
-    background:
-      radial-gradient(
-        ellipse 80% 45% at 50% 0%,
-        rgb(255 252 238 / 38%),
-        transparent 72%
-      ),
-      linear-gradient(180deg, transparent 70%, rgb(var(--shade-ink) / 7%)),
-      rgb(234 219 185 / 84%);
-    backdrop-filter: blur(1.5px);
+    /* No wash: the gate only covers the sheet window, so any tint would
+       read as a lighter rectangle on the paper. The censored record
+       stays crisp and the slip's own shadow lifts it off the page. */
     isolation: isolate;
   }
 
@@ -1570,62 +1564,33 @@
     }
   }
 
-  .webmcp-redactions {
-    position: absolute;
-    z-index: 0;
-    inset: clamp(1rem, 4vw, 2.5rem) clamp(0.5rem, 2vw, 1.25rem);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    pointer-events: none;
-  }
-
-  .webmcp-redaction-group {
-    display: grid;
-    gap: clamp(0.48rem, 1.5vh, 0.82rem);
-  }
-
-  /* Redaction bars read as marker ink: starved by the same tooth mask
-     as the stamp, each bar minutely off-axis like a hand-drawn stroke. */
-  .webmcp-redaction-group span {
-    width: 92%;
-    height: clamp(0.55rem, 1.5vw, 0.78rem);
+  /* A restricted sheet is censored in place: the real prose stays on
+     the page and marker ink covers runs of it, so every bar ends where
+     its line ends and wraps with the sheet. The ink is starved by the
+     same tooth mask as the stamp. The text is kept, not removed, so
+     the sheet keeps the layout and pagination of the finished record. */
+  .redacted-run {
+    padding-block: 0.14em;
+    color: transparent;
+    text-shadow: none;
     background: #201a13;
-    box-shadow: 0 1px 0 rgb(255 255 255 / 8%);
+    box-decoration-break: clone;
     mask-image: url('/textures/stamp-grain.webp');
     mask-size: 256px 256px;
   }
 
-  .webmcp-redaction-group span:nth-child(odd) {
-    transform: rotate(0.2deg);
-  }
-
-  .webmcp-redaction-group span:nth-child(even) {
-    transform: rotate(-0.15deg);
+  .story-chapter > p:nth-of-type(odd) .redacted-run {
     mask-position: 128px 64px;
   }
 
-  .webmcp-redaction-group span:nth-child(2) {
-    width: 68%;
-    margin-inline-start: 12%;
-  }
-
-  .webmcp-redaction-group span:nth-child(3) {
-    width: 82%;
-    margin-inline-start: 4%;
-  }
-
-  .webmcp-redaction-group span:nth-child(4) {
-    width: 55%;
-    margin-inline-start: 28%;
-  }
-
-  .webmcp-redaction-group.is-bottom {
-    transform: scaleX(-1);
+  /* Ink appears with the slip, after the same grace period, so a
+     supported browser never flashes a censored page. */
+  .sheet-window[data-restricted='connecting'] .redacted-run {
+    animation: availability-appear 1ms linear 600ms both;
   }
 
   /* The connection gate is a filed routing slip: same paper stock,
-     perforated top and bottom edges, an overprinted rubber stamp. */
+     an overprinted rubber stamp. */
   .webmcp-availability-copy {
     position: relative;
     z-index: 1;
@@ -1636,8 +1601,8 @@
     transform: rotate(0.4deg);
   }
 
-  /* The slip's paper carries the perforation mask; the drop shadow
-     stays on the element itself, outside the masked region. */
+  /* The slip's paper sits under the copy; the drop shadow stays on
+     the element itself. */
   .webmcp-availability-copy::before {
     content: '';
     position: absolute;
@@ -1646,21 +1611,6 @@
     background:
       url('/textures/paper-grain.webp') left top / 512px 512px repeat,
       rgb(239 229 201 / 99%);
-    border-block: 2px solid rgb(var(--ink-rgb) / 86%);
-    mask-image:
-      linear-gradient(#000 0 0),
-      radial-gradient(circle at 50% 50%, #000 0.13rem, transparent 0.14rem),
-      radial-gradient(circle at 50% 50%, #000 0.13rem, transparent 0.14rem);
-    mask-size:
-      auto,
-      0.7rem 0.3rem,
-      0.7rem 0.3rem;
-    mask-position:
-      0 0,
-      0 -0.15rem,
-      0 calc(100% + 0.15rem);
-    mask-repeat: no-repeat, repeat-x, repeat-x;
-    mask-composite: subtract;
   }
 
   /* Overprinted stamp: ink starved by the paper tooth (the mask tile),
@@ -2932,9 +2882,13 @@
     }
 
     /* Solid ink beats material nuance in high contrast. */
-    .webmcp-redaction-group span,
+    .redacted-run,
     .webmcp-availability h2 {
       mask-image: none;
+    }
+
+    .redacted-run {
+      forced-color-adjust: none;
     }
   }
 }

@@ -12,6 +12,7 @@ import {
   resolveRecordedEnding,
   splitParagraphBlocks,
 } from '@/lib/manuscript/prose';
+import { redactParagraphs } from '@/lib/manuscript/redaction';
 import {
   buildTypingPlan,
   splitTypingTokens,
@@ -421,7 +422,10 @@ export function StoryScroll({
       </header>
       {/* The window clips the rolling pager so sheets feed through the
           platen instead of sliding over the running head or off the paper. */}
-      <div className="sheet-window">
+      <div
+        className="sheet-window"
+        data-restricted={availabilityVisible ? webMCPStatus : undefined}
+      >
         <div
           aria-hidden={availabilityVisible || undefined}
           className="sheet-pager"
@@ -437,6 +441,7 @@ export function StoryScroll({
                   chapter={chapter}
                   key={chapter.id}
                   plan={fresh && endingStage === 'original' ? typingPlan : null}
+                  redacted={availabilityVisible}
                 />
               );
             })}
@@ -720,12 +725,18 @@ function ChapterBlock({
   articleRef,
   chapter,
   plan = null,
+  redacted = false,
 }: {
   articleRef?: RefObject<HTMLElement | null>;
   chapter: ReturnType<typeof deriveManuscriptReadModel>['chapters'][number];
   plan?: TypingPlan | null;
+  redacted?: boolean;
 }) {
   const paragraphs = splitParagraphBlocks(chapter.prose);
+  // A restricted sheet keeps the real prose on the page and inks over
+  // runs of it, so the bars follow the actual lines; nothing is typed
+  // in while the gate is up, so the typed path stays unredacted.
+  const redactions = redacted ? redactParagraphs(paragraphs) : null;
   return (
     <article
       className={`story-chapter${plan ? ' is-fresh' : ''}`}
@@ -744,6 +755,16 @@ function ChapterBlock({
         <p key={`${chapter.id}-paragraph-${index}`}>
           {plan?.paragraphs[index] ? (
             <TypedText text={paragraph} words={plan.paragraphs[index]} />
+          ) : redactions ? (
+            redactions[index].map((run, runIndex) =>
+              run.redacted ? (
+                <span className="redacted-run" key={runIndex}>
+                  {run.text}
+                </span>
+              ) : (
+                run.text
+              ),
+            )
           ) : (
             paragraph
           )}

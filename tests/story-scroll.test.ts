@@ -253,6 +253,35 @@ describe('WebMCP availability', () => {
     expect(availability).not.toContain('<button');
   });
 
+  it('censors the sheet in place while the gate is up', () => {
+    const session = baseSession();
+    session.chapters = [
+      {
+        ...prologue,
+        prose:
+          'The question waits.\n\nOn the desk is an open notebook, its jagged edge in the lamplight.\n\nThe ventilation rattles, then falls still.',
+      },
+    ];
+    const restricted = render(session, {
+      agentActive: false,
+      status: 'unsupported',
+    });
+    expect(restricted).toContain('data-restricted="unsupported"');
+    expect(restricted).not.toContain('webmcp-redaction');
+    expect(occurrences(restricted, 'class="redacted-run"')).toBe(2);
+    expect(restricted).toContain('<p>The question waits.</p>');
+    expect(restricted).toContain(
+      '<p>On the desk is <span class="redacted-run">an open notebook, its jagged edge in the lamplight.</span></p>',
+    );
+    expect(restricted).toContain(
+      '<p><span class="redacted-run">The ventilation rattles, then falls still.</span></p>',
+    );
+
+    const open = render(session);
+    expect(open).not.toContain('data-restricted');
+    expect(open).not.toContain('redacted-run');
+  });
+
   it('keeps a completed manuscript available without WebMCP', () => {
     const html = render(completeSession(), { status: 'unsupported' });
 

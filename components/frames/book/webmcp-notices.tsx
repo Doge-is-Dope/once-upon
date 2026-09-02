@@ -4,7 +4,6 @@ import type { WebMCPStatus } from '@/lib/webmcp/tools';
 import { CopyButton } from './copy-button';
 import type { WebMCPSetupHint } from './use-webmcp-connection';
 
-const REDACTION_BARS = ['a', 'b', 'c', 'd'] as const;
 const WEBMCP_FLAG = 'chrome://flags/#enable-webmcp-testing';
 
 export function WebMCPAvailability({
@@ -34,10 +33,6 @@ export function WebMCPAvailability({
       className={`webmcp-availability webmcp-availability-${status}`}
       data-webmcp-availability
     >
-      <div aria-hidden="true" className="webmcp-redactions">
-        <RedactionGroup position="top" />
-        <RedactionGroup position="bottom" />
-      </div>
       <div className="webmcp-availability-copy">
         <h2 id={titleId}>{title}</h2>
         {status === 'unsupported' ? (
@@ -83,15 +78,5 @@ export function WebMCPAvailability({
         ) : null}
       </div>
     </section>
-  );
-}
-
-function RedactionGroup({ position }: { position: 'top' | 'bottom' }) {
-  return (
-    <div className={`webmcp-redaction-group is-${position}`}>
-      {REDACTION_BARS.map((bar) => (
-        <span key={bar} />
-      ))}
-    </div>
   );
 }

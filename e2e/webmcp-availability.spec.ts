@@ -22,9 +22,22 @@ test('redacts the first sheet when WebMCP is unavailable', async ({ page }) => {
   await expect(availability.getByRole('button')).toHaveCount(0);
   await expect(page.locator('.agent-presence')).toHaveCount(0);
   await expect(availability.getByRole('link')).toHaveCount(0);
-  await expect(
-    availability.locator('.webmcp-redaction-group span'),
-  ).toHaveCount(8);
+  await expect(availability.locator('.webmcp-redaction-group')).toHaveCount(
+    0,
+  );
+
+  // The sheet is censored in place: real prose under real ink.
+  const runs = page.locator('.sheet-pager .redacted-run');
+  expect(await runs.count()).toBeGreaterThan(0);
+  const question = page.locator('.story-chapter > p:nth-of-type(2)');
+  await expect(question).toContainText('Please answer');
+  await expect(question.locator('.redacted-run')).toHaveCount(0);
+  expect(
+    await runs.first().evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { color: style.color, background: style.backgroundColor };
+    }),
+  ).toEqual({ color: 'rgba(0, 0, 0, 0)', background: 'rgb(32, 26, 19)' });
 
   const sheetWindow = page.locator('.sheet-window');
   const pager = page.locator('.sheet-pager');
