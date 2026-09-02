@@ -7,16 +7,22 @@
     "node": "^24.15.0 || >=26.0.0"
   },
   "scripts": {
-    "dev": "vinext dev",
+    "dev": "pnpm build && pnpm db:migrate:local && vinext dev",
     "build": "vinext build",
-    "start": "wrangler dev --config dist/server/wrangler.json",
+    "start": "wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/local",
+    "start:e2e": "wrangler dev --config dist/server/wrangler.json --persist-to .wrangler/e2e --port 3100",
     "typecheck": "vinext typegen && tsc --noEmit --incremental false",
     "lint": "oxlint",
     "format": "oxfmt",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "verify": "vinext typegen && tsc --noEmit --incremental false && oxlint && vitest run && vinext build"
+    "test:e2e:server": "pnpm build && pnpm db:migrate:e2e && pnpm start:e2e",
+    "db:generate": "drizzle-kit generate",
+    "db:check": "drizzle-kit check",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local --config dist/server/wrangler.json --persist-to .wrangler/local",
+    "db:migrate:e2e": "wrangler d1 migrations apply DB --local --config dist/server/wrangler.json --persist-to .wrangler/e2e",
+    "verify": "vinext typegen && tsc --noEmit --incremental false && oxlint && drizzle-kit check && vitest run && vinext build"
   },
   "dependencies": {
     "@fontsource-variable/caveat": "^5.3.0",
@@ -40,6 +46,8 @@
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "6.1.1",
     "@vitejs/plugin-rsc": "0.5.34",
+    "drizzle-kit": "0.31.10",
+    "drizzle-orm": "0.45.2",
     "oxfmt": "0.65.0",
     "oxlint": "1.80.0",
     "oxlint-tsgolint": "7.0.2001",

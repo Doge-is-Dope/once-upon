@@ -1,27 +1,30 @@
-export const CREATE_SHARED_STORIES_TABLE = `
-CREATE TABLE IF NOT EXISTS shared_stories (
-  token_hash TEXT PRIMARY KEY,
-  request_hash TEXT NOT NULL UNIQUE,
-  payload_hash TEXT NOT NULL,
-  document_json TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL
-)`;
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+} from 'drizzle-orm/sqlite-core';
 
-export const CREATE_SHARED_STORIES_EXPIRY_INDEX = `
-CREATE INDEX IF NOT EXISTS idx_shared_stories_expires_at
-ON shared_stories (expires_at)`;
+export const sharedStories = sqliteTable(
+  'shared_stories',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    requestHash: text('request_hash').notNull().unique(),
+    payloadHash: text('payload_hash').notNull(),
+    documentJson: text('document_json').notNull(),
+    createdAt: integer('created_at').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+  },
+  (table) => [index('idx_shared_stories_expires_at').on(table.expiresAt)],
+);
 
-export const CREATE_SHARE_WINDOWS_TABLE = `
-CREATE TABLE IF NOT EXISTS share_publish_windows (
-  client_hash TEXT NOT NULL,
-  window_start INTEGER NOT NULL,
-  publish_count INTEGER NOT NULL,
-  PRIMARY KEY (client_hash, window_start)
-)`;
-
-export const SCHEMA_STATEMENTS = [
-  CREATE_SHARED_STORIES_TABLE,
-  CREATE_SHARED_STORIES_EXPIRY_INDEX,
-  CREATE_SHARE_WINDOWS_TABLE,
-] as const;
+export const sharePublishWindows = sqliteTable(
+  'share_publish_windows',
+  {
+    clientHash: text('client_hash').notNull(),
+    windowStart: integer('window_start').notNull(),
+    publishCount: integer('publish_count').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.clientHash, table.windowStart] })],
+);

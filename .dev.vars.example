@@ -1,1 +1,2 @@
-SHARE_SIGNING_SECRET=replace-with-a-long-random-secret
+# Generate a private value with: openssl rand -base64 32
+SHARE_SIGNING_SECRET=

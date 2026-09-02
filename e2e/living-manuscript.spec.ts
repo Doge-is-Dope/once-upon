@@ -1053,7 +1053,16 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
   request,
   context,
 }) => {
-  await page.goto(EXPERIENCE_PATH);
+  const experienceResponse = await page.goto(EXPERIENCE_PATH);
+  expect(experienceResponse).not.toBeNull();
+  const experienceHeaders = experienceResponse!.headers();
+  expect(experienceHeaders['x-content-type-options']).toBe('nosniff');
+  expect(experienceHeaders['x-frame-options']).toBe('DENY');
+  expect(experienceHeaders['referrer-policy']).toBe('no-referrer');
+  expect(experienceHeaders['permissions-policy']).toContain('camera=()');
+  expect(experienceHeaders['content-security-policy']).toContain(
+    "frame-ancestors 'none'",
+  );
   const allowedOrigin = new URL(page.url()).origin;
   const clientAddress = `test-${crypto.randomUUID()}`;
   const requestId = crypto.randomUUID();
@@ -1065,6 +1074,16 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
     data: submission,
   });
   expect(denied.status()).toBe(403);
+  expect(denied.headers()['x-content-type-options']).toBe('nosniff');
+
+  const oversized = await request.post('/api/shared-stories', {
+    headers: {
+      Origin: allowedOrigin,
+      'Content-Type': 'application/json',
+    },
+    data: 'x'.repeat(100 * 1024 + 1),
+  });
+  expect(oversized.status()).toBe(413);
 
   const headers = {
     Origin: allowedOrigin,
@@ -1110,7 +1129,12 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
 
   const readerContext = await context.browser()!.newContext();
   const reader = await readerContext.newPage();
-  await reader.goto(first.path);
+  const readerResponse = await reader.goto(first.path);
+  expect(readerResponse).not.toBeNull();
+  expect(readerResponse!.headers()['cache-control']).toContain('no-store');
+  expect(readerResponse!.headers()['x-robots-tag']).toBe(
+    'noindex, nofollow, noarchive',
+  );
   await expect(
     reader.getByText('<img src=x onerror="window.__sharedXss=true">', {
       exact: true,

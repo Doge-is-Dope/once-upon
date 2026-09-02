@@ -7,6 +7,9 @@ import {
 } from './support/webmcp-mock';
 
 const EXPERIENCE_PATH = '/experiences/the-last-manuscript';
+const E2E_ORIGIN = new URL(
+  process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3100',
+).origin;
 
 test('shows only the outer restriction screen on mobile', async ({ page }) => {
   await installModelContextMock(page, {
@@ -155,7 +158,7 @@ test('copies the temporary Chrome flag without a relaunch prompt', async ({
   page,
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
-    origin: 'http://localhost:3000',
+    origin: E2E_ORIGIN,
   });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'userAgentData', {

@@ -20,6 +20,7 @@ const localBindingConfig = {
           binding: d1,
           database_name: 'once-upon',
           database_id: LOCAL_PLACEHOLDER_DATABASE_ID,
+          migrations_dir: 'drizzle',
         },
       ]
     : [],
@@ -51,6 +52,7 @@ export default defineConfig(async () => {
       vinext(),
       sites(),
       cloudflare({
+        persistState: { path: '.wrangler/local' },
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
         config: localBindingConfig,
       }),

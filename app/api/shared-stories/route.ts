@@ -7,6 +7,7 @@ import {
   publishSharedStory,
   ShareRepositoryError,
 } from '@/lib/share/repository';
+import { SECURITY_HEADER_VALUES } from '@/lib/security/headers';
 
 export async function POST(request: Request): Promise<Response> {
   const origin = request.headers.get('origin');
@@ -51,8 +52,8 @@ function json(value: unknown, status: number): Response {
   return Response.json(value, {
     status,
     headers: {
+      ...SECURITY_HEADER_VALUES,
       'Cache-Control': 'no-store',
-      'Referrer-Policy': 'no-referrer',
     },
   });
 }
