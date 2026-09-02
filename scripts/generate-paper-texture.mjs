@@ -4,8 +4,10 @@
  * The stylesheet previously carried these as inline feTurbulence SVG
  * data-URIs, which browsers re-rasterize whenever the surface repaints.
  * This one-off script reproduces the same layers (fine grain + broad
- * mottle, plus the graphite sheet noise) as seamless tiles and adds a
- * stamp-ink mask, all written to public/textures/.
+ * mottle, plus the graphite sheet noise) as seamless tiles, adds a
+ * stamp-ink mask, and bakes the desk materials (wool felt nap, satin
+ * ribbing for the bookmark, bookcloth weave), all written to
+ * public/textures/.
  *
  * Deterministic: re-running always produces identical pixels.
  *
@@ -136,4 +138,50 @@ await mkdir(OUT_DIR, { recursive: true });
     return [0, 0, 0, alpha];
   });
   await writeTile('stamp-grain.webp', size, data);
+}
+
+// 4. Felt nap: anisotropic wool fibres for the blotter. Stored as a pale
+//    luminance overlay so the felt colour tokens stay authoritative.
+{
+  const size = 512;
+  const data = makeTile(size, (u, v, x, y) => {
+    // Fibres run mostly along the weave: stretch the field 3:1.
+    const along = fbm(u, v * 3.2, 96, 3, 131);
+    // A second, gently rotated field so the nap never reads as stripes.
+    const rot = 0.6;
+    const ru = u * Math.cos(rot) - v * Math.sin(rot);
+    const rv = u * Math.sin(rot) + v * Math.cos(rot);
+    const cross = fbm(ru * 1.6, rv * 4, 64, 2, 149);
+    // Sparse bright specks where a fibre end catches the light.
+    const speck = latticeHash(x, y, size, 401) > 0.9975 ? 0.18 : 0;
+    const alpha = along * 0.12 + cross * 0.08 + speck;
+    return [232, 240, 226, alpha];
+  });
+  await writeTile('felt-grain.webp', size, data);
+}
+
+// 5. Satin ribbing for the bookmark: fine horizontal ribs with a soft
+//    sheen that the strip's own gradient shapes.
+{
+  const size = 128;
+  const data = makeTile(size, (u, v) => {
+    const rib = 0.5 + 0.5 * Math.sin(v * size * Math.PI); // one rib per 2px
+    const slub = fbm(u * 6, v, 64, 2, 211) * 0.5;
+    const alpha = rib * 0.16 + slub * 0.08;
+    return [255, 255, 255, alpha];
+  });
+  await writeTile('satin-rib.webp', size, data);
+}
+
+// 6. Bookcloth weave for the notebook cover: two orthogonal threads.
+{
+  const size = 256;
+  const data = makeTile(size, (u, v) => {
+    const warp = 0.5 + 0.5 * Math.sin(u * size * Math.PI * 0.5);
+    const weft = 0.5 + 0.5 * Math.sin(v * size * Math.PI * 0.5);
+    const wear = fbm(u, v, 32, 2, 307);
+    const alpha = (warp * weft * 0.5 + wear * 0.35) * 0.32;
+    return [246, 240, 226, alpha];
+  });
+  await writeTile('cloth-weave.webp', size, data);
 }

@@ -2,7 +2,7 @@
 
 import { CheckIcon } from '@phosphor-icons/react/dist/ssr/Check';
 import { CopySimpleIcon } from '@phosphor-icons/react/dist/ssr/CopySimple';
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   createSharedStorySubmission,
   deriveManuscriptReadModel,
@@ -23,21 +23,16 @@ export function StoryShare({
   experience,
   session,
   onAnnounce,
-  onLayoutChange,
 }: {
   experience: ExperienceDefinition;
   session: ExperienceSession;
   onAnnounce: (message: string) => void;
-  onLayoutChange: (anchor: Element | null) => void;
 }) {
   const manuscript = useMemo(
     () => deriveManuscriptReadModel(experience, session),
     [experience, session],
   );
   const requestId = useRef<string | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const linkRowRef = useRef<HTMLDivElement>(null);
-  const errorRef = useRef<HTMLParagraphElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
   const [publishState, setPublishState] = useState<PublishState>('idle');
   const [publicLink, setPublicLink] = useState('');
@@ -53,10 +48,6 @@ export function StoryShare({
       );
     },
   });
-
-  useLayoutEffect(() => {
-    onLayoutChange(linkRowRef.current ?? errorRef.current ?? rootRef.current);
-  }, [error, onLayoutChange, publicLink, publishState]);
 
   const publish = useCallback(async () => {
     setPublishState('publishing');
@@ -92,14 +83,14 @@ export function StoryShare({
   }, [manuscript, onAnnounce, session.sessionId]);
 
   return (
-    <div className="ending-share" ref={rootRef}>
+    <div className="ending-share">
       <h2>Pass the manuscript on</h2>
       <p>
         Create an anonymous, unlisted copy that disappears in 30 days. Nothing
         is uploaded until you choose to.
       </p>
       {publicLink ? (
-        <div className="public-link-result" ref={linkRowRef}>
+        <div className="public-link-result">
           <label className="sr-only" htmlFor="public-story-link">
             Manuscript copy link
           </label>
@@ -127,7 +118,7 @@ export function StoryShare({
           </button>
         </div>
       ) : publishState === 'idle' || publishState === 'failed' ? (
-        <div className="ending-share-actions" ref={linkRowRef}>
+        <div className="ending-share-actions">
           <button
             className="share-button"
             type="button"
@@ -137,11 +128,7 @@ export function StoryShare({
           </button>
         </div>
       ) : (
-        <div
-          aria-busy="true"
-          className="public-link-result is-loading"
-          ref={linkRowRef}
-        >
+        <div aria-busy="true" className="public-link-result is-loading">
           <span className="public-link-status">Preparing a copy…</span>
           <button
             aria-label="Copy manuscript link"
@@ -153,11 +140,7 @@ export function StoryShare({
           </button>
         </div>
       )}
-      {error ? (
-        <p className="share-feedback" ref={errorRef}>
-          {error}
-        </p>
-      ) : null}
+      {error ? <p className="share-feedback">{error}</p> : null}
     </div>
   );
 }

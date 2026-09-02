@@ -1,0 +1,59 @@
+@layer frame {
+  @layer tokens, record, scene, a11y;
+
+  @layer tokens {
+    :root {
+      /* The desk */
+      --felt: #1b2823;
+      --felt-lit: #26362e;
+      --felt-deep: #131c18;
+      --felt-rgb: 27 40 35;
+      --brass: #b08d57;
+      --brass-lit: #d9b777;
+      --brass-dark: #6e5530;
+      --brass-rgb: 176 141 87;
+
+      /* The case file */
+      --paper: #ece0c4;
+      --paper-edge: #cdbb95;
+      --sheet-under: #e3d6b6;
+      --sheet-under-2: #dccfae;
+      --ink: #241d15;
+      --ink-rgb: 36 29 21;
+      --muted-ink: #6b5a44;
+      --graphite-ink: #3c3a44;
+
+      /* The bookmark: tone-on-tone green satin */
+      --ribbon: #2a3b34;
+      --ribbon-lit: #46605a;
+      --ribbon-deep: #17241f;
+
+      /* Chrome on the felt */
+      --cream: #f3e9d2;
+      --parchment-muted: #bcb39c;
+      --parchment-soft: #cfc7b0;
+      --parchment-dim: #8f8a78;
+      --panel: #141c19;
+      --panel-edge: rgb(var(--brass-rgb) / 26%);
+      --focus: #f0c874;
+
+      /* Motion */
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+      --t-fast: 180ms;
+      --t-base: 320ms;
+
+      /* Shadows */
+      --shadow-contact:
+        0 1px 0 rgb(0 0 0 / 30%), 0 2px 3px rgb(0 0 0 / 35%),
+        0 10px 14px -8px rgb(0 0 0 / 55%),
+        10px 26px 40px -14px rgb(0 0 0 / 60%),
+        20px 44px 70px -20px rgb(0 0 0 / 45%);
+      --shadow-panel: 0 0.9rem 2.4rem rgb(0 0 0 / 46%);
+
+      /* Where the lamp hangs, in viewport terms; the shader reads it too. */
+      --lamp-x: 44%;
+      --lamp-y: -12%;
+    }
+  }
+}

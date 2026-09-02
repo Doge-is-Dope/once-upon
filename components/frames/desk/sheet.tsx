@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { CSSProperties, RefObject } from 'react';
 import {
   deriveManuscriptReadModel,
@@ -24,12 +31,12 @@ import type {
   ExperienceSession,
 } from '@/lib/runtime/types';
 import type { WebMCPStatus } from '@/lib/webmcp/tools';
-import { BackspaceText, backspaceDuration } from './backspace-text';
+import { BackspaceText } from './backspace-text';
 import { CopyButton } from './copy-button';
-import { StoryShare } from './story-share';
-import { usePagination } from './use-pagination';
+import { StoryShare } from './share-row';
+import { usePagination } from './use-sheet-pages';
 import type { AgentFailure, WebMCPSetupHint } from './use-webmcp-connection';
-import { WebMCPAvailability } from './webmcp-notices';
+import { WebMCPAvailability } from './availability-slip';
 
 type EndingStage = 'original' | 'rewriting' | 'complete';
 
@@ -40,7 +47,6 @@ export function StoryScroll({
   agentRunning = false,
   experience,
   onAnnounce,
-  onPageChange,
   onTypingChange,
   pageNavigationEnabled,
   onRetryConnection,
@@ -54,7 +60,6 @@ export function StoryScroll({
   agentRunning?: boolean;
   experience: ExperienceDefinition;
   onAnnounce: (message: string) => void;
-  onPageChange: (page: number) => void;
   onTypingChange?: (typing: boolean) => void;
   pageNavigationEnabled: boolean;
   onRetryConnection: () => void;
@@ -111,13 +116,17 @@ export function StoryScroll({
     typingPlan !== null &&
     endingStage === 'original';
   const [newPagesAhead, setNewPagesAhead] = useState(false);
+  // True while the reader is still on the page the typing head occupies;
+  // any explicit page turn hands control back to the reader.
+  const followingHead = useRef(true);
+  const stopFollowingHead = useCallback(() => {
+    followingHead.current = false;
+  }, []);
   const contentKey = [
     manuscript.chapters.length,
     session.phase,
     endingStage,
     pendingReceiptId ?? '',
-    webMCPStatus,
-    typingActive ? 'typing' : 'settled',
   ].join(':');
   const {
     pagerRef,
@@ -129,32 +138,19 @@ export function StoryScroll({
     goToNext,
     getCurrentPage,
     pageAt,
-    reflowTo,
     measure,
   } = usePagination({
     navigationEnabled: pageNavigationEnabled && !availabilityVisible,
+    onManualNavigation: stopFollowingHead,
   });
-  const handlePaginatedLayoutChange = useCallback(
-    (anchor: Element | null) => reflowTo(anchor),
-    [reflowTo],
-  );
   const freshArticleRef = useRef<HTMLElement | null>(null);
   const caretRef = useRef<HTMLDivElement | null>(null);
   const firstContentKey = useRef(true);
   const previousLatestId = useRef<string | null>(null);
   const previousReceiptId = useRef<string | null>(null);
-  const previousWebMCPStatus = useRef(webMCPStatus);
   const previousPhase = useRef(session.phase);
   const previousTypingActive = useRef(typingActive);
-  const previousTurnPhase = useRef(session.phase);
-  // True while the reader is still on the page the typing head occupies;
-  // a manual turn away hands control back to the reader.
-  const followingHead = useRef(true);
-  const endingTimers = useRef<number[]>([]);
-
-  useEffect(() => {
-    onPageChange(page);
-  }, [onPageChange, page]);
+  const rewriteDelayTimer = useRef<number | null>(null);
 
   useEffect(() => {
     onTypingChange?.(typingActive);
@@ -164,40 +160,26 @@ export function StoryScroll({
     if (page >= pageCount - 1) setNewPagesAhead(false);
   }, [page, pageCount]);
 
-  const clearEndingTimers = useCallback(() => {
-    for (const timer of endingTimers.current) window.clearTimeout(timer);
-    endingTimers.current = [];
+  const clearRewriteDelay = useCallback(() => {
+    if (rewriteDelayTimer.current !== null)
+      window.clearTimeout(rewriteDelayTimer.current);
+    rewriteDelayTimer.current = null;
   }, []);
 
   const beginRewrite = useCallback(() => {
-    const paragraphs = splitParagraphBlocks(manuscript.completionPassage.prose);
-    const recordParagraphs = splitParagraphBlocks(
-      manuscript.completionPassage.recordProse,
-    );
-    const originalEnding = paragraphs.at(-1) ?? '';
-    const replacementEnding = recordParagraphs.at(-1) ?? originalEnding;
-    clearEndingTimers();
+    clearRewriteDelay();
     setEndingStage('rewriting');
     onAnnounce('The record revises its wording.');
-    endingTimers.current.push(
-      window.setTimeout(
-        () => setEndingStage('complete'),
-        backspaceDuration(originalEnding, replacementEnding) + 100,
-      ),
-    );
-  }, [
-    clearEndingTimers,
-    manuscript.completionPassage.prose,
-    manuscript.completionPassage.recordProse,
-    onAnnounce,
-  ]);
+  }, [clearRewriteDelay, onAnnounce]);
+
+  const finishRewrite = useCallback(() => setEndingStage('complete'), []);
 
   useEffect(() => {
     const enteredComplete =
       previousPhase.current !== 'COMPLETE' && session.phase === 'COMPLETE';
     previousPhase.current = session.phase;
     if (session.phase !== 'COMPLETE') {
-      clearEndingTimers();
+      clearRewriteDelay();
       setEndingStage('original');
       return;
     }
@@ -212,34 +194,30 @@ export function StoryScroll({
       return;
     }
     setEndingStage('original');
-    clearEndingTimers();
-    endingTimers.current.push(
-      window.setTimeout(beginRewrite, typingPlan.total + 900),
+    clearRewriteDelay();
+    rewriteDelayTimer.current = window.setTimeout(
+      beginRewrite,
+      typingPlan.total + 900,
     );
-    return clearEndingTimers;
-  }, [beginRewrite, clearEndingTimers, onAnnounce, session.phase, typingPlan]);
+    return clearRewriteDelay;
+  }, [beginRewrite, clearRewriteDelay, onAnnounce, session.phase, typingPlan]);
 
   // Lets the reader finish a chapter at their own pace: the words settle
   // at once, the caret stops, and the ending moves on to its rewrite.
   const finishTyping = useCallback(() => {
     if (!typingActive) return;
     settleFreshChapter();
+    if (followingHead.current) goToLastPage();
     if (session.phase === 'COMPLETE' && endingStage === 'original')
       beginRewrite();
   }, [
     beginRewrite,
     endingStage,
+    goToLastPage,
     session.phase,
     settleFreshChapter,
     typingActive,
   ]);
-
-  // Swapping the trailing guide widgets (availability notice, turn guide)
-  // changes the flow's width but is no reason to turn the page under the
-  // reader; refresh the page count only.
-  useEffect(() => {
-    measure();
-  }, [agentActive, measure, typingActive, webMCPStatus]);
 
   // The typing follower: a newly typed entry is followed like paper feeding
   // through the machine — start at the entry's first page, ride the typing
@@ -252,7 +230,7 @@ export function StoryScroll({
     const article = freshArticleRef.current;
     if (!article) return;
     const startPage = pageAt(article);
-    goToPage(startPage);
+    goToPage(startPage, 'feed');
     followingHead.current = true;
     const caret = caretRef.current;
     const pager = pagerRef.current;
@@ -325,7 +303,7 @@ export function StoryScroll({
           // Follow only while the reader is still on the page the typing
           // head just left; a manual turn takes priority.
           if (followingHead.current) {
-            goToPage(nextPage);
+            goToPage(nextPage, 'feed');
             turnSettlesAt = now + 800;
           } else setNewPagesAhead(true);
           headPage = nextPage;
@@ -333,7 +311,7 @@ export function StoryScroll({
       }
       if (elapsed > typingPlan.total + 400) {
         hideCaret();
-        if (followingHead.current) goToLastPage();
+        if (followingHead.current) goToLastPage('feed');
         else setNewPagesAhead(true);
         return;
       }
@@ -352,32 +330,21 @@ export function StoryScroll({
   // outside a typing pass: the reader's own move and the objects they use
   // always come into view; a chapter that lands while they are reading
   // earlier pages is flagged instead of yanking them forward.
-  useEffect(() => {
+  useLayoutEffect(() => {
     measure();
     const chapterArrived = latestChapterId !== previousLatestId.current;
     const effectArrived =
       pendingReceiptId !== null &&
       pendingReceiptId !== previousReceiptId.current;
-    const webMCPStatusChanged = webMCPStatus !== previousWebMCPStatus.current;
-    const enteredAwaiting =
-      previousTurnPhase.current !== 'AWAITING_CHAPTER' &&
-      session.phase === 'AWAITING_CHAPTER';
     const typingEnded = previousTypingActive.current && !typingActive;
     previousLatestId.current = latestChapterId;
     previousReceiptId.current = pendingReceiptId;
-    previousWebMCPStatus.current = webMCPStatus;
-    previousTurnPhase.current = session.phase;
     previousTypingActive.current = typingActive;
     if (firstContentKey.current) {
       firstContentKey.current = false;
       return;
     }
-    if (webMCPStatusChanged && !chapterArrived && !effectArrived) return;
-    if (endingStage !== 'original') {
-      goToLastPage();
-      return;
-    }
-    if (enteredAwaiting || effectArrived) {
+    if (effectArrived) {
       // The reader's own move or the object they just used: they are done
       // with the chapter, so settle any typing and bring the change into
       // view (the settled pass re-enters below as typingEnded).
@@ -409,15 +376,8 @@ export function StoryScroll({
       <div aria-hidden="true" className="manuscript-light-shift" />
       <header className="sheet-head">
         <span>Record of proceedings</span>
-        <span
-          className="sheet-page-indicator"
-          data-new-pages={newPagesAhead || undefined}
-        >
-          Sheet {String(page + 1).padStart(2, '0')} of{' '}
-          {String(pageCount).padStart(2, '0')}
-          {newPagesAhead ? (
-            <span className="sheet-new-pages"> · New</span>
-          ) : null}
+        <span className="sheet-page-indicator">
+          Page {page + 1} of {pageCount}
         </span>
       </header>
       {/* The window clips the rolling pager so sheets feed through the
@@ -431,6 +391,7 @@ export function StoryScroll({
           className="sheet-pager"
           inert={availabilityVisible}
           ref={pagerRef}
+          tabIndex={availabilityVisible ? -1 : 0}
         >
           <div className="sheet-flow">
             {manuscript.chapters.map((chapter) => {
@@ -455,6 +416,7 @@ export function StoryScroll({
 
             {session.phase === 'COMPLETE' ? (
               <CompletionPassageBlock
+                onRewriteComplete={finishRewrite}
                 passage={manuscript.completionPassage}
                 plan={
                   freshChapterId && endingStage === 'original'
@@ -463,40 +425,6 @@ export function StoryScroll({
                 }
                 stage={endingStage}
               />
-            ) : null}
-
-            {session.phase === 'READY' &&
-            webMCPStatus === 'connected' &&
-            !typingActive ? (
-              <TurnGuide
-                agentActive={agentActive}
-                agentFailure={agentFailure}
-                experience={experience}
-                onAnnounce={onAnnounce}
-                session={session}
-              />
-            ) : null}
-            {session.phase === 'AWAITING_CHAPTER' &&
-            webMCPStatus === 'connected' ? (
-              <PendingTurnGuide
-                agentActive={agentActive}
-                agentFailure={agentFailure}
-                agentQuiet={agentQuiet}
-                agentRunning={agentRunning}
-                experience={experience}
-                onAnnounce={onAnnounce}
-                session={session}
-              />
-            ) : null}
-            {session.phase === 'COMPLETE' && endingStage === 'complete' ? (
-              <footer className="manuscript-ending">
-                <StoryShare
-                  experience={experience}
-                  onAnnounce={onAnnounce}
-                  onLayoutChange={handlePaginatedLayoutChange}
-                  session={session}
-                />
-              </footer>
             ) : null}
           </div>
           {/* Multicol column boxes are anonymous and cannot carry
@@ -521,38 +449,94 @@ export function StoryScroll({
         ) : null}
       </div>
       <div aria-hidden="true" className="typing-caret" hidden ref={caretRef} />
-      <div
-        className="sheet-controls"
+      <footer
+        className="sheet-footer"
         data-navigation-disabled={availabilityVisible || undefined}
         data-new-pages={newPagesAhead || undefined}
       >
-        <button
-          className="sheet-finish-typing"
-          hidden={!typingActive}
-          onClick={finishTyping}
-          type="button"
-        >
-          Finish typing
-        </button>
-        <button
-          aria-label="Previous page"
-          disabled={availabilityVisible || page === 0}
-          onClick={goToPrevious}
-          type="button"
-        >
-          ‹
-        </button>
-        <button
-          aria-label={
-            newPagesAhead ? 'Next page, new writing ahead' : 'Next page'
-          }
-          disabled={availabilityVisible || page >= pageCount - 1}
-          onClick={goToNext}
-          type="button"
-        >
-          ›
-        </button>
-      </div>
+        <div className="sheet-footer-status">
+          {!availabilityVisible && typingActive ? (
+            <div className="sheet-typing-status" id="your-turn">
+              <p>The record is typing…</p>
+              <button
+                className="sheet-finish-typing"
+                onClick={finishTyping}
+                type="button"
+              >
+                Finish typing
+              </button>
+            </div>
+          ) : null}
+          {!availabilityVisible &&
+          !typingActive &&
+          session.phase === 'READY' ? (
+            <TurnGuide
+              agentActive={agentActive}
+              agentFailure={agentFailure}
+              experience={experience}
+              onAnnounce={onAnnounce}
+              session={session}
+            />
+          ) : null}
+          {!availabilityVisible &&
+          !typingActive &&
+          session.phase === 'AWAITING_CHAPTER' ? (
+            <PendingTurnGuide
+              agentActive={agentActive}
+              agentFailure={agentFailure}
+              agentQuiet={agentQuiet}
+              agentRunning={agentRunning}
+              experience={experience}
+              onAnnounce={onAnnounce}
+              session={session}
+            />
+          ) : null}
+          {!availabilityVisible &&
+          !typingActive &&
+          session.phase === 'COMPLETE' &&
+          endingStage !== 'complete' ? (
+            <div className="sheet-rewrite-status" id="your-turn">
+              <p>
+                {endingStage === 'rewriting'
+                  ? 'The record is revising its wording…'
+                  : 'The record is preparing its revision…'}
+              </p>
+            </div>
+          ) : null}
+          {!availabilityVisible &&
+          !typingActive &&
+          session.phase === 'COMPLETE' &&
+          endingStage === 'complete' ? (
+            <StoryShare
+              experience={experience}
+              onAnnounce={onAnnounce}
+              session={session}
+            />
+          ) : null}
+        </div>
+        <div className="sheet-controls">
+          <button
+            aria-label="Previous page"
+            disabled={availabilityVisible || page === 0}
+            onClick={goToPrevious}
+            type="button"
+          >
+            <span aria-hidden="true">←</span>
+            <span className="sheet-control-label">Previous</span>
+          </button>
+          <button
+            aria-label={
+              newPagesAhead ? 'Next page, new writing ahead' : 'Next page'
+            }
+            disabled={availabilityVisible || page >= pageCount - 1}
+            onClick={goToNext}
+            type="button"
+          >
+            <span className="sheet-control-label">Next</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      </footer>
     </section>
   );
 }
@@ -681,17 +665,17 @@ function AgentHandoff({
     <div className="agent-handoff">
       <p className="agent-handoff-instruction">
         {mode === 'recover'
-          ? 'Your move is on the page but nothing followed it. Ask your agent to finish it:'
+          ? 'Your move is on the page but nothing followed it. Copy a message asking your agent to finish the saved turn.'
           : mode === 'start'
-            ? 'No agent has spoken yet. Send this to your agent to begin:'
-            : 'Your agent has not continued yet. Send this to resume:'}
+            ? 'No agent has spoken yet. Copy a starter message for your agent.'
+            : 'Your agent has not continued yet. Copy a message to resume.'}
       </p>
       <div className="agent-handoff-example">
-        <p>{message}</p>
         <CopyButton
-          className="inline-copy-action handoff-copy-button"
+          className="handoff-copy-button"
+          copiedLabel="Starter copied"
           iconOnly
-          idleLabel="Copy example message"
+          idleLabel="Copy starter"
           onCopied={() =>
             onAnnounce(
               mode === 'recover'
@@ -775,10 +759,12 @@ function ChapterBlock({
 }
 
 function CompletionPassageBlock({
+  onRewriteComplete,
   passage,
   plan,
   stage,
 }: {
+  onRewriteComplete: () => void;
   passage: { prose: string; recordProse: string };
   plan: WordTiming[][] | null | undefined;
   stage: EndingStage;
@@ -799,6 +785,7 @@ function CompletionPassageBlock({
         <p key={index}>
           {index === lastIndex && stage === 'rewriting' ? (
             <BackspaceText
+              onComplete={onRewriteComplete}
               original={original}
               replacement={recordParagraphs[index] ?? original}
             />

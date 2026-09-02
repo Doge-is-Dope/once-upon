@@ -116,7 +116,7 @@ expires after 30 days.
 
 ```text
 app/                              Routes and global metadata
-components/frames/book/           Living Manuscript UI and tool inspector
+components/frames/desk/           Living Manuscript UI and tool inspector
 experiences/the-last-manuscript/  Prologue and declarative interactions
 lib/runtime/                       In-memory narrative state machine
 lib/manuscript/                    Shared reading order and text export

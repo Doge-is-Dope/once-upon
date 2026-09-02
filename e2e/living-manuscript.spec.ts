@@ -143,7 +143,8 @@ test('moves from the opening hero into the manuscript after the first choice', a
   // While the chapter is still being typed the page keeps the next-move
   // prompt and the hint back; both return once the typing settles.
   await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(1);
-  await expect(page.locator('#your-turn')).toHaveCount(0);
+  await expect(page.locator('.turn-guide')).toHaveCount(0);
+  await expect(page.locator('.sheet-typing-status')).toHaveCount(1);
   await expect(
     page.getByRole('button', { name: 'Hint', exact: true }),
   ).toBeDisabled();
@@ -182,11 +183,17 @@ test('lets the reader finish typing early and shows a refused entry', async ({
 }) => {
   await page.goto(EXPERIENCE_PATH);
   await waitForTool(page, 'get_story_state');
-  await expect(page.locator('.agent-presence')).toHaveAttribute(
-    'data-presence',
-    'waiting',
-  );
   const initial = await readState(page);
+  const hintTrigger = page.getByRole('button', {
+    name: 'Hint',
+    exact: true,
+  });
+  const hintIcon = hintTrigger.locator('svg');
+
+  await expect(hintIcon).toHaveCSS(
+    'animation-name',
+    'story-hint-available-glow',
+  );
 
   const begun = await callTool<ToolResult>(page, 'begin_story_turn', {
     operationId: operationId('begin_finish'),
@@ -200,10 +207,8 @@ test('lets the reader finish typing early and shows a refused entry', async ({
   await expect(page.locator('.writing-marker')).toContainText(
     'Waiting for your agent to write the next chapter…',
   );
-  await expect(page.locator('.agent-presence')).toHaveAttribute(
-    'data-presence',
-    'attached',
-  );
+  await expect(hintTrigger).toBeDisabled();
+  await expect(hintIcon).toHaveCSS('animation-name', 'none');
 
   // A commit the record refuses (second person in the official record) is
   // shown to the reader, not only returned to the agent.
@@ -236,6 +241,7 @@ test('lets the reader finish typing early and shows a refused entry', async ({
   await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(1);
   const finish = page.locator('.sheet-finish-typing');
   await expect(finish).toBeVisible();
+  await expect(hintIcon).toHaveCSS('animation-name', 'none');
   await finish.click();
   await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(0);
   await expect(page.locator('#your-turn')).toHaveCount(1);
@@ -243,22 +249,32 @@ test('lets the reader finish typing early and shows a refused entry', async ({
     page.getByRole('heading', { name: 'What do you do next?' }),
   ).toBeVisible();
   await expect(page.locator('.typing-caret')).toBeHidden();
+  await expect(hintTrigger).toBeEnabled();
+  await expect(hintIcon).toHaveCSS(
+    'animation-name',
+    'story-hint-available-glow',
+  );
 });
 
 test('shows the final header title at narrow width with reduced motion', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.setViewportSize({ width: 360, height: 800 });
+  await page.setViewportSize({ width: 641, height: 800 });
   await page.goto(EXPERIENCE_PATH);
   await waitForTool(page, 'get_story_state');
   const initial = await readState(page);
+  const hintIcon = page
+    .getByRole('button', { name: 'Hint', exact: true })
+    .locator('svg');
+
+  await expect(hintIcon).toHaveCSS('animation-name', 'none');
 
   await expect(
     page.locator('.title-block').getByRole('heading', {
       name: 'The Last Manuscript',
     }),
-  ).toHaveCSS('font-size', '28px');
+  ).toHaveCSS('font-size', '25.6px');
 
   const begun = await callTool<ToolResult>(page, 'begin_story_turn', {
     operationId: operationId('begin_reduced_header'),
@@ -390,13 +406,15 @@ test('keeps a player-safe clue journal and acknowledges new clues on close', asy
   await trigger.press('Enter');
   await expect(popover).toBeVisible();
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-  await expect(sheet).toBeFocused();
+  await expect(
+    sheet.getByRole('button', { name: 'Close notes' }),
+  ).toBeFocused();
   await expect(sheet).toContainText('Notes from the room · 2 found');
   await expect(sheet.locator('.story-clue-state')).toHaveText([
     'Noted',
     'Noted',
   ]);
-  await expect(sheet.getByRole('button')).toHaveCount(0);
+  await expect(sheet.getByRole('button')).toHaveCount(1);
   expect(await sheet.innerText()).not.toMatch(
     /reveal_pressed_words|pencil_found|sixth_attempt_note|North Station reads 183\/184/,
   );
@@ -471,11 +489,17 @@ test('reveals the contextual hint from the header without repaginating', async (
     const buttonStyle = getComputedStyle(button);
     const iconStyle = getComputedStyle(button.querySelector('svg')!);
     return {
+      animationDuration: iconStyle.animationDuration,
+      animationIterationCount: iconStyle.animationIterationCount,
+      animationName: iconStyle.animationName,
       backgroundColor: buttonStyle.backgroundColor,
       borderColor: buttonStyle.borderColor,
       iconFilter: iconStyle.filter,
     };
   });
+  expect(hintAppearance.animationDuration).toBe('0.9s');
+  expect(hintAppearance.animationIterationCount).toBe('1');
+  expect(hintAppearance.animationName).toBe('story-hint-available-glow');
   expect(hintAppearance.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   expect(hintAppearance.borderColor).toBe('rgba(0, 0, 0, 0)');
   expect(hintAppearance.iconFilter).toContain('drop-shadow');
@@ -516,7 +540,7 @@ test('turns pages from the keyboard without outlining the manuscript container',
   const pageIndicator = page.locator('.sheet-page-indicator');
   const hero = page.locator('.title-block');
   await expect(hero).toBeVisible();
-  await expect(pageIndicator).toHaveText(/Sheet \d+ of \d+/);
+  await expect(pageIndicator).toHaveText(/Page \d+ of \d+/);
   const initialIndicator = await pageIndicator.innerText();
   const currentPage = Number(initialIndicator.match(/\d+/)?.[0]);
 
@@ -528,7 +552,7 @@ test('turns pages from the keyboard without outlining the manuscript container',
       Number((await pageIndicator.innerText()).match(/\d+/)?.[0]),
     )
     .toBe(currentPage + 1);
-  await expect(hero).toBeHidden();
+  await expect(hero).toBeVisible();
   await expect(
     page.getByRole('heading', { level: 1, name: 'The Last Manuscript' }),
   ).toHaveCount(1);
@@ -672,13 +696,29 @@ test('completes the story within six registrations and shares a unique story lin
   await expect(
     page.locator('.completion-passage.is-fresh .tw-word'),
   ).not.toHaveCount(0);
-  await expect(page.locator('.backspace-replacement')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Previous page' }).click();
+  await page.waitForTimeout(650);
+  const pageHeldDuringRewrite = Number(
+    (await page.locator('.sheet-page-indicator').innerText()).match(/\d+/)?.[0],
+  );
+  await page.locator('.sheet-finish-typing').click();
   await expect(
     page.getByRole('textbox', { name: 'Manuscript copy link' }),
   ).toHaveCount(0);
   await expect(page.locator('.backspace-replacement')).toBeVisible({
     timeout: 30_000,
   });
+  const rewriteSamples: string[] = [];
+  for (let sample = 0; sample < 3; sample += 1) {
+    rewriteSamples.push(
+      (await page.locator('.backspace-visual').textContent()) ?? '',
+    );
+    await page.waitForTimeout(80);
+  }
+  expect(
+    rewriteSamples.every((text) => text.includes('By the next corner')),
+  ).toBe(true);
+  expect(new Set(rewriteSamples).size).toBeGreaterThan(1);
   await expect(page.locator('del, ins')).toHaveCount(0);
   await expect(
     page.getByRole('textbox', { name: 'Manuscript copy link' }),
@@ -686,6 +726,9 @@ test('completes the story within six registrations and shares a unique story lin
   await expect(page.locator('.backspace-replacement')).toHaveCount(0, {
     timeout: 15_000,
   });
+  await expect(page.locator('.sheet-page-indicator')).toContainText(
+    `Page ${pageHeldDuringRewrite} of`,
+  );
   const completionParagraphs = page.locator('.completion-passage p');
   await expect(completionParagraphs.first()).toContainText(
     'No alarm follows you. No footsteps come after you.',
@@ -700,6 +743,8 @@ test('completes the story within six registrations and shares a unique story lin
   const publicLink = page.getByRole('textbox', {
     name: 'Manuscript copy link',
   });
+  const pageCountBeforeShare =
+    (await page.locator('.sheet-page-indicator').textContent()) ?? '';
   // Nothing is uploaded until the reader asks for a copy.
   await expect(publicLink).toHaveCount(0);
   await expect(
@@ -707,6 +752,9 @@ test('completes the story within six registrations and shares a unique story lin
   ).toBeVisible();
   await page.getByRole('button', { name: 'Create a link' }).click();
   await expect(publicLink).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.sheet-page-indicator')).toHaveText(
+    pageCountBeforeShare,
+  );
   await page.getByRole('button', { name: /^Open clue notebook/ }).click();
   await expect(page.locator('.story-clue-entry')).toHaveCount(6);
   await expect(page.locator('.story-clue-lead')).toHaveCount(0);
@@ -730,7 +778,11 @@ test('completes the story within six registrations and shares a unique story lin
 
   const publicUrl = await publicLink.inputValue();
   expect(publicUrl).toMatch(/\/s\/[A-Za-z0-9_-]{32}$/);
-  await expectElementInsideActiveSheet(publicLink);
+  expect(
+    await publicLink.evaluate((element) =>
+      element.closest('.sheet-footer')?.classList.contains('sheet-footer'),
+    ),
+  ).toBe(true);
   await expectPaginationToMatchLayout(page);
   expect(
     await page.evaluate(
@@ -748,11 +800,18 @@ test('completes the story within six registrations and shares a unique story lin
 
   const readerContext = await context.browser()!.newContext();
   const reader = await readerContext.newPage();
+  await reader.setViewportSize({ width: 360, height: 800 });
   const response = await reader.goto(publicUrl);
   expect(response?.headers()['cache-control']).toContain('no-store');
   await expect(
     reader.getByRole('heading', { level: 1, name: 'The Last Manuscript' }),
   ).toBeVisible();
+  await expect(reader.locator('[data-support-restricted]')).toHaveCount(0);
+  expect(
+    await reader.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
   await expect(
     reader.getByRole('heading', {
       level: 3,
@@ -842,9 +901,9 @@ test('reload and Reset create a fresh document session', async ({ page }) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Start over', exact: true }).click();
   await expect(page.locator('.settings-restart-confirm')).toContainText(
-    'Start over? This manuscript is erased and the prologue begins again.',
+    'Erase this manuscript and start again?',
   );
-  await page.getByRole('button', { name: 'Keep reading' }).click();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.locator('.settings-restart-confirm')).toHaveCount(0);
   await page.getByRole('button', { name: 'Start over', exact: true }).click();
   await Promise.all([
@@ -865,7 +924,7 @@ test('keeps the manuscript usable at narrow width, zoom, and reduced motion', as
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.setViewportSize({ width: 360, height: 800 });
+  await page.setViewportSize({ width: 641, height: 800 });
   await page.goto(EXPERIENCE_PATH);
   await waitForTool(page, 'get_story_state');
   await expect(
@@ -916,7 +975,7 @@ test('keeps the manuscript usable at narrow width, zoom, and reduced motion', as
     };
   });
   expect(notebookLayout.trigger.x).toBeGreaterThanOrEqual(0);
-  expect(notebookLayout.trigger.right).toBeLessThanOrEqual(360);
+  expect(notebookLayout.trigger.right).toBeLessThanOrEqual(641);
   expect(notebookLayout.trigger.width).toBeGreaterThanOrEqual(44);
   expect(notebookLayout.trigger.height).toBeGreaterThanOrEqual(44);
   expect(
@@ -938,7 +997,7 @@ test('keeps the manuscript usable at narrow width, zoom, and reduced motion', as
       };
     });
   expect(clueBounds.x).toBeGreaterThanOrEqual(0);
-  expect(clueBounds.right).toBeLessThanOrEqual(360);
+  expect(clueBounds.right).toBeLessThanOrEqual(641);
   expect(clueBounds.top).toBeGreaterThanOrEqual(0);
   expect(clueBounds.bottom).toBeLessThanOrEqual(800);
   await page.keyboard.press('Escape');
@@ -950,7 +1009,7 @@ test('keeps the manuscript usable at narrow width, zoom, and reduced motion', as
       return { x: bounds.x, right: bounds.right };
     });
   expect(hintBounds.x).toBeGreaterThanOrEqual(0);
-  expect(hintBounds.right).toBeLessThanOrEqual(360);
+  expect(hintBounds.right).toBeLessThanOrEqual(641);
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Settings' }).click();
   const panelBounds = await page
@@ -960,7 +1019,7 @@ test('keeps the manuscript usable at narrow width, zoom, and reduced motion', as
       return { x: bounds.x, right: bounds.right };
     });
   expect(panelBounds.x).toBeGreaterThanOrEqual(0);
-  expect(panelBounds.right).toBeLessThanOrEqual(360);
+  expect(panelBounds.right).toBeLessThanOrEqual(641);
   await page.keyboard.press('Escape');
   await page.evaluate(() => {
     document.documentElement.style.zoom = '2';
@@ -1105,12 +1164,12 @@ test('repaginates when only the viewport height changes', async ({ page }) => {
   await expectPaginationToMatchLayout(page);
 });
 
-test('keeps every surface inside short phone columns through the ending', async ({
+test('keeps every surface inside short desktop columns through the ending', async ({
   page,
 }) => {
   test.slow();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.setViewportSize({ width: 360, height: 640 });
+  await page.setViewportSize({ width: 641, height: 640 });
   await page.goto(EXPERIENCE_PATH);
   await waitForTool(page, 'get_story_state');
 
@@ -1162,12 +1221,9 @@ test('keeps every surface inside short phone columns through the ending', async 
   );
   expect(state.phase).toBe('COMPLETE');
 
-  // The ending and share block fragment across pages instead of being
-  // clipped by the sheet window; the last page must show the record's
-  // revised final line.
-  await expect(page.locator('.manuscript-ending')).toBeVisible();
-  // The share block's mount reflow turns to the last page on its own
-  // schedule; wait for the pager to settle before taking over.
+  // Sharing stays in the fixed footer while the final record remains in
+  // the real page flow.
+  await expect(page.locator('.ending-share')).toBeVisible();
   await waitForSheetToSettle(page);
   await expectPaginationToMatchLayout(page);
   const lastParagraph = page.locator('.completion-passage p').last();
@@ -1248,7 +1304,7 @@ async function expectElementInsideActiveSheet(element: Locator): Promise<void> {
       },
     };
   });
-  expect(geometry).toMatchObject({ inside: true });
+  expect(geometry, JSON.stringify(geometry)).toMatchObject({ inside: true });
 }
 
 async function expectPaginationToMatchLayout(page: Page): Promise<void> {
@@ -1263,7 +1319,13 @@ async function expectPaginationToMatchLayout(page: Page): Promise<void> {
     const stride = pager.clientWidth + gap;
     return {
       current: Math.round(pager.scrollLeft / stride) + 1,
-      count: Math.max(1, Math.round((pager.scrollWidth + gap) / stride)),
+      count: Math.max(
+        1,
+        Math.round(
+          ((pager.querySelector('.sheet-flow')?.scrollWidth ?? 0) + gap) /
+            stride,
+        ),
+      ),
     };
   });
   const numbers = (await page.locator('.sheet-page-indicator').innerText())

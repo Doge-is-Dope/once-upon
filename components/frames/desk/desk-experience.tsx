@@ -4,7 +4,6 @@ import Image from 'next/image';
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -15,17 +14,16 @@ import type {
   ExperienceDefinition,
   ExperienceSession,
 } from '@/lib/runtime/types';
-import { AgentPresence } from './agent-presence';
+import { DeskScene } from './desk-scene';
 import { StoryHeaderTitle } from './story-header-title';
 import { StoryClues } from './story-clues';
 import { StoryHint } from './story-hint';
-import { StorySettings } from './story-settings';
-import { StoryScroll } from './story-scroll';
-import { useLampLight } from './lamp-light';
+import { StorySettings } from './settings-panel';
+import { StoryScroll } from './sheet';
 import { useSessionView } from './use-session-view';
 import { useWebMCPConnection } from './use-webmcp-connection';
 import type { WebMCPStatus } from '@/lib/webmcp/tools';
-import { WebMCPInspector } from './webmcp-inspector';
+import { WebMCPInspector } from './tool-inspector';
 
 const DEBUG_MODE_STORAGE_KEY = 'once-upon:debug-mode';
 const DEBUG_MODE_CHANGE_EVENT = 'once-upon:debug-mode-change';
@@ -61,7 +59,7 @@ function writeDebugMode(enabled: boolean) {
   window.dispatchEvent(new Event(DEBUG_MODE_CHANGE_EVENT));
 }
 
-export function BookExperience({
+export function DeskExperience({
   controller,
   experience,
 }: {
@@ -96,7 +94,6 @@ export function BookExperience({
     announce(connectionAnnouncement(webMCPStatus));
   }, [announce, webMCPStatus]);
 
-  const lampCanvasRef = useLampLight();
   const session = view.session;
   const handleRetryConnection = () => {
     announce('Reconnecting your agent…');
@@ -105,7 +102,6 @@ export function BookExperience({
   const storyStarted =
     session.pendingTurn !== null || session.chapters.length > 1;
   const notesAvailable = session.chapters.length > 1;
-  const [currentPage, setCurrentPage] = useState(0);
   const [cluesOpen, setCluesOpen] = useState(false);
   const [typingActive, setTypingActive] = useState(false);
   const handleTypingChange = useCallback(
@@ -116,53 +112,7 @@ export function BookExperience({
     session.phase === 'AWAITING_CHAPTER' && activeTool === null,
     lastActivityAt ?? session.pendingTurn?.createdAt ?? null,
   );
-  const showOpeningHero = !storyStarted && currentPage === 0;
-  const frameRef = useRef<HTMLDivElement | null>(null);
-  const shellRef = useRef<HTMLElement | null>(null);
-  const manuscriptTop = useRef<number | null>(null);
-  const previousHero = useRef(showOpeningHero);
-  const heroFlip = useRef<Animation | null>(null);
-
-  // FLIP the hero collapse: layout jumps to its final state in one pass
-  // (the stylesheet no longer transitions margins or grid rows), and the
-  // shell rides a compositor-only transform from where the manuscript was
-  // to where it now sits. Runs after every commit so the "First" position
-  // is always the previous commit's measurement.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => {
-    const shell = shellRef.current;
-    const frame = frameRef.current;
-    const paper = shell?.querySelector('.manuscript');
-    // Document-relative, so scrolling between commits cannot skew the delta.
-    const nextTop = paper
-      ? paper.getBoundingClientRect().top + window.scrollY
-      : null;
-    const heroChanged = previousHero.current !== showOpeningHero;
-    const firstTop = manuscriptTop.current;
-    manuscriptTop.current = nextTop;
-    previousHero.current = showOpeningHero;
-    if (!heroChanged || !shell || !frame) return;
-    if (firstTop === null || nextTop === null) return;
-    const delta = firstTop - nextTop;
-    if (
-      Math.abs(delta) < 1 ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    )
-      return;
-    heroFlip.current?.cancel();
-    frame.setAttribute('data-hero-collapsing', 'true');
-    const animation = shell.animate(
-      [{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }],
-      { duration: 480, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' },
-    );
-    heroFlip.current = animation;
-    animation.finished
-      .catch(() => {})
-      .finally(() => {
-        if (heroFlip.current === animation)
-          frame.removeAttribute('data-hero-collapsing');
-      });
-  });
+  const showOpeningHero = !storyStarted;
   const usedInteractionIds = new Set(
     session.interactionUses.map(({ interactionId }) => interactionId),
   );
@@ -176,8 +126,6 @@ export function BookExperience({
   // The bulb stays in the header once the agent is connected; it only
   // lights while a move can be made and the page has finished writing.
   const hint = resolveHint(experience, session);
-  const lastHint = useRef(hint);
-  if (hint) lastHint.current = hint;
   const hintAvailable =
     hint !== null && webMCPStatus === 'connected' && !typingActive;
   return (
@@ -188,9 +136,8 @@ export function BookExperience({
       data-story-started={storyStarted || undefined}
       data-story-presentations={activePresentations.join(' ') || undefined}
       data-typing={typingActive || undefined}
-      ref={frameRef}
     >
-      <canvas className="lamp-canvas" aria-hidden="true" ref={lampCanvasRef} />
+      <DeskScene />
       <a className="skip-link" href="#manuscript-content">
         Skip to manuscript
       </a>
@@ -207,15 +154,11 @@ export function BookExperience({
           <StoryHeaderTitle title={experience.title} />
         </div>
         <div className="story-header-actions">
-          <AgentPresence
-            activeTool={activeTool}
-            agentActive={agentActive}
-            experience={experience}
-            onAnnounce={announce}
-            status={webMCPStatus}
-          />
-          {webMCPStatus === 'connected' && lastHint.current ? (
-            <StoryHint disabled={!hintAvailable} hint={lastHint.current} />
+          {webMCPStatus === 'connected' ? (
+            <StoryHint
+              disabled={!hintAvailable}
+              hint={hint ?? 'A hint will appear when the record is ready.'}
+            />
           ) : null}
           <StorySettings
             debugMode={debugMode}
@@ -226,29 +169,20 @@ export function BookExperience({
       <p className="sr-live" aria-live="polite" aria-atomic="true">
         {view.announcement}
       </p>
-      <main
-        className="story-shell"
-        id="manuscript-content"
-        ref={shellRef}
-        tabIndex={-1}
-      >
-        {!showOpeningHero ? (
-          <h1 className="sr-only">{experience.title}</h1>
-        ) : null}
-        <div
-          aria-hidden={showOpeningHero ? undefined : true}
-          className="title-block"
-          data-visible={showOpeningHero || undefined}
-          inert={cluesOpen}
-        >
-          <div className="title-block-content">
-            <h1>{experience.title}</h1>
-            <p className="title-deck">
-              Read the page. Tell your agent what you do. Every discovery can
-              give the page a new way to answer.
-            </p>
+      <main className="story-shell" id="manuscript-content" tabIndex={-1}>
+        {showOpeningHero ? (
+          <div className="title-block" data-visible inert={cluesOpen}>
+            <div className="title-block-content">
+              <h1>{experience.title}</h1>
+              <p className="title-deck">
+                Choose what you do. Your agent writes the next chapter. New
+                discoveries unlock new actions.
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <h1 className="sr-only">{experience.title}</h1>
+        )}
         {/* The clue notebook hangs off the sheet's lower edge once there
             is a written chapter to take notes from; it never crowds the
             header and never lives inside the paginated flow. */}
@@ -259,6 +193,10 @@ export function BookExperience({
           {/* The open notebook sits in the top layer; the page beneath it
               goes inert while the notebook itself stays reachable. */}
           <div className="story-manuscript-content" inert={cluesOpen}>
+            {/* Two earlier sheets under the record: the case file the
+                bookmark is threaded through. */}
+            <div aria-hidden="true" className="sheet-under sheet-under-b" />
+            <div aria-hidden="true" className="sheet-under sheet-under-a" />
             <StoryScroll
               agentActive={agentActive}
               agentFailure={lastFailure}
@@ -266,7 +204,6 @@ export function BookExperience({
               agentRunning={activeTool !== null}
               experience={experience}
               onAnnounce={announce}
-              onPageChange={setCurrentPage}
               onTypingChange={handleTypingChange}
               pageNavigationEnabled={!cluesOpen}
               onRetryConnection={handleRetryConnection}

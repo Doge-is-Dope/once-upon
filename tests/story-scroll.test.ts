@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { StoryScroll } from '../components/frames/book/story-scroll';
+import { StoryScroll } from '../components/frames/desk/sheet';
 import type {
   ExperienceDefinition,
   ExperienceSession,
@@ -132,10 +132,12 @@ describe('agent handoff', () => {
 
     expect(html).toContain('The speaker is waiting.');
     expect(html).toContain(
-      'No agent has spoken yet. Send this to your agent to begin:',
+      'No agent has spoken yet. Copy a starter message for your agent.',
     );
-    expect(html).toContain('Copy example message');
-    expect(html).toContain(experience.startMessage);
+    expect(html).toContain('aria-label="Copy starter"');
+    expect(html).toContain('class="copy-button handoff-copy-button"');
+    expect(html).not.toContain('>Copy starter</button>');
+    expect(html).not.toContain(experience.startMessage);
     expect(html).not.toContain('Room Seven');
     expect(html).not.toContain('the subject');
     expect(html).not.toContain('ChatGPT');
@@ -145,7 +147,7 @@ describe('agent handoff', () => {
     const html = render(baseSession());
 
     expect(html).toContain('What do you inspect first?');
-    expect(html).not.toContain('Copy example message');
+    expect(html).not.toContain('Copy starter');
   });
 
   it('offers a recovery message instead of claiming an absent agent is writing', () => {
@@ -153,9 +155,9 @@ describe('agent handoff', () => {
 
     expect(html).toContain('The chapter is unwritten.');
     expect(html).toContain(
-      'Your move is on the page but nothing followed it. Ask your agent to finish it:',
+      'Your move is on the page but nothing followed it. Copy a message asking your agent to finish the saved turn.',
     );
-    expect(html).toContain('Finish the saved turn first.');
+    expect(html).not.toContain('Finish the saved turn first.');
     expect(html).toContain('class="pending-move"');
     expect(html).toContain(pendingSession().pendingTurn!.playerChoice);
     expect(html).not.toContain('class="writing-marker"');
@@ -166,7 +168,13 @@ describe('agent handoff', () => {
     const resumed = render(committedSession(), { agentActive: false });
 
     expect(resumed).toContain('The room is waiting.');
-    expect(resumed).toContain('Resume Memory test with me through this page.');
+    expect(resumed).toContain(
+      'Your agent has not continued yet. Copy a message to resume.',
+    );
+    expect(resumed).toContain('Copy starter');
+    expect(resumed).not.toContain(
+      'Resume Memory test with me through this page.',
+    );
     expect(resumed).not.toContain('ChatGPT');
   });
 });
@@ -316,7 +324,6 @@ function render(
       agentActive: options.agentActive ?? true,
       experience,
       onAnnounce: () => undefined,
-      onPageChange: () => undefined,
       pageNavigationEnabled: true,
       onRetryConnection: () => undefined,
       session,

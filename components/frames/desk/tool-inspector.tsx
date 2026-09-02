@@ -39,8 +39,8 @@ export function WebMCPInspector({
       </summary>
       <div className="inspector-body">
         <p className="inspector-intro">
-          Three core tools stay for the whole session. Each discovered object
-          adds one tool, which disappears after it is used.
+          Three core tools are always available. Each discovery unlocks a
+          single-use tool.
         </p>
         <ToolGroup label="Active" tools={active} activeTool={activeTool} />
         <ToolGroup label="Pending chapter" tools={pending} />

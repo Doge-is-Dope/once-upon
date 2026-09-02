@@ -1,90 +1,40 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
-import { installModelContextMock, waitForTool } from './support/webmcp-mock';
+import {
+  callTool,
+  installModelContextMock,
+  waitForTool,
+} from './support/webmcp-mock';
 
 const EXPERIENCE_PATH = '/experiences/the-last-manuscript';
 
-test('redacts the first sheet when WebMCP is unavailable', async ({ page }) => {
+test('shows only the outer restriction screen on mobile', async ({ page }) => {
+  await installModelContextMock(page, {
+    dispatchToolChange: true,
+    globalName: '__webMCPTools',
+    registrationBudget: 6,
+  });
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto(EXPERIENCE_PATH);
 
-  const availability = page.locator('[data-webmcp-availability]');
-  await expect(availability).toHaveCount(1);
+  const restriction = page.locator('[data-support-restricted]');
+  await expect(restriction).toHaveCount(1);
   await expect(
     page.getByRole('heading', {
       name: 'Access restricted',
     }),
   ).toBeVisible();
-  await expect(availability).toContainText(
-    'This record can only be continued by an attached agent.',
+  await expect(restriction).toContainText(
+    'Open this record on a larger desktop screen to continue.',
   );
-  await expect(availability).not.toContainText('WebMCP');
-  await expect(availability.getByRole('button')).toHaveCount(0);
-  await expect(page.locator('.agent-presence')).toHaveCount(0);
-  await expect(availability.getByRole('link')).toHaveCount(0);
-  await expect(availability.locator('.webmcp-redaction-group')).toHaveCount(
-    0,
-  );
-
-  // The sheet is censored in place: real prose under real ink.
-  const runs = page.locator('.sheet-pager .redacted-run');
-  expect(await runs.count()).toBeGreaterThan(0);
-  const question = page.locator('.story-chapter > p:nth-of-type(2)');
-  await expect(question).toContainText('Please answer');
-  await expect(question.locator('.redacted-run')).toHaveCount(0);
-  expect(
-    await runs.first().evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { color: style.color, background: style.backgroundColor };
-    }),
-  ).toEqual({ color: 'rgba(0, 0, 0, 0)', background: 'rgb(32, 26, 19)' });
-
-  const sheetWindow = page.locator('.sheet-window');
-  const pager = page.locator('.sheet-pager');
-  expect(
-    await availability.evaluate((element) =>
-      element.parentElement?.classList.contains('sheet-window'),
+  await expect(
+    page.locator(
+      '.frame-book, .sheet-pager, [data-webmcp-availability], button, a, input, textarea, select, [tabindex]',
     ),
-  ).toBe(true);
-  await expect(sheetWindow).toContainText('Access restricted');
-  await expect(pager).toHaveAttribute('inert', '');
-  await expect(page.locator('.sheet-page-indicator')).toContainText('Sheet 01');
-  await expect(page.locator('.story-chapter h2')).toHaveText(
-    'The question at 5:41',
+  ).toHaveCount(0);
+  expect(await page.evaluate(() => window.__webMCPRegistrationHistory)).toEqual(
+    [],
   );
-  await expect(
-    page.getByRole('heading', { name: 'The question at 5:41' }),
-  ).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Previous page' })).toHaveCount(
-    0,
-  );
-  await expect(page.getByRole('button', { name: 'Next page' })).toHaveCount(0);
-
-  const beforeArrow = await pager.evaluate((element) => element.scrollLeft);
-  await page.keyboard.press('ArrowRight');
-  expect(await pager.evaluate((element) => element.scrollLeft)).toBe(
-    beforeArrow,
-  );
-  expect(
-    await pager.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { overflowX: style.overflowX, touchAction: style.touchAction };
-    }),
-  ).toEqual({ overflowX: 'hidden', touchAction: 'none' });
-
-  await expect(page.locator('#your-turn, .writing-marker')).toHaveCount(0);
-  await expect(
-    page.getByRole('button', { name: 'Hint', exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole('button', { name: 'Copy example message' }),
-  ).toHaveCount(0);
-  await expect(page.locator('[role="alert"]')).toHaveCount(0);
-  await expect(page.locator('main')).not.toContainText('ChatGPT');
-  await expect(
-    page.getByRole('button', { name: /^Open clue notebook/ }),
-  ).toHaveCount(0);
-  await expect(page.locator('.story-clues-sheet')).toHaveCount(0);
 
   expect(
     await page.evaluate(
@@ -94,7 +44,7 @@ test('redacts the first sheet when WebMCP is unavailable', async ({ page }) => {
   await page.evaluate(() => {
     document.documentElement.style.zoom = '2';
   });
-  await expect(availability).toBeVisible();
+  await expect(restriction).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -103,6 +53,101 @@ test('redacts the first sheet when WebMCP is unavailable', async ({ page }) => {
 
   const violations = await new AxeBuilder({ page }).analyze();
   expect(violations.violations).toEqual([]);
+});
+
+test('keeps the server restriction screen usable without JavaScript', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 1280, height: 720 },
+  });
+  const page = await context.newPage();
+  await page.goto(EXPERIENCE_PATH);
+
+  await expect(
+    page.getByRole('heading', { name: 'Access restricted' }),
+  ).toBeVisible();
+  await expect(page.locator('[data-support-restricted]')).toContainText(
+    'Open this record on a larger desktop screen to continue.',
+  );
+  await expect(
+    page.locator('button, a, input, textarea, select, [tabindex]'),
+  ).toHaveCount(0);
+  await context.close();
+});
+
+test('uses 640px as the inclusive support boundary', async ({ page }) => {
+  await installModelContextMock(page, {
+    dispatchToolChange: true,
+    globalName: '__webMCPTools',
+    registrationBudget: 6,
+  });
+  await page.setViewportSize({ width: 640, height: 800 });
+  await page.goto(EXPERIENCE_PATH);
+  await expect(page.locator('[data-support-restricted]')).toBeVisible();
+  expect(await page.evaluate(() => window.__webMCPRegistrationHistory)).toEqual(
+    [],
+  );
+
+  await page.setViewportSize({ width: 641, height: 800 });
+  await waitForTool(page, 'get_story_state');
+  await expect(page.locator('[data-support-restricted]')).toHaveCount(0);
+  await expect(page.locator('.frame-book')).toBeVisible();
+});
+
+test('mobile UA remains restricted on a wide viewport', async ({ page }) => {
+  await installModelContextMock(page, {
+    dispatchToolChange: true,
+    globalName: '__webMCPTools',
+    registrationBudget: 6,
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgentData', {
+      configurable: true,
+      value: { brands: [], mobile: true },
+    });
+  });
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await page.goto(EXPERIENCE_PATH);
+  await expect(page.locator('[data-support-restricted]')).toBeVisible();
+  expect(await page.evaluate(() => window.__webMCPRegistrationHistory)).toEqual(
+    [],
+  );
+});
+
+test('unregisters while narrow and restores the same session', async ({
+  page,
+}) => {
+  await installModelContextMock(page, {
+    dispatchToolChange: true,
+    globalName: '__webMCPTools',
+    registrationBudget: 9,
+  });
+  await page.setViewportSize({ width: 800, height: 720 });
+  await page.goto(EXPERIENCE_PATH);
+  await waitForTool(page, 'get_story_state');
+  const before = await callTool<{
+    structuredContent: { state: { sessionId: string } };
+  }>(page, 'get_story_state', {});
+
+  await page.setViewportSize({ width: 640, height: 720 });
+  await expect(page.locator('[data-support-restricted]')).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.__webMCPTools.size))
+    .toBe(0);
+  await expect
+    .poll(() => page.evaluate(() => window.__webMCPAbortHistory.length))
+    .toBe(3);
+
+  await page.setViewportSize({ width: 800, height: 720 });
+  await waitForTool(page, 'get_story_state');
+  const after = await callTool<{
+    structuredContent: { state: { sessionId: string } };
+  }>(page, 'get_story_state', {});
+  expect(after.structuredContent.state.sessionId).toBe(
+    before.structuredContent.state.sessionId,
+  );
 });
 
 test('copies the temporary Chrome flag without a relaunch prompt', async ({
@@ -188,12 +233,8 @@ test('recovers from an initial WebMCP startup error', async ({ page }) => {
   await expect(page.locator('.sr-live')).toHaveText(
     'Your agent can now read and write this record.',
   );
-  await expect(page.locator('.agent-presence')).toHaveAttribute(
-    'data-presence',
-    'waiting',
-  );
   await expect(page.locator('#your-turn')).toHaveCount(1);
-  await expect(page.locator('.sheet-page-indicator')).toContainText('Sheet 01');
+  await expect(page.locator('.sheet-page-indicator')).toContainText('Page 1');
   expect(await page.evaluate(() => window.__webMCPRegistrationHistory)).toEqual(
     ['get_story_state', 'begin_story_turn', 'commit_story_chapter'],
   );

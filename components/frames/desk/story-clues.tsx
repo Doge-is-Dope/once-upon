@@ -1,15 +1,11 @@
 'use client';
 
-/* oxlint-disable jsx-a11y/no-noninteractive-tabindex -- The scrollable clue journal needs a focus target so keyboard users can enter and scroll it. */
+/* oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- The native modal handles Escape; this click handler only dismisses its visual backdrop. */
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { BookOpenTextIcon } from '@phosphor-icons/react/dist/ssr/BookOpenText';
+import { XIcon } from '@phosphor-icons/react/dist/ssr/X';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { derivePlayerClues } from '@/lib/manuscript/clue-journal';
 import type {
   ExperienceDefinition,
@@ -50,9 +46,7 @@ export function StoryClues({
     ReadonlySet<string>
   >(() => prologueClueIds);
   const hasNewClues = clues.some(({ id }) => !acknowledgedClueIds.has(id));
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const sheetRef = useRef<HTMLDialogElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const previousClues = useRef({
     sessionId: session.sessionId,
     ids: new Set(clues.map(({ id }) => id)),
@@ -72,15 +66,14 @@ export function StoryClues({
       onAnnounce(`New clues: ${added.map(({ title }) => title).join(', ')}.`);
   }, [clues, onAnnounce, session.sessionId]);
 
-  useLayoutEffect(() => {
-    const popover = popoverRef.current;
-    if (!popover) return;
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
     if (open) {
-      if (!popover.matches(':popover-open')) popover.showPopover();
-      sheetRef.current?.focus({ preventScroll: true });
+      if (!dialog.open) dialog.showModal();
       return;
     }
-    if (popover.matches(':popover-open')) popover.hidePopover();
+    if (dialog.open) dialog.close();
   }, [open]);
 
   const acknowledgeVisibleClues = useCallback(() => {
@@ -89,43 +82,17 @@ export function StoryClues({
     );
   }, [clues]);
 
-  const close = useCallback(
-    ({ restoreFocus = true }: { restoreFocus?: boolean } = {}) => {
-      acknowledgeVisibleClues();
-      onOpenChange(false);
-      if (restoreFocus)
-        requestAnimationFrame(() => triggerRef.current?.focus());
-    },
-    [acknowledgeVisibleClues, onOpenChange],
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      close();
-    };
-    const handleFocusIn = (event: FocusEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (
-        popoverRef.current?.contains(target) ||
-        triggerRef.current?.contains(target)
-      )
-        return;
-      close({ restoreFocus: false });
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('focusin', handleFocusIn);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('focusin', handleFocusIn);
-    };
-  }, [close, open]);
+  const close = useCallback(() => {
+    acknowledgeVisibleClues();
+    onOpenChange(false);
+  }, [acknowledgeVisibleClues, onOpenChange]);
 
   return (
-    <div className="story-clues-control">
+    <div
+      className="story-clues-control"
+      data-new={hasNewClues || undefined}
+      data-open={open || undefined}
+    >
       <button
         aria-label={
           hasNewClues
@@ -137,45 +104,54 @@ export function StoryClues({
         className="story-clues-trigger"
         data-new={hasNewClues || undefined}
         onClick={() => {
-          if (open) close({ restoreFocus: false });
+          if (open) close();
           else {
             onOpenChange(true);
             onAnnounce(`Notes opened. ${clues.length} found.`);
           }
         }}
-        ref={triggerRef}
         type="button"
       >
-        <span aria-hidden="true" className="story-clues-cover-stitches" />
+        <BookOpenTextIcon aria-hidden="true" size={18} weight="regular" />
         <span className="story-clues-trigger-label">Notes</span>
-        <span aria-hidden="true" className="story-clues-cover-corner" />
+        {hasNewClues ? (
+          <span className="story-clues-new-label">New</span>
+        ) : null}
       </button>
-      <div
+      <dialog
+        aria-describedby={CLUES_DESCRIPTION_ID}
+        aria-labelledby={CLUES_TITLE_ID}
         className="story-clues-popover"
         id={CLUES_POPOVER_ID}
-        onPointerDown={(event) => {
+        onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
-        popover="manual"
-        ref={popoverRef}
+        onClose={() => {
+          acknowledgeVisibleClues();
+          if (open) onOpenChange(false);
+        }}
+        ref={dialogRef}
       >
-        <dialog
-          aria-describedby={CLUES_DESCRIPTION_ID}
-          aria-labelledby={CLUES_TITLE_ID}
-          className="story-clues-sheet"
-          open
-          ref={sheetRef}
-          tabIndex={0}
-        >
+        <div className="story-clues-sheet">
           <p className="sr-only" id={CLUES_DESCRIPTION_ID}>
             Press Escape or click outside the page to close this journal.
           </p>
           <div aria-hidden="true" className="story-clues-binding" />
           <div className="story-clues-sheet-header">
-            <p className="story-clues-eyebrow">
-              Notes from the room · {clues.length} found
-            </p>
-            <h2 id={CLUES_TITLE_ID}>Things I noticed</h2>
+            <div>
+              <p className="story-clues-eyebrow">
+                Notes from the room · {clues.length} found
+              </p>
+              <h2 id={CLUES_TITLE_ID}>Things I noticed</h2>
+            </div>
+            <button
+              aria-label="Close notes"
+              className="story-clues-close"
+              onClick={close}
+              type="button"
+            >
+              <XIcon aria-hidden="true" size={18} />
+            </button>
           </div>
           <ol className="story-clues-list">
             {clues.map((clue) => {
@@ -202,8 +178,8 @@ export function StoryClues({
           <p className="story-clues-footnote">
             Only what I have noticed so far.
           </p>
-        </dialog>
-      </div>
+        </div>
+      </dialog>
     </div>
   );
 }

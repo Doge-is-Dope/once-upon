@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveWebMCPSetupHint,
   type BrowserIdentity,
-} from '../components/frames/book/use-webmcp-connection';
+} from '../components/frames/desk/use-webmcp-connection';
 
 describe('WebMCP browser setup hint', () => {
   it.each([146, 152, 154])(

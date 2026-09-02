@@ -82,23 +82,22 @@ export function StorySettings({
         {showRestartConfirm ? (
           <div className="settings-restart-confirm">
             <p id="settings-restart-question">
-              Start over? This manuscript is erased and the prologue begins
-              again.
+              Erase this manuscript and start again?
             </p>
             <div className="settings-restart-actions">
-              <button
-                className="settings-restart-button is-confirm"
-                type="button"
-                onClick={() => window.location.reload()}
-              >
-                <strong>Start over</strong>
-              </button>
               <button
                 className="settings-restart-button is-cancel"
                 type="button"
                 onClick={() => setConfirmingRestart(false)}
               >
-                <strong>Keep reading</strong>
+                Cancel
+              </button>
+              <button
+                className="settings-restart-button is-confirm"
+                type="button"
+                onClick={() => window.location.reload()}
+              >
+                Start over
               </button>
             </div>
           </div>

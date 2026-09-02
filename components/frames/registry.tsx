@@ -1,4 +1,4 @@
-import { BookExperience } from '@/components/frames/book/book-experience';
+import { DeskExperience } from '@/components/frames/desk/desk-experience';
 import type { ExperienceController } from '@/lib/runtime/controller';
 import type { ExperienceDefinition } from '@/lib/runtime/types';
 
@@ -11,7 +11,7 @@ type FrameRenderer = (
 // definition pairs its frame with a compatible narration format.
 const FRAME_RENDERERS: Record<string, FrameRenderer | undefined> = {
   book: (experience, controller) => (
-    <BookExperience controller={controller} experience={experience} />
+    <DeskExperience controller={controller} experience={experience} />
   ),
 };
 

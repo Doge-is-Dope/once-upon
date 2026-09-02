@@ -7,7 +7,7 @@ import '@fontsource-variable/caveat/wght.css';
 import '@fontsource/courier-prime/400.css';
 import '@fontsource/courier-prime/700.css';
 import './globals.css';
-import '../components/frames/book/styles/living-manuscript.css';
+import '../components/frames/desk/styles/index.css';
 
 export const metadata: Metadata = {
   applicationName: 'Once Upon',
