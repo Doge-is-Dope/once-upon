@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
+import { SECURITY_HEADER_VALUES } from '../lib/security/headers';
 import { makeCompleteShareSubmission } from '../tests/support/share-fixtures';
 import {
   callTool,
@@ -1062,8 +1063,11 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
   expect(experienceHeaders['x-frame-options']).toBe('DENY');
   expect(experienceHeaders['referrer-policy']).toBe('no-referrer');
   expect(experienceHeaders['permissions-policy']).toContain('camera=()');
-  expect(experienceHeaders['content-security-policy']).toContain(
-    "frame-ancestors 'none'",
+  expect(experienceHeaders['content-security-policy']).toBe(
+    SECURITY_HEADER_VALUES['Content-Security-Policy'],
+  );
+  expect(experienceHeaders['strict-transport-security']).toBe(
+    'max-age=31536000',
   );
   const allowedOrigin = new URL(page.url()).origin;
   const clientAddress = `test-${crypto.randomUUID()}`;
