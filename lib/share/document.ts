@@ -7,7 +7,10 @@ import {
 } from '@/lib/manuscript/prose';
 import type { SharedStorySubmissionV2 } from '@/lib/manuscript/read-model';
 import { RUNTIME_LIMITS } from '@/lib/runtime/protocol';
-import type { InteractionEffectReceipt } from '@/lib/runtime/types';
+import type {
+  ExperienceDefinition,
+  InteractionEffectReceipt,
+} from '@/lib/runtime/types';
 
 export const SHARE_LIMITS = {
   maxBytes: 100 * 1024,
@@ -37,11 +40,14 @@ export type SharedStoryDocumentV1 = {
 
 export type SharedRecordText = {
   prose: string[];
-  recordProse: string[];
+  /** Present only for `record` stories. */
+  recordProse?: string[];
 };
 
 export type SharedStoryDocumentV2 = {
   version: 2;
+  /** Absent on documents stored before the field was added. */
+  experienceId?: string;
   title: string;
   createdAt: string;
   expiresAt: string;
@@ -49,12 +55,12 @@ export type SharedStoryDocumentV2 = {
     label: string;
     title: string;
     prose: string[];
-    recordProse: string[];
+    recordProse?: string[];
     effect: null | {
       presentation: InteractionEffectReceipt['presentation'];
       title: string;
       paragraphs: string[];
-      recordParagraphs: string[];
+      recordParagraphs?: string[];
     };
   }>;
   completionPassage: SharedRecordText;
@@ -96,9 +102,14 @@ export function parseSharedStoryDocument(value: string): SharedStoryDocument {
   return document as SharedStoryDocument;
 }
 
+export type ExperienceLookup = (
+  experienceId: string,
+) => ExperienceDefinition | null;
+
 export function validateSharedStorySubmission(
   value: unknown,
   now: number,
+  lookupExperience: ExperienceLookup = getExperience,
 ): ValidatedShare {
   const root = exactRecord(value, [
     'version',
@@ -114,7 +125,7 @@ export function validateSharedStorySubmission(
     throw new ShareValidationError('requestId must be a UUID.');
   if (typeof root.experienceId !== 'string')
     throw new ShareValidationError('Unknown experience.');
-  const experience = getExperience(root.experienceId);
+  const experience = lookupExperience(root.experienceId);
   if (!experience || root.storyId !== experience.story.id)
     throw new ShareValidationError('Unknown experience or story.');
   if (root.status !== 'COMPLETE')
@@ -123,12 +134,13 @@ export function validateSharedStorySubmission(
     throw new ShareValidationError('The manuscript has no chapters.');
   if (root.chapters.length > SHARE_LIMITS.maxChapters)
     throw new ShareValidationError('The manuscript has too many chapters.');
+  const record = experience.story.narration === 'record';
 
   const chapters = root.chapters.map((entry, index) => {
     const chapter = exactRecord(entry, [
       'title',
       'prose',
-      'recordProse',
+      ...(record ? ['recordProse'] : []),
       'effectInteractionId',
     ]);
     const title = boundedText(
@@ -141,12 +153,14 @@ export function validateSharedStorySubmission(
       'chapter prose',
       SHARE_LIMITS.proseMaxLength,
     );
-    const recordProse = boundedText(
-      chapter.recordProse,
-      'chapter recordProse',
-      SHARE_LIMITS.proseMaxLength,
-    );
-    validateRecordPair(prose, recordProse);
+    const recordProse = record
+      ? boundedText(
+          chapter.recordProse,
+          'chapter recordProse',
+          SHARE_LIMITS.proseMaxLength,
+        )
+      : undefined;
+    if (recordProse !== undefined) validateRecordPair(prose, recordProse);
     if (
       chapter.effectInteractionId !== null &&
       typeof chapter.effectInteractionId !== 'string'
@@ -165,18 +179,20 @@ export function validateSharedStorySubmission(
   if (
     prologue.title !== experience.story.prologue.title ||
     prologue.prose !== experience.story.prologue.prose ||
-    prologue.recordProse !== experience.story.prologue.recordProse ||
+    (record &&
+      prologue.recordProse !== experience.story.prologue.recordProse) ||
     prologue.effectInteractionId !== null
   )
     throw new ShareValidationError('The fixed prologue does not match.');
 
   const completion = exactRecord(root.completionPassage, [
     'prose',
-    'recordProse',
+    ...(record ? ['recordProse'] : []),
   ]);
   if (
     completion.prose !== experience.story.completionPassage.prose ||
-    completion.recordProse !== experience.story.completionPassage.recordProse
+    (record &&
+      completion.recordProse !== experience.story.completionPassage.recordProse)
   )
     throw new ShareValidationError(
       'The fixed completion passage does not match.',
@@ -200,6 +216,7 @@ export function validateSharedStorySubmission(
   const expiresAt = new Date(now + SHARE_LIMITS.durationMs).toISOString();
   const document: SharedStoryDocumentV2 = {
     version: 2,
+    experienceId: experience.id,
     title: experience.title,
     createdAt,
     expiresAt,
@@ -213,7 +230,9 @@ export function validateSharedStorySubmission(
         label: formatChapterLabel(index),
         title: chapter.title,
         prose: flattenParagraphBlocks(chapter.prose),
-        recordProse: flattenParagraphBlocks(chapter.recordProse),
+        ...(chapter.recordProse !== undefined
+          ? { recordProse: flattenParagraphBlocks(chapter.recordProse) }
+          : {}),
         effect: interaction
           ? {
               presentation: interaction.presentation,
@@ -221,18 +240,27 @@ export function validateSharedStorySubmission(
               paragraphs: interaction.sealedFacts.flatMap(({ value }) =>
                 flattenParagraphBlocks(value),
               ),
-              recordParagraphs: interaction.sealedFacts.flatMap(
-                ({ recordValue }) => flattenParagraphBlocks(recordValue),
-              ),
+              ...(record
+                ? {
+                    recordParagraphs: interaction.sealedFacts.flatMap(
+                      ({ recordValue }) =>
+                        flattenParagraphBlocks(recordValue ?? ''),
+                    ),
+                  }
+                : {}),
             }
           : null,
       };
     }),
     completionPassage: {
       prose: flattenParagraphBlocks(experience.story.completionPassage.prose),
-      recordProse: flattenParagraphBlocks(
-        experience.story.completionPassage.recordProse,
-      ),
+      ...(record
+        ? {
+            recordProse: flattenParagraphBlocks(
+              experience.story.completionPassage.recordProse ?? '',
+            ),
+          }
+        : {}),
     },
   };
 
@@ -247,13 +275,13 @@ export function validateSharedStorySubmission(
         ({ title, prose, recordProse, effectInteractionId }) => ({
           title,
           prose,
-          recordProse,
+          ...(recordProse !== undefined ? { recordProse } : {}),
           effectInteractionId,
         }),
       ),
       completionPassage: {
         prose: completion.prose as string,
-        recordProse: completion.recordProse as string,
+        ...(record ? { recordProse: completion.recordProse as string } : {}),
       },
     },
     document,

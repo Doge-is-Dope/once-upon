@@ -3,90 +3,39 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { StoryScroll } from '../components/frames/desk/sheet';
 import type {
-  ExperienceDefinition,
   ExperienceSession,
   InteractionEffectReceipt,
   StoryChapter,
 } from '../lib/runtime/types';
+import {
+  fixtureIds,
+  fixtureProtectedTerms,
+  recordFixtureExperience,
+} from './support/fixture-story';
+
+const { story } = recordFixtureExperience;
+const memoryInteraction = story.interactions.find(
+  ({ id }) => id === fixtureIds.interactions.memory,
+)!;
+const [memoryReturn, memorySecond] = memoryInteraction.sealedFacts;
 
 const effectReceipt: InteractionEffectReceipt = {
   receiptId: 'effect_memory',
-  interactionId: 'north_station_memory',
+  interactionId: fixtureIds.interactions.memory,
   presentation: 'memory_flashback',
-  factIds: ['north_station_flashback', 'approved_north_station_account'],
+  factIds: [fixtureIds.facts.memoryReturn, fixtureIds.facts.memorySecond],
   facts: [
-    {
-      id: 'north_station_flashback',
-      value:
-        'The gate reaches the floor before the first shot.\n\nSmoke comes later.',
-    },
-    {
-      id: 'approved_north_station_account',
-      value:
-        'An equipment fire occurred. The evacuation was successful. No one died.',
-    },
+    { id: fixtureIds.facts.memoryReturn, value: memoryReturn!.value },
+    { id: fixtureIds.facts.memorySecond, value: memorySecond!.value },
   ],
   createdAt: 2,
 };
 
-const experience: ExperienceDefinition = {
-  id: 'memory-test',
-  title: 'Memory test',
-  frame: { id: 'book' },
-  startMessage: 'Start.',
-  agentContract: { version: 'memory-test-agent-v1', instructions: 'Continue.' },
-  story: {
-    id: 'memory-test-v1',
-    prologue: {
-      title: 'The room',
-      prose: 'The question waits.',
-      recordProse: 'The question waits.',
-      continuitySummary: 'The question waits.',
-    },
-    clues: [],
-    completionPassage: {
-      prose: 'You leave the room and keep walking.',
-      recordProse: 'The subject leaves the room and continues walking.',
-    },
-    discoveryIds: [],
-    discoveryRequirements: [],
-    completionRequiredFactIds: [],
-    interactions: [
-      {
-        id: 'north_station_memory',
-        toolName: 'follow_north_station_memory',
-        title: 'The North Station Memory',
-        description: 'Follow the memory.',
-        cue: 'Close your eyes.',
-        requiredDiscoveryIds: [],
-        requiredInteractionIds: [],
-        requiredFactIds: [],
-        sealedFacts: [
-          {
-            id: 'north_station_flashback',
-            value: effectReceipt.facts[0]!.value,
-            recordValue: effectReceipt.facts[0]!.value,
-            protectedTerms: [],
-          },
-          {
-            id: 'approved_north_station_account',
-            value: effectReceipt.facts[1]!.value,
-            recordValue: effectReceipt.facts[1]!.value,
-            protectedTerms: [],
-          },
-        ],
-        presentation: 'memory_flashback',
-        completionPolicy: 'must_complete',
-      },
-    ],
-  },
-};
-
 const prologue: StoryChapter = {
   id: 'chapter_prologue',
-  title: 'The room',
-  prose: 'The question waits.',
-  recordProse: 'The question waits.',
+  title: story.prologue.title,
+  prose: story.prologue.prose,
+  recordProse: story.prologue.recordProse,
   createdAt: 1,
   turnId: null,
   discoveryIds: [],
@@ -100,7 +49,7 @@ describe('memory flashback presentation', () => {
     expect(occurrences(html, 'class="memory-flashback"')).toBe(1);
     expect(html).toContain('<h3>Memory</h3>');
     expect(html).toContain('data-effect-receipt="effect_memory"');
-    expect(html).not.toContain('An equipment fire occurred.');
+    expect(html).not.toContain(fixtureProtectedTerms.memorySecond);
     expect(html.indexOf('class="memory-flashback')).toBeLessThan(
       html.indexOf('class="writing-marker"'),
     );
@@ -130,15 +79,15 @@ describe('agent handoff', () => {
   it('offers one short optional example before the first agent call', () => {
     const html = render(baseSession(), { agentActive: false });
 
-    expect(html).toContain('The speaker is waiting.');
+    expect(html).toContain('The page is waiting.');
     expect(html).toContain(
       'No agent has spoken yet. Copy a starter message for your agent.',
     );
     expect(html).toContain('aria-label="Copy starter"');
     expect(html).toContain('class="copy-button handoff-copy-button"');
     expect(html).not.toContain('>Copy starter</button>');
-    expect(html).not.toContain(experience.startMessage);
-    expect(html).not.toContain('Room Seven');
+    expect(html).not.toContain(recordFixtureExperience.startMessage);
+    expect(html).not.toContain(fixtureProtectedTerms.panelTruth);
     expect(html).not.toContain('the subject');
     expect(html).not.toContain('ChatGPT');
   });
@@ -146,7 +95,7 @@ describe('agent handoff', () => {
   it('removes the handoff after the agent touches the page', () => {
     const html = render(baseSession());
 
-    expect(html).toContain('What do you inspect first?');
+    expect(html).toContain('What do you do first?');
     expect(html).not.toContain('Copy starter');
   });
 
@@ -167,13 +116,13 @@ describe('agent handoff', () => {
   it('offers a later resume message when agent tools are ready', () => {
     const resumed = render(committedSession(), { agentActive: false });
 
-    expect(resumed).toContain('The room is waiting.');
+    expect(resumed).toContain('The page is waiting.');
     expect(resumed).toContain(
       'Your agent has not continued yet. Copy a message to resume.',
     );
     expect(resumed).toContain('Copy starter');
     expect(resumed).not.toContain(
-      'Resume Memory test with me through this page.',
+      `Resume ${recordFixtureExperience.title} with me through this page.`,
     );
     expect(resumed).not.toContain('ChatGPT');
   });
@@ -262,14 +211,14 @@ describe('WebMCP availability', () => {
   });
 
   it('censors the sheet in place while the gate is up', () => {
+    // The fixture prologue has three paragraphs: the voice's question
+    // stays legible, the second keeps its first four words, the last is
+    // inked over entirely.
     const session = baseSession();
-    session.chapters = [
-      {
-        ...prologue,
-        prose:
-          'The question waits.\n\nOn the desk is an open notebook, its jagged edge in the lamplight.\n\nThe ventilation rattles, then falls still.',
-      },
-    ];
+    const [question, desk, click] = paragraphsOf(story.prologue.prose);
+    const visibleLead = 'The question wakes you ';
+    expect(desk!.startsWith(visibleLead)).toBe(true);
+
     const restricted = render(session, {
       agentActive: false,
       status: 'unsupported',
@@ -277,12 +226,12 @@ describe('WebMCP availability', () => {
     expect(restricted).toContain('data-restricted="unsupported"');
     expect(restricted).not.toContain('webmcp-redaction');
     expect(occurrences(restricted, 'class="redacted-run"')).toBe(2);
-    expect(restricted).toContain('<p>The question waits.</p>');
+    expect(restricted).toContain(`<p>${question}</p>`);
     expect(restricted).toContain(
-      '<p>On the desk is <span class="redacted-run">an open notebook, its jagged edge in the lamplight.</span></p>',
+      `<p>${visibleLead}<span class="redacted-run">${desk!.slice(visibleLead.length)}</span></p>`,
     );
     expect(restricted).toContain(
-      '<p><span class="redacted-run">The ventilation rattles, then falls still.</span></p>',
+      `<p><span class="redacted-run">${click}</span></p>`,
     );
 
     const open = render(session);
@@ -292,10 +241,12 @@ describe('WebMCP availability', () => {
 
   it('keeps a completed manuscript available without WebMCP', () => {
     const html = render(completeSession(), { status: 'unsupported' });
+    const recordEnding = paragraphsOf(story.completionPassage.recordProse!).at(
+      -1,
+    )!;
 
-    expect(html).toContain(
-      'The subject leaves the room and continues walking.',
-    );
+    expect(recordEnding).toContain('The subject continues walking.');
+    expect(html).toContain(recordEnding);
     expect(html).not.toContain('<del>');
     expect(html).not.toContain('<ins>');
     expect(html).not.toContain('record-revision');
@@ -322,7 +273,7 @@ function render(
   return renderToStaticMarkup(
     createElement(StoryScroll, {
       agentActive: options.agentActive ?? true,
-      experience,
+      experience: recordFixtureExperience,
       onAnnounce: () => undefined,
       pageNavigationEnabled: true,
       onRetryConnection: () => undefined,
@@ -340,6 +291,10 @@ function availabilityMarkup(html: string): string {
   return html.slice(start, end + '</section>'.length);
 }
 
+function paragraphsOf(text: string): string[] {
+  return text.split(/\n\s*\n/);
+}
+
 function pendingSession(): ExperienceSession {
   return {
     ...baseSession(),
@@ -347,7 +302,7 @@ function pendingSession(): ExperienceSession {
     phase: 'AWAITING_CHAPTER',
     interactionUses: [
       {
-        interactionId: 'north_station_memory',
+        interactionId: fixtureIds.interactions.memory,
         status: 'pending',
         invokedAt: 2,
         retiredAt: null,
@@ -357,9 +312,9 @@ function pendingSession(): ExperienceSession {
     pendingTurn: {
       turnId: 'turn_memory',
       kind: 'interaction',
-      playerChoice: 'I follow the announcement.',
+      playerChoice: 'I close my eyes and begin with the bell.',
       createdAt: 2,
-      interactionId: 'north_station_memory',
+      interactionId: fixtureIds.interactions.memory,
       effectReceipt,
     },
   };
@@ -395,7 +350,7 @@ function committedSession(): ExperienceSession {
     ],
     interactionUses: [
       {
-        interactionId: 'north_station_memory',
+        interactionId: fixtureIds.interactions.memory,
         status: 'retired',
         invokedAt: 2,
         retiredAt: 3,
@@ -411,25 +366,25 @@ function completeSession(): ExperienceSession {
 
 function baseSession(): ExperienceSession {
   return {
-    experienceId: experience.id,
-    storyId: experience.story.id,
+    experienceId: recordFixtureExperience.id,
+    storyId: story.id,
     sessionId: 'session_memory',
     revision: 1,
     phase: 'READY',
-    continuitySummary: 'The question waits.',
+    continuitySummary: story.prologue.continuitySummary,
     chapters: [prologue],
     discoveries: [],
     facts: [
       {
-        id: 'north_station_flashback',
-        value: effectReceipt.facts[0]!.value,
-        revealedByInteractionId: 'north_station_memory',
+        id: fixtureIds.facts.memoryReturn,
+        value: memoryReturn!.value,
+        revealedByInteractionId: fixtureIds.interactions.memory,
         revealedAt: 2,
       },
       {
-        id: 'approved_north_station_account',
-        value: effectReceipt.facts[1]!.value,
-        revealedByInteractionId: 'north_station_memory',
+        id: fixtureIds.facts.memorySecond,
+        value: memorySecond!.value,
+        revealedByInteractionId: fixtureIds.interactions.memory,
         revealedAt: 2,
       },
     ],

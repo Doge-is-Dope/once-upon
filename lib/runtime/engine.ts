@@ -58,7 +58,9 @@ export function createExperienceSession(
     id: context.id('chapter'),
     title: definition.story.prologue.title,
     prose: definition.story.prologue.prose,
-    recordProse: definition.story.prologue.recordProse,
+    ...(definition.story.narration === 'record'
+      ? { recordProse: definition.story.prologue.recordProse }
+      : {}),
     createdAt: context.now(),
     turnId: null,
     discoveryIds: [],
@@ -446,7 +448,7 @@ export function commitStoryChapter(
         session,
       ),
     );
-  const contentError = validateChapterContent(input);
+  const contentError = validateChapterContent(definition, input);
   if (contentError)
     return unchanged(
       session,
@@ -483,7 +485,7 @@ export function commitStoryChapter(
   const leak = findSealedLeak(
     definition,
     session,
-    `${input.title}\n${input.prose}\n${input.recordProse}\n${input.continuitySummary}`,
+    `${input.title}\n${input.prose}\n${input.recordProse ?? ''}\n${input.continuitySummary}`,
   );
   if (leak)
     return unchanged(
@@ -581,7 +583,9 @@ export function commitStoryChapter(
     id: context.id('chapter'),
     title: input.title.trim(),
     prose: normalizeParagraphs(input.prose),
-    recordProse: normalizeParagraphs(input.recordProse),
+    ...(definition.story.narration === 'record' && input.recordProse
+      ? { recordProse: normalizeParagraphs(input.recordProse) }
+      : {}),
     createdAt: now,
     turnId: pending.turnId,
     discoveryIds: [...new Set(input.discoveryIds)],
@@ -717,7 +721,11 @@ function validateSessionIdentity(
   return null;
 }
 
-function validateChapterContent(input: CommitStoryChapterInput): string | null {
+function validateChapterContent(
+  definition: ExperienceDefinition,
+  input: CommitStoryChapterInput,
+): string | null {
+  const record = definition.story.narration === 'record';
   if (
     !input.title?.trim() ||
     input.title.trim().length > RUNTIME_LIMITS.chapterTitleMaxLength
@@ -725,28 +733,31 @@ function validateChapterContent(input: CommitStoryChapterInput): string | null {
     return 'Use a short chapter title of 80 characters or fewer.';
   if (hasSecondPersonPronoun(input.title))
     return 'Use a neutral chapter title without second-person pronouns.';
-  if (!input.prose?.trim() || !input.recordProse?.trim())
-    return 'Provide both the player-facing prose and its official recordProse.';
+  if (!record && input.recordProse !== undefined)
+    return 'This story keeps no official record; omit recordProse.';
+  if (!input.prose?.trim() || (record && !input.recordProse?.trim()))
+    return record
+      ? 'Provide both the player-facing prose and its official recordProse.'
+      : 'Provide the player-facing prose.';
   const paragraphs = splitParagraphBlocks(input.prose);
-  const recordParagraphs = splitParagraphBlocks(input.recordProse);
   if (
     paragraphs.length < 1 ||
     paragraphs.length > RUNTIME_LIMITS.chapterParagraphsMax
   )
     return 'Write 1–3 short prose paragraphs.';
-  if (recordParagraphs.length !== paragraphs.length)
-    return 'prose and recordProse must use the same number of paragraphs.';
   const words = wordCount(input.prose);
-  const recordWords = wordCount(input.recordProse);
-  if (
-    words < 20 ||
-    words > RUNTIME_LIMITS.chapterWordsMax ||
-    recordWords < 20 ||
-    recordWords > RUNTIME_LIMITS.chapterWordsMax
-  )
+  if (words < 20 || words > RUNTIME_LIMITS.chapterWordsMax)
     return `Keep the chapter between 20 and ${RUNTIME_LIMITS.chapterWordsMax} words.`;
-  if (hasSecondPersonPronoun(input.recordProse))
-    return 'recordProse must not contain second-person pronouns.';
+  if (record && input.recordProse) {
+    const recordParagraphs = splitParagraphBlocks(input.recordProse);
+    if (recordParagraphs.length !== paragraphs.length)
+      return 'prose and recordProse must use the same number of paragraphs.';
+    const recordWords = wordCount(input.recordProse);
+    if (recordWords < 20 || recordWords > RUNTIME_LIMITS.chapterWordsMax)
+      return `Keep the chapter between 20 and ${RUNTIME_LIMITS.chapterWordsMax} words.`;
+    if (hasSecondPersonPronoun(input.recordProse))
+      return 'recordProse must not contain second-person pronouns.';
+  }
   if (
     !input.continuitySummary?.trim() ||
     input.continuitySummary.length > RUNTIME_LIMITS.summaryMaxLength

@@ -2,6 +2,7 @@ import type {
   ExperienceDefinition,
   ExperienceSession,
   InteractionEffectReceipt,
+  StoryNarration,
 } from '@/lib/runtime/types';
 import {
   formatChapterLabel,
@@ -14,7 +15,7 @@ export type ManuscriptEffect = {
   interactionId: string;
   presentation: InteractionEffectReceipt['presentation'];
   title: string;
-  facts: Array<{ id: string; value: string; recordValue: string }>;
+  facts: Array<{ id: string; value: string; recordValue?: string }>;
 };
 
 export type ManuscriptChapterBlock = {
@@ -22,7 +23,7 @@ export type ManuscriptChapterBlock = {
   label: string;
   title: string;
   prose: string;
-  recordProse: string;
+  recordProse?: string;
   effect: ManuscriptEffect | null;
 };
 
@@ -30,9 +31,10 @@ export type ManuscriptReadModel = {
   version: 2;
   experienceId: string;
   storyId: string;
+  narration: StoryNarration;
   title: string;
   chapters: ManuscriptChapterBlock[];
-  completionPassage: { prose: string; recordProse: string };
+  completionPassage: { prose: string; recordProse?: string };
 };
 
 export type SharedStorySubmissionV1 = {
@@ -57,10 +59,11 @@ export type SharedStorySubmissionV2 = {
   chapters: Array<{
     title: string;
     prose: string;
-    recordProse: string;
+    /** Present only for `record` stories. */
+    recordProse?: string;
     effectInteractionId: string | null;
   }>;
-  completionPassage: { prose: string; recordProse: string };
+  completionPassage: { prose: string; recordProse?: string };
 };
 
 export function deriveManuscriptReadModel(
@@ -72,13 +75,16 @@ export function deriveManuscriptReadModel(
     version: 2,
     experienceId: experience.id,
     storyId: experience.story.id,
+    narration: experience.story.narration,
     title: experience.title,
     chapters: session.chapters.map((chapter, index) => ({
       id: chapter.id,
       label: formatChapterLabel(index),
       title: chapter.title,
       prose: chapter.prose,
-      recordProse: chapter.recordProse,
+      ...(chapter.recordProse !== undefined
+        ? { recordProse: chapter.recordProse }
+        : {}),
       effect: effects.get(chapter.id) ?? null,
     })),
     completionPassage: experience.story.completionPassage,
@@ -104,7 +110,15 @@ export function resolveChapterEffects(
     if (!interaction) continue;
     const facts = interaction.sealedFacts.flatMap(({ id, recordValue }) => {
       const fact = session.facts.find((candidate) => candidate.id === id);
-      return fact ? [{ id: fact.id, value: fact.value, recordValue }] : [];
+      return fact
+        ? [
+            {
+              id: fact.id,
+              value: fact.value,
+              ...(recordValue !== undefined ? { recordValue } : {}),
+            },
+          ]
+        : [];
     });
     seenReceipts.add(chapter.effectReceiptId);
     effects.set(chapter.id, {
@@ -130,12 +144,15 @@ export function effectFromReceipt(
     interactionId: receipt.interactionId,
     presentation: receipt.presentation,
     title: interaction?.title ?? 'Story effect',
-    facts: receipt.facts.map((fact) => ({
-      ...fact,
-      recordValue:
-        interaction?.sealedFacts.find(({ id }) => id === fact.id)
-          ?.recordValue ?? fact.value,
-    })),
+    facts: receipt.facts.map((fact) => {
+      const recordValue = interaction?.sealedFacts.find(
+        ({ id }) => id === fact.id,
+      )?.recordValue;
+      return {
+        ...fact,
+        ...(recordValue !== undefined ? { recordValue } : {}),
+      };
+    }),
   };
 }
 
@@ -143,9 +160,13 @@ export function manuscriptToText(model: ManuscriptReadModel): string {
   const completionParagraphs = splitParagraphBlocks(
     model.completionPassage.prose,
   );
-  const recordCompletionParagraphs = splitParagraphBlocks(
-    model.completionPassage.recordProse,
-  );
+  const ending =
+    model.completionPassage.recordProse !== undefined
+      ? resolveRecordedEnding(
+          completionParagraphs,
+          splitParagraphBlocks(model.completionPassage.recordProse),
+        )
+      : completionParagraphs;
   return [
     model.title,
     ...model.chapters.flatMap((chapter) => [
@@ -158,7 +179,7 @@ export function manuscriptToText(model: ManuscriptReadModel): string {
         : []),
       chapter.prose,
     ]),
-    ...resolveRecordedEnding(completionParagraphs, recordCompletionParagraphs),
+    ...ending,
   ]
     .map((part) => part.trim())
     .filter(Boolean)
@@ -169,6 +190,9 @@ export function createSharedStorySubmission(
   model: ManuscriptReadModel,
   requestId: string,
 ): SharedStorySubmissionV2 {
+  // The server checks exact key sets, so record keys appear only when the
+  // story keeps a record.
+  const record = model.narration === 'record';
   return {
     version: 2,
     requestId,
@@ -178,9 +202,14 @@ export function createSharedStorySubmission(
     chapters: model.chapters.map(({ title, prose, recordProse, effect }) => ({
       title,
       prose,
-      recordProse,
+      ...(record && recordProse !== undefined ? { recordProse } : {}),
       effectInteractionId: effect?.interactionId ?? null,
     })),
-    completionPassage: model.completionPassage,
+    completionPassage: {
+      prose: model.completionPassage.prose,
+      ...(record && model.completionPassage.recordProse !== undefined
+        ? { recordProse: model.completionPassage.recordProse }
+        : {}),
+    },
   };
 }

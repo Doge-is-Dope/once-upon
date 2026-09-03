@@ -65,8 +65,21 @@ const TURN_INPUT_SCHEMA = {
   ],
   additionalProperties: false,
 };
-const LIVING_MANUSCRIPT_PROTOCOL =
-  "The webpage is the canonical story. Read its state before every player turn. If the state is AWAITING_CHAPTER, commit that exact pending turn before any narrative, question, or new action. If it is READY and the user's latest message already contains an explicit character action, carry it out immediately instead of asking them to repeat it. Use a currently available story-object tool only when that latest message explicitly performs the action in its description; a mention, question, or recollection is not permission to consume it. Otherwise use begin_story_turn with the player's choice verbatim. After either mutation, call commit_story_chapter in the same assistant response and put all 1–3 prose paragraphs there. Submit an equivalent official recordProse with identical events and paragraph structure, changing every second-person reference—including quotations, notes, and testimony—to grammatically complete third-person references to the subject. Never add a new event or reveal the hidden rewrite. Never leave new story prose only in chat. Do not reply with narrative or another question until the commit succeeds. After a successful commit the page reveals the chapter at reading speed and the player reads it there; never paste, paraphrase, or summarize the saved prose in chat. Reply with one short line inviting the next move. If the user has not supplied a character action, ask what they do.";
+const PROTOCOL_BEFORE_RECORD =
+  "The webpage is the canonical story. Read its state before every player turn. If the state is AWAITING_CHAPTER, commit that exact pending turn before any narrative, question, or new action. If it is READY and the user's latest message already contains an explicit character action, carry it out immediately instead of asking them to repeat it. Use a currently available story-object tool only when that latest message explicitly performs the action in its description; a mention, question, or recollection is not permission to consume it. Otherwise use begin_story_turn with the player's choice verbatim. After either mutation, call commit_story_chapter in the same assistant response and put all 1–3 prose paragraphs there.";
+const PROTOCOL_RECORD_LAYER =
+  'Submit an equivalent official recordProse with identical events and paragraph structure, changing every second-person reference—including quotations, notes, and testimony—to grammatically complete third-person references to the subject. Never add a new event or reveal the hidden rewrite.';
+const PROTOCOL_PROSE_ONLY = 'Never add a new event.';
+const PROTOCOL_AFTER_RECORD =
+  'Never leave new story prose only in chat. Do not reply with narrative or another question until the commit succeeds. After a successful commit the page reveals the chapter at reading speed and the player reads it there; never paste, paraphrase, or summarize the saved prose in chat. Reply with one short line inviting the next move. If the user has not supplied a character action, ask what they do.';
+
+/** The shared turn protocol, with the record-layer sentences only for stories that keep one. */
+export function livingManuscriptProtocol(
+  definition: ExperienceDefinition,
+): string {
+  const record = definition.story.narration === 'record';
+  return `${PROTOCOL_BEFORE_RECORD} ${record ? PROTOCOL_RECORD_LAYER : PROTOCOL_PROSE_ONLY} ${PROTOCOL_AFTER_RECORD}`;
+}
 
 export type ToolActivity =
   | { toolName: string; phase: 'invoked' }
@@ -301,13 +314,17 @@ function makeTool(
             maxLength: RUNTIME_LIMITS.chapterTextMaxLength,
             description: 'One to three short story paragraphs.',
           },
-          recordProse: {
-            type: 'string',
-            minLength: 20,
-            maxLength: RUNTIME_LIMITS.chapterTextMaxLength,
-            description:
-              'The same events and paragraph structure as prose, rewritten as a grammatically complete official record using the subject and no second-person pronouns.',
-          },
+          ...(controller.definition.story.narration === 'record'
+            ? {
+                recordProse: {
+                  type: 'string',
+                  minLength: 20,
+                  maxLength: RUNTIME_LIMITS.chapterTextMaxLength,
+                  description:
+                    'The same events and paragraph structure as prose, rewritten as a grammatically complete official record using the subject and no second-person pronouns.',
+                },
+              }
+            : {}),
           continuitySummary: {
             type: 'string',
             minLength: 1,
@@ -353,7 +370,9 @@ function makeTool(
           'turnId',
           'title',
           'prose',
-          'recordProse',
+          ...(controller.definition.story.narration === 'record'
+            ? ['recordProse']
+            : []),
           'continuitySummary',
           'discoveryIds',
           'status',
@@ -433,6 +452,7 @@ function readChapter(
   controller: ExperienceController,
   raw: Record<string, unknown>,
 ): CommitStoryChapterInput {
+  const record = controller.definition.story.narration === 'record';
   requireExactObject(
     raw,
     [
@@ -442,7 +462,7 @@ function readChapter(
       'turnId',
       'title',
       'prose',
-      'recordProse',
+      ...(record ? ['recordProse'] : []),
       'continuitySummary',
       'discoveryIds',
       'status',
@@ -488,11 +508,15 @@ function readChapter(
       'prose',
       RUNTIME_LIMITS.chapterTextMaxLength,
     ),
-    recordProse: requiredString(
-      raw.recordProse,
-      'recordProse',
-      RUNTIME_LIMITS.chapterTextMaxLength,
-    ),
+    ...(record
+      ? {
+          recordProse: requiredString(
+            raw.recordProse,
+            'recordProse',
+            RUNTIME_LIMITS.chapterTextMaxLength,
+          ),
+        }
+      : {}),
     continuitySummary: requiredString(
       raw.continuitySummary,
       'continuitySummary',
@@ -545,7 +569,7 @@ function webMCPResult(
           : `Chapter saved at revision ${result.state.revision}. The page is typing it now (about ${describeTypingSeconds(typingMs ?? 0)} s) and the player is reading it there. Do not repeat or summarize it in chat. Reply with one short line inviting the next move.`
         : result.turnId
           ? `Player choice saved as turn ${result.turnId}. REQUIRED NEXT: call commit_story_chapter now, before any narrative or question. The player sees their move on the page and is waiting for the chapter.`
-          : stateGuidance(result.state)
+          : stateGuidance(definition, result.state)
     : `${result.code}: ${result.message}${result.state?.phase === 'AWAITING_CHAPTER' ? ' Do not narrate or ask a new question; finish the pending chapter first.' : ''}`;
   return {
     content: [{ type: 'text', text }],
@@ -559,8 +583,11 @@ function webMCPResult(
   };
 }
 
-function stateGuidance(state: StoryStateSnapshot): string {
-  const contract = `${LIVING_MANUSCRIPT_PROTOCOL} Story contract ${state.bootstrap.contractVersion}: ${state.bootstrap.instructions}`;
+function stateGuidance(
+  definition: ExperienceDefinition,
+  state: StoryStateSnapshot,
+): string {
+  const contract = `${livingManuscriptProtocol(definition)} Story contract ${state.bootstrap.contractVersion}: ${state.bootstrap.instructions}`;
   if (state.phase === 'AWAITING_CHAPTER' && state.pending)
     return `${contract}\n\nA chapter is pending. Commit turn ${state.pending.turnId} before any narrative, question, or new action.`;
   if (state.phase === 'COMPLETE')

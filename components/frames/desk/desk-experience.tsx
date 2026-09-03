@@ -4,13 +4,16 @@ import Image from 'next/image';
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
+import { resolveBookCopy } from '@/lib/frames/book';
 import type { ExperienceController } from '@/lib/runtime/controller';
 import { availableInteractions } from '@/lib/runtime/engine';
 import type {
+  BookFrameCopy,
   ExperienceDefinition,
   ExperienceSession,
 } from '@/lib/runtime/types';
@@ -125,7 +128,8 @@ export function DeskExperience({
   ];
   // The bulb stays in the header once the agent is connected; it only
   // lights while a move can be made and the page has finished writing.
-  const hint = resolveHint(experience, session);
+  const copy = useMemo(() => resolveBookCopy(experience.frame), [experience]);
+  const hint = resolveHint(experience, copy, session);
   const hintAvailable =
     hint !== null && webMCPStatus === 'connected' && !typingActive;
   return (
@@ -253,14 +257,15 @@ function useQuietAgent(pending: boolean, since: number | null): boolean {
 
 function resolveHint(
   experience: ExperienceDefinition,
+  copy: BookFrameCopy,
   session: ExperienceSession,
 ): string | null {
   if (session.phase !== 'READY') return null;
   const interaction = availableInteractions(experience, session)[0];
   if (interaction) return interaction.cue;
   return session.chapters.length === 1
-    ? 'Look closer at something on the page, answer the speaker, or test the door.'
-    : 'Follow a detail from the latest chapter, revisit an earlier clue, or try something unexpected.';
+    ? copy.hint.opening
+    : copy.hint.continuing;
 }
 
 function connectionAnnouncement(status: WebMCPStatus): string {

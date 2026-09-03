@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { describeRevision } from '../components/frames/desk/use-session-view';
 import { applyActivity } from '../components/frames/desk/use-webmcp-connection';
-import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
 import { createExperienceSession } from '../lib/runtime/engine';
 import { testContext } from './helpers';
+import { recordFixtureExperience } from './support/fixture-story';
 
 describe('agent activity', () => {
   it('tracks concurrent tool calls without dropping the running state early', () => {
@@ -31,7 +31,10 @@ describe('agent activity', () => {
   });
 
   it('announces the move, the chapter, and the objects the agent used', () => {
-    const before = createExperienceSession(experienceDefinition, testContext());
+    const before = createExperienceSession(
+      recordFixtureExperience,
+      testContext(),
+    );
     const awaiting = structuredClone(before);
     awaiting.revision += 1;
     awaiting.phase = 'AWAITING_CHAPTER';
@@ -43,9 +46,9 @@ describe('agent activity', () => {
       interactionId: null,
       effectReceipt: null,
     };
-    expect(describeRevision(before, awaiting)).toContain(
-      'Your move is on the page',
-    );
+    expect(
+      describeRevision(recordFixtureExperience, before, awaiting),
+    ).toContain('Your move is on the page');
 
     const written = structuredClone(before);
     written.revision += 2;
@@ -59,22 +62,31 @@ describe('agent activity', () => {
       discoveryIds: [],
       effectReceiptId: null,
     });
-    expect(describeRevision(before, written)).toBe(
+    expect(describeRevision(recordFixtureExperience, before, written)).toBe(
       'Chapter 1 added: The handleless door.',
     );
 
-    const pencil = structuredClone(awaiting);
-    pencil.pendingTurn!.kind = 'interaction';
-    pencil.pendingTurn!.effectReceipt = {
+    // The fixture declares no announcement on its interactions, so the
+    // receipt falls back to the presentation's default wording.
+    const drawer = structuredClone(awaiting);
+    drawer.pendingTurn!.kind = 'interaction';
+    drawer.pendingTurn!.effectReceipt = {
       receiptId: 'receipt_1',
-      interactionId: 'pressed_words',
+      interactionId: 'drawer',
       presentation: 'pressed_writing',
       factIds: [],
       facts: [],
       createdAt: 3,
     };
-    expect(describeRevision(before, pencil)).toBe(
-      'The pencil has raised words on the notepad.',
+    expect(describeRevision(recordFixtureExperience, before, drawer)).toBe(
+      'Pressed writing has surfaced on the page.',
+    );
+
+    const unknown = structuredClone(drawer);
+    unknown.pendingTurn!.effectReceipt!.interactionId = 'not_authored';
+    unknown.pendingTurn!.effectReceipt!.presentation = 'memory_flashback';
+    expect(describeRevision(recordFixtureExperience, before, unknown)).toBe(
+      'A memory has been added to the manuscript.',
     );
   });
 });

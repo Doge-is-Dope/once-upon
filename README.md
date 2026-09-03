@@ -22,11 +22,11 @@ For example:
 > Play The Last Manuscript with me through this page. I look around the room
 > before answering the speaker.
 
-The page offers this short starter as an optional copy helper (from the agent
-status in the header and from the page itself); there is no setup prompt to
-paste. The header also shows what the agent is doing — reading, writing, or
-using a discovered object — and the page echoes each move you make while your
-agent writes the chapter.
+The page offers this starter through an optional **Copy starter** button on the
+sheet; there is no setup prompt to paste. The sheet shows when your agent is
+writing the next chapter or writing what follows after an object changes the
+page, and it echoes each move while that chapter is pending. The desk lamp
+brightens after the agent joins and breathes while a page tool is running.
 
 [WebMCP](https://webmachinelearning.github.io/webmcp/) is an evolving browser
 API for exposing page tools to agents. Availability depends on the browser or
@@ -42,20 +42,25 @@ The Memory         → follow one North Station memory when the player chooses t
 The Last Manuscript → read the testimony hidden behind the wardrobe
 ```
 
-The final page opens the room onto a larger system, then stops before the player
-chooses what to do.
+The final authored reveal opens the room onto a larger system. After the agent's
+final chapter, a fixed closing passage carries the subject out of the building,
+and the manuscript stops before the player's next choice.
 
-Judges can enable **Settings → Tool inspector** to inspect the real tool
-lifecycle. The panel stays out of the player experience by default.
+Enable **Settings → Tool inspector** to watch the current tool surface and
+lifecycle — prerequisites, registration, invocation, and retirement. The panel
+stays out of the player experience by default.
 
 ## Human + AI + page
 
-| Player                                                              | AI                                                 | Page                                                                                                          |
-| ------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Chooses what the character does and when to use a discovered object | Freely continues the story in 1–3 short paragraphs | Holds authored secrets, keeps a stable core surface, unlocks story-object tools, and preserves the manuscript |
+- **Player** chooses what the character does and when to use a discovered
+  object.
+- **AI** freely continues the story in 1–3 short paragraphs.
+- **Page** holds authored secrets, keeps a stable core surface, unlocks
+  story-object tools, and preserves the manuscript.
 
-An interaction changes the page before AI writes the chapter. Its exact effect
-receipt stays in the current page's memory until that chapter is committed.
+Using a story object changes the page before the agent writes the chapter. The
+page keeps that exact effect in memory until the matching chapter is committed,
+and the commit must reference the same effect and every fact it revealed.
 Reloading, closing the tab, or choosing Start over opens the prologue again.
 
 The page paces the story. A committed chapter is typed onto the sheet at reading
@@ -116,13 +121,15 @@ expires after 30 days.
 
 ```text
 app/                              Routes and global metadata
-components/frames/desk/           Living Manuscript UI and tool inspector
-experiences/the-last-manuscript/  Prologue and declarative interactions
+components/frames/desk/           Living Manuscript UI, presentations, inspector
+experiences/<story-id>/           Declarative story, starter, and agent contract
+lib/frames/                        Frame manifests and default copy
 lib/runtime/                       In-memory narrative state machine
 lib/manuscript/                    Shared reading order and text export
 lib/share/                         Public document validation and D1 access
 lib/webmcp/                        State-derived WebMCP registration
 tests/                             Deterministic engine and tool tests
+tests/support/                     Neutral fixture story and share fixtures
 e2e/                               Full browser journey, reset, and sharing
 ```
 
@@ -144,5 +151,7 @@ pnpm verify
 pnpm test:e2e
 ```
 
-`pnpm verify` runs route type generation, strict TypeScript, lint, unit tests,
-and a production build.
+`pnpm verify` runs route type generation, strict TypeScript, lint, the Drizzle
+schema check, unit tests, and a production build.
+
+MIT — see [LICENSE](LICENSE).

@@ -1,16 +1,69 @@
 # Adding or replacing a story
 
-An `ExperienceDefinition` combines a title, a prologue, one short player-facing
-starter, a versioned agent contract, a frame, allowlisted discoveries, and
-declarative `StoryInteractionDefinition` entries.
+An `ExperienceDefinition` combines a title, a `StoryDefinition`, a frame with
+optional copy overrides, one short player-facing starter, and a versioned agent
+contract. Everything the page renders, registers, or enforces derives from that
+object: adding a story touches `experiences/` and nothing else.
 
 ## Add a story
 
-1. Create `experiences/<experience-id>/story.ts` with a prologue, discovery IDs,
-   and interactions.
-2. Export the `ExperienceDefinition` from `definition.ts`.
-3. Add it to `experiences/catalog.ts`.
-4. Add lifecycle, sealed-fact, and tool-surface tests.
+1. Create `experiences/<experience-id>/story.ts` with a `StoryDefinition`: a
+   `narration` mode, a prologue, clues, a completion passage, allowlisted
+   discovery IDs, discovery requirements, completion facts, and declarative
+   `StoryInteractionDefinition` entries.
+2. Put the starter message and the agent contract in `content.ts`.
+3. Export the `ExperienceDefinition` from `definition.ts`, choosing the frame
+   and any copy overrides.
+4. Add it to `experiences/catalog.ts`. The registry validates the whole graph at
+   module load and refuses to start on an inconsistent story.
+5. Add lifecycle, sealed-fact, and tool-surface tests. Runtime behaviour is
+   already covered through the neutral fixture in
+   `tests/support/fixture-story.ts`; new tests should assert only what is
+   specific to the new story.
+
+## Narration: prose or record
+
+`story.narration` is `'prose'` or `'record'`.
+
+- `prose` stories carry one player-facing text. Authored passages and sealed
+  facts declare only `prose` / `value`; the agent submits only `prose`; the
+  restricted sheet shows the prose plainly; the fixed ending is typed once.
+- `record` stories also keep an official third-person record. Every authored
+  passage pairs `prose` with `recordProse` and every sealed fact pairs `value`
+  with `recordValue` (same paragraph structure, no second-person pronouns). The
+  `commit_story_chapter` schema and the shared turn protocol require
+  `recordProse` from the agent, the restricted sheet censors its lines, the
+  fixed ending rewrites itself into the record after typing, and a shared copy
+  stores both versions.
+
+The registry rejects a `prose` story that declares any record text and a
+`record` story that omits any. The engine rejects a `recordProse` on a prose
+story and a missing one on a record story.
+
+## Presentations
+
+Each interaction names a `presentation` the frame can render. The book frame
+supports:
+
+| id                 | Rendering                                                   |
+| ------------------ | ----------------------------------------------------------- |
+| `generic`          | Titled section listing every sealed fact.                   |
+| `pressed_writing`  | A notepad artifact; each fact's first line is the raised fragment. |
+| `memory_flashback` | A remembered scene from the interaction's **first** sealed fact. |
+| `world_shift`      | A titled section; also brightens the desk lamp permanently. |
+
+The manifest lives in `lib/frames/book.ts`; the renderers live in
+`components/frames/desk/presentations/`. The registry rejects an id the frame
+cannot render. An interaction may set `announcement` to replace the
+presentation's default screen-reader line when its effect lands.
+
+## Frame copy
+
+The book frame ships neutral wording for the turn prompt, waiting states, hint
+fallbacks, the resume message, the clue notebook labels, and the shared-page
+return link (`DEFAULT_BOOK_COPY` in `lib/frames/book.ts`). A story overrides
+only the lines it wants through `frame.copy`; see
+`experiences/the-last-manuscript/definition.ts` for the full set.
 
 ## Agent bootstrap contract
 
@@ -32,8 +85,9 @@ session identity, phase, revision, pending receipts, discovery prerequisites,
 sealed facts, one-shot retirement, or completion policy.
 
 The registry rejects duplicate tool names, duplicate interaction IDs, unknown
-interaction prerequisites, discovery requirements outside the authored graph,
-and completion requirements that no interaction can reveal.
+interaction prerequisites, unsupported presentation ids, discovery requirements
+outside the authored graph, and completion requirements that no interaction can
+reveal.
 
 ## Interaction contract
 
@@ -80,3 +134,11 @@ national_correction_network → completion allowed
 
 Breaking story changes must change `story.id`. There is no game-save migration:
 every new document starts from the current prologue.
+
+## Current shape constraints
+
+- A story declares exactly one `must_complete` interaction, and its
+  `completionRequiredFactIds` must be revealed by that interaction.
+- Sharing a completed manuscript requires every authored interaction to appear
+  in authored order, ending with the `must_complete` one. Branching or optional
+  interactions are not yet supported by the share validator.

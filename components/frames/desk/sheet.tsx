@@ -15,7 +15,6 @@ import {
   type ManuscriptEffect,
 } from '@/lib/manuscript/read-model';
 import {
-  flattenParagraphBlocks,
   resolveRecordedEnding,
   splitParagraphBlocks,
 } from '@/lib/manuscript/prose';
@@ -26,13 +25,16 @@ import {
   type TypingPlan,
   type WordTiming,
 } from '@/lib/manuscript/typing-plan';
+import { resolveBookCopy } from '@/lib/frames/book';
 import type {
+  BookFrameCopy,
   ExperienceDefinition,
   ExperienceSession,
 } from '@/lib/runtime/types';
 import type { WebMCPStatus } from '@/lib/webmcp/tools';
 import { BackspaceText } from './backspace-text';
 import { CopyButton } from './copy-button';
+import { resolvePresentation } from './presentations';
 import { StoryShare } from './share-row';
 import { usePagination } from './use-sheet-pages';
 import type { AgentFailure, WebMCPSetupHint } from './use-webmcp-connection';
@@ -71,6 +73,8 @@ export function StoryScroll({
     () => deriveManuscriptReadModel(experience, session),
     [experience, session],
   );
+  const copy = useMemo(() => resolveBookCopy(experience.frame), [experience]);
+  const recordLayer = experience.story.narration === 'record';
   const availabilityVisible =
     session.phase !== 'COMPLETE' && webMCPStatus !== 'connected';
   const pendingEffect = resolvePendingEffect(experience, session);
@@ -172,7 +176,13 @@ export function StoryScroll({
     onAnnounce('The record revises its wording.');
   }, [clearRewriteDelay, onAnnounce]);
 
-  const finishRewrite = useCallback(() => setEndingStage('complete'), []);
+  const finishRewrite = useCallback(() => {
+    clearRewriteDelay();
+    setEndingStage('complete');
+  }, [clearRewriteDelay]);
+  // A record story rewrites its ending after the typing settles; a prose
+  // story simply settles.
+  const settleEnding = recordLayer ? beginRewrite : finishRewrite;
 
   useEffect(() => {
     const enteredComplete =
@@ -190,17 +200,24 @@ export function StoryScroll({
     ).matches;
     if (reducedMotion || !typingPlan) {
       setEndingStage('complete');
-      onAnnounce('The record revises its wording.');
+      if (recordLayer) onAnnounce('The record revises its wording.');
       return;
     }
     setEndingStage('original');
     clearRewriteDelay();
     rewriteDelayTimer.current = window.setTimeout(
-      beginRewrite,
+      settleEnding,
       typingPlan.total + 900,
     );
     return clearRewriteDelay;
-  }, [beginRewrite, clearRewriteDelay, onAnnounce, session.phase, typingPlan]);
+  }, [
+    clearRewriteDelay,
+    onAnnounce,
+    recordLayer,
+    session.phase,
+    settleEnding,
+    typingPlan,
+  ]);
 
   // Lets the reader finish a chapter at their own pace: the words settle
   // at once, the caret stops, and the ending moves on to its rewrite.
@@ -209,12 +226,12 @@ export function StoryScroll({
     settleFreshChapter();
     if (followingHead.current) goToLastPage();
     if (session.phase === 'COMPLETE' && endingStage === 'original')
-      beginRewrite();
+      settleEnding();
   }, [
-    beginRewrite,
     endingStage,
     goToLastPage,
     session.phase,
+    settleEnding,
     settleFreshChapter,
     typingActive,
   ]);
@@ -375,7 +392,7 @@ export function StoryScroll({
       <div aria-hidden="true" className="manuscript-light-agent" />
       <div aria-hidden="true" className="manuscript-light-shift" />
       <header className="sheet-head">
-        <span>Record of proceedings</span>
+        <span>{copy.runningHead}</span>
         <span className="sheet-page-indicator">
           Page {page + 1} of {pageCount}
         </span>
@@ -402,7 +419,7 @@ export function StoryScroll({
                   chapter={chapter}
                   key={chapter.id}
                   plan={fresh && endingStage === 'original' ? typingPlan : null}
-                  redacted={availabilityVisible}
+                  redacted={availabilityVisible && recordLayer}
                 />
               );
             })}
@@ -472,6 +489,7 @@ export function StoryScroll({
           session.phase === 'READY' ? (
             <TurnGuide
               agentActive={agentActive}
+              copy={copy}
               agentFailure={agentFailure}
               experience={experience}
               onAnnounce={onAnnounce}
@@ -485,13 +503,15 @@ export function StoryScroll({
               agentActive={agentActive}
               agentFailure={agentFailure}
               agentQuiet={agentQuiet}
+              copy={copy}
               agentRunning={agentRunning}
               experience={experience}
               onAnnounce={onAnnounce}
               session={session}
             />
           ) : null}
-          {!availabilityVisible &&
+          {recordLayer &&
+          !availabilityVisible &&
           !typingActive &&
           session.phase === 'COMPLETE' &&
           endingStage !== 'complete' ? (
@@ -544,12 +564,14 @@ export function StoryScroll({
 function TurnGuide({
   agentActive,
   agentFailure,
+  copy,
   experience,
   onAnnounce,
   session,
 }: {
   agentActive: boolean;
   agentFailure: AgentFailure | null;
+  copy: BookFrameCopy;
   experience: ExperienceDefinition;
   onAnnounce: (message: string) => void;
   session: ExperienceSession;
@@ -561,15 +583,16 @@ function TurnGuide({
       <h2 className="turn-guide-prompt">
         {agentActive
           ? opening
-            ? 'What do you inspect first?'
-            : 'What do you do next?'
+            ? copy.turnPrompt.opening
+            : copy.turnPrompt.next
           : opening
-            ? 'The speaker is waiting.'
-            : 'The room is waiting.'}
+            ? copy.turnPrompt.openingWaiting
+            : copy.turnPrompt.nextWaiting}
       </h2>
       {agentFailure ? <AgentFailureNote failure={agentFailure} /> : null}
       {!agentActive ? (
         <AgentHandoff
+          copy={copy}
           experience={experience}
           mode={opening ? 'start' : 'resume'}
           onAnnounce={onAnnounce}
@@ -584,6 +607,7 @@ function PendingTurnGuide({
   agentFailure,
   agentQuiet,
   agentRunning,
+  copy,
   experience,
   onAnnounce,
   session,
@@ -591,6 +615,7 @@ function PendingTurnGuide({
   agentActive: boolean;
   agentFailure: AgentFailure | null;
   agentQuiet: boolean;
+  copy: BookFrameCopy;
   agentRunning: boolean;
   experience: ExperienceDefinition;
   onAnnounce: (message: string) => void;
@@ -633,6 +658,7 @@ function PendingTurnGuide({
               : 'The chapter is unwritten.'}
           </h2>
           <AgentHandoff
+            copy={copy}
             experience={experience}
             mode="recover"
             onAnnounce={onAnnounce}
@@ -652,15 +678,17 @@ function AgentFailureNote({ failure }: { failure: AgentFailure }) {
 }
 
 function AgentHandoff({
+  copy,
   experience,
   mode,
   onAnnounce,
 }: {
+  copy: BookFrameCopy;
   experience: ExperienceDefinition;
   mode: 'start' | 'resume' | 'recover';
   onAnnounce: (message: string) => void;
 }) {
-  const message = handoffMessage(experience, mode);
+  const message = handoffMessage(experience, copy, mode);
   return (
     <div className="agent-handoff">
       <p className="agent-handoff-instruction">
@@ -697,12 +725,13 @@ function AgentHandoff({
 
 function handoffMessage(
   experience: ExperienceDefinition,
+  copy: BookFrameCopy,
   mode: 'start' | 'resume' | 'recover',
 ): string {
   if (mode === 'start') return experience.startMessage;
   if (mode === 'recover')
     return `Resume ${experience.title} with me through this page. Finish the saved turn first.`;
-  return `Resume ${experience.title} with me through this page. I inspect what has changed in the room.`;
+  return `Resume ${experience.title} with me through this page. ${copy.resumeMove}`;
 }
 
 function ChapterBlock({
@@ -765,16 +794,18 @@ function CompletionPassageBlock({
   stage,
 }: {
   onRewriteComplete: () => void;
-  passage: { prose: string; recordProse: string };
+  passage: { prose: string; recordProse?: string };
   plan: WordTiming[][] | null | undefined;
   stage: EndingStage;
 }) {
   const paragraphs = splitParagraphBlocks(passage.prose);
-  const recordParagraphs = splitParagraphBlocks(passage.recordProse);
-  const completedParagraphs = resolveRecordedEnding(
-    paragraphs,
-    recordParagraphs,
-  );
+  const recordParagraphs =
+    passage.recordProse !== undefined
+      ? splitParagraphBlocks(passage.recordProse)
+      : null;
+  const completedParagraphs = recordParagraphs
+    ? resolveRecordedEnding(paragraphs, recordParagraphs)
+    : paragraphs;
   const lastIndex = paragraphs.length - 1;
   return (
     <section
@@ -783,7 +814,7 @@ function CompletionPassageBlock({
     >
       {paragraphs.map((original, index) => (
         <p key={index}>
-          {index === lastIndex && stage === 'rewriting' ? (
+          {index === lastIndex && stage === 'rewriting' && recordParagraphs ? (
             <BackspaceText
               onComplete={onRewriteComplete}
               original={original}
@@ -845,88 +876,7 @@ function EffectPresentation({
   effect: ManuscriptEffect;
   fresh?: boolean;
 }) {
-  if (effect.presentation === 'memory_flashback')
-    return <MemoryFlashback effect={effect} fresh={fresh} />;
-  if (effect.presentation === 'pressed_writing')
-    return <PressedWritingArtifact effect={effect} fresh={fresh} />;
-  if (effect.presentation === 'world_shift')
-    return <WorldShift effect={effect} />;
-  return <GenericStoryEffect effect={effect} />;
-}
-
-function MemoryFlashback({
-  effect,
-  fresh,
-}: {
-  effect: ManuscriptEffect;
-  fresh: boolean;
-}) {
-  const memory = effect.facts.find(
-    ({ id }) => id === 'north_station_flashback',
-  );
-  if (!memory) return null;
-  return (
-    <section
-      className={`memory-flashback${fresh ? ' is-fresh' : ''}`}
-      data-effect-receipt={effect.receiptId}
-    >
-      <h3>Memory</h3>
-      <div className="memory-flashback-prose">
-        {factParagraphs(memory.value).map((paragraph, index) => (
-          <p key={`${effect.receiptId}-memory-${index}`}>{paragraph}</p>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function PressedWritingArtifact({
-  effect,
-  fresh = false,
-}: {
-  effect: ManuscriptEffect;
-  fresh?: boolean;
-}) {
-  return (
-    <figure
-      className={`story-artifact notepad-artifact${fresh ? ' is-revealed' : ''}`}
-    >
-      <figcaption>{effect.title}</figcaption>
-      {effect.facts.map((fact) => {
-        const { lead, note } = factLines(fact.value);
-        return (
-          <div key={fact.id}>
-            <p className="revealed-fragment">{lead}</p>
-            {note ? <p>{note}</p> : null}
-          </div>
-        );
-      })}
-    </figure>
-  );
-}
-
-function WorldShift({ effect }: { effect: ManuscriptEffect }) {
-  return (
-    <section className="world-shift" data-effect-receipt={effect.receiptId}>
-      <h3>{effect.title}</h3>
-      {effect.facts.flatMap((fact) => {
-        return factParagraphs(fact.value).map((paragraph, index) => (
-          <p key={`${fact.id}-paragraph-${index}`}>{paragraph}</p>
-        ));
-      })}
-    </section>
-  );
-}
-
-function GenericStoryEffect({ effect }: { effect: ManuscriptEffect }) {
-  return (
-    <section className="story-artifact generic-story-effect">
-      <h3>{effect.title}</h3>
-      {effectParagraphs(effect).map((paragraph, index) => (
-        <p key={`${effect.receiptId}-effect-${index}`}>{paragraph}</p>
-      ))}
-    </section>
-  );
+  return resolvePresentation(effect.presentation).render(effect, fresh);
 }
 
 function resolvePendingEffect(
@@ -965,18 +915,4 @@ function useFreshKey(
   const clear = useCallback(() => setFreshKey(null), []);
 
   return { key: freshKey, clear };
-}
-
-function effectParagraphs(effect: ManuscriptEffect): string[] {
-  return effect.facts.flatMap(({ value }) => factParagraphs(value));
-}
-
-function factParagraphs(value: string): string[] {
-  return flattenParagraphBlocks(value);
-}
-
-function factLines(value: string): { lead: string; note: string | null } {
-  const [lead, ...rest] = value.split('\n');
-  const note = rest.join(' ').trim();
-  return { lead: lead.trim(), note: note || null };
 }

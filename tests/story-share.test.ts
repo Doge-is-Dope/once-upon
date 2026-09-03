@@ -5,13 +5,13 @@ import {
   manuscriptToText,
 } from '../lib/manuscript/read-model';
 import { createExperienceSession } from '../lib/runtime/engine';
-import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
 import { testContext } from './helpers';
+import { recordFixtureExperience } from './support/fixture-story';
 
 describe('manuscript export', () => {
   it('exports reader content without runtime metadata', () => {
     const session = createExperienceSession(
-      experienceDefinition,
+      recordFixtureExperience,
       testContext(),
     );
     session.chapters.push({
@@ -24,11 +24,11 @@ describe('manuscript export', () => {
       discoveryIds: [],
       effectReceiptId: null,
     });
-    const model = deriveManuscriptReadModel(experienceDefinition, session);
+    const model = deriveManuscriptReadModel(recordFixtureExperience, session);
     const text = manuscriptToText(model);
-    const completion = experienceDefinition.story.completionPassage;
+    const completion = recordFixtureExperience.story.completionPassage;
     const completionParagraphs = completion.prose.split(/\n\s*\n/);
-    const recordCompletionParagraphs = completion.recordProse.split(/\n\s*\n/);
+    const recordCompletionParagraphs = completion.recordProse!.split(/\n\s*\n/);
 
     expect(text).toContain('Unicode survives — 記憶');
     expect(text).toContain('The next page contains only reader-facing prose.');
@@ -46,10 +46,10 @@ describe('manuscript export', () => {
 
   it('creates a strict completed-story submission in reading order', () => {
     const session = createExperienceSession(
-      experienceDefinition,
+      recordFixtureExperience,
       testContext(),
     );
-    const model = deriveManuscriptReadModel(experienceDefinition, session);
+    const model = deriveManuscriptReadModel(recordFixtureExperience, session);
     const submission = createSharedStorySubmission(
       model,
       'd10cbb0f-b6f4-4d61-8cc5-1bf893f12431',
@@ -58,17 +58,17 @@ describe('manuscript export', () => {
     expect(submission).toMatchObject({
       version: 2,
       status: 'COMPLETE',
-      experienceId: experienceDefinition.id,
-      storyId: experienceDefinition.story.id,
+      experienceId: recordFixtureExperience.id,
+      storyId: recordFixtureExperience.story.id,
     });
     expect(submission.chapters[0]).toEqual({
-      title: experienceDefinition.story.prologue.title,
-      prose: experienceDefinition.story.prologue.prose,
-      recordProse: experienceDefinition.story.prologue.recordProse,
+      title: recordFixtureExperience.story.prologue.title,
+      prose: recordFixtureExperience.story.prologue.prose,
+      recordProse: recordFixtureExperience.story.prologue.recordProse,
       effectInteractionId: null,
     });
     expect(submission.completionPassage).toEqual(
-      experienceDefinition.story.completionPassage,
+      recordFixtureExperience.story.completionPassage,
     );
     expect(JSON.stringify(submission)).not.toContain(session.sessionId);
   });

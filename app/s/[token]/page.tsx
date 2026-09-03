@@ -1,38 +1,54 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { cache } from 'react';
+import { DEFAULT_EXPERIENCE_ID, getExperience } from '@/experiences/registry';
+import { resolveBookCopy } from '@/lib/frames/book';
 import { resolveRecordedEnding } from '@/lib/manuscript/prose';
 import { readSharedStory } from '@/lib/share/repository';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export const metadata: Metadata = {
-  title: 'A recovered record',
-  description: 'Read a recovered copy of The Last Manuscript.',
-  robots: { index: false, follow: false },
-  referrer: 'no-referrer',
-  openGraph: {
-    title: 'A recovered record',
-    description: 'Read a recovered copy of The Last Manuscript.',
-    images: [],
-  },
-  twitter: {
-    card: 'summary',
-    title: 'A recovered record',
-    description: 'Read a recovered copy of The Last Manuscript.',
-    images: [],
-  },
+type SharedStoryRouteProps = {
+  params: Promise<{ token: string }>;
 };
+
+// One D1 read serves both the metadata and the page for a request.
+const loadSharedStory = cache((token: string) => readSharedStory(token));
+
+export async function generateMetadata({
+  params,
+}: SharedStoryRouteProps): Promise<Metadata> {
+  const { token } = await params;
+  const story = await loadSharedStory(token);
+  const title = 'A recovered record';
+  const description = story
+    ? `Read a recovered copy of ${story.title}.`
+    : 'Read a recovered copy of a shared manuscript.';
+  return {
+    title,
+    description,
+    robots: { index: false, follow: false },
+    referrer: 'no-referrer',
+    openGraph: { title, description, images: [] },
+    twitter: { card: 'summary', title, description, images: [] },
+  };
+}
 
 export default async function SharedStoryPage({
   params,
-}: {
-  params: Promise<{ token: string }>;
-}) {
+}: SharedStoryRouteProps) {
   const { token } = await params;
-  const story = await readSharedStory(token);
+  const story = await loadSharedStory(token);
   if (!story) notFound();
+  const experience =
+    getExperience(
+      story.version === 2 && story.experienceId
+        ? story.experienceId
+        : DEFAULT_EXPERIENCE_ID,
+    ) ?? getExperience(DEFAULT_EXPERIENCE_ID)!;
+  const copy = resolveBookCopy(experience.frame);
 
   return (
     <main className="shared-story-shell">
@@ -74,9 +90,12 @@ export default async function SharedStoryPage({
         ))}
         {story.version === 2 ? (
           <section aria-label="Completion" className="shared-completion">
-            {resolveRecordedEnding(
-              story.completionPassage.prose,
-              story.completionPassage.recordProse,
+            {(story.completionPassage.recordProse
+              ? resolveRecordedEnding(
+                  story.completionPassage.prose,
+                  story.completionPassage.recordProse,
+                )
+              : story.completionPassage.prose
             ).map((paragraph, index) => (
               <p key={index}>{paragraph}</p>
             ))}
@@ -84,7 +103,7 @@ export default async function SharedStoryPage({
         ) : null}
         <footer className="shared-story-footer">
           <p>This copy is anonymous, unlisted, and temporary.</p>
-          <Link href="/">Enter Room Seven</Link>
+          <Link href="/">{copy.shared.returnLabel}</Link>
         </footer>
       </article>
     </main>

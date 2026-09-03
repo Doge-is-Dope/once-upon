@@ -4,7 +4,10 @@ import {
   ShareValidationError,
   validateSharedStorySubmission,
 } from '../lib/share/document';
-import { makeCompleteShareSubmission } from './support/share-fixtures';
+import {
+  lookupFixtureExperience,
+  makeCompleteShareSubmission,
+} from './support/share-fixtures';
 
 describe('shared story validation', () => {
   it('continues to read stored v1 documents without rewriting them', () => {
@@ -30,15 +33,11 @@ describe('shared story validation', () => {
     const validated = validateSharedStorySubmission(
       makeCompleteShareSubmission(),
       Date.UTC(2026, 7, 31),
+      lookupFixtureExperience,
     );
     expect(
       validated.document.chapters.map(({ effect }) => effect?.title),
-    ).toEqual([
-      undefined,
-      'The Pencil',
-      'The North Station Memory',
-      'The Last Manuscript',
-    ]);
+    ).toEqual([undefined, 'The Drawer', 'The Memory', 'The Wall Panel']);
     expect(validated.document.chapters.at(-1)?.prose).toEqual([
       '<script>alert("never rendered as markup")</script>',
     ]);
@@ -57,42 +56,46 @@ describe('shared story validation', () => {
   it('rejects malformed official prose', () => {
     const secondPerson = makeCompleteShareSubmission();
     secondPerson.chapters[2]!.recordProse =
-      'You open your eyes in the same room after the sequence returns.';
-    expect(() => validateSharedStorySubmission(secondPerson, 0)).toThrow(
-      /second-person pronoun/,
-    );
+      'You follow the memory and wait for what it changes.';
+    expect(() =>
+      validateSharedStorySubmission(secondPerson, 0, lookupFixtureExperience),
+    ).toThrow(/second-person pronoun/);
 
     const paragraphMismatch = makeCompleteShareSubmission();
     paragraphMismatch.chapters[2]!.recordProse += '\n\nA second paragraph.';
-    expect(() => validateSharedStorySubmission(paragraphMismatch, 0)).toThrow(
-      /same paragraph structure/,
-    );
+    expect(() =>
+      validateSharedStorySubmission(
+        paragraphMismatch,
+        0,
+        lookupFixtureExperience,
+      ),
+    ).toThrow(/same paragraph structure/);
   });
 
   it('rejects incomplete, reordered, extra-field, and non-complete payloads', () => {
     const reordered = makeCompleteShareSubmission();
-    reordered.chapters[1].effectInteractionId = 'north_station_memory';
-    expect(() => validateSharedStorySubmission(reordered, 0)).toThrow(
-      ShareValidationError,
-    );
+    reordered.chapters[1]!.effectInteractionId = 'memory';
+    expect(() =>
+      validateSharedStorySubmission(reordered, 0, lookupFixtureExperience),
+    ).toThrow(ShareValidationError);
 
     const incomplete = makeCompleteShareSubmission();
     incomplete.chapters.pop();
-    expect(() => validateSharedStorySubmission(incomplete, 0)).toThrow(
-      /incomplete or out of order/,
-    );
+    expect(() =>
+      validateSharedStorySubmission(incomplete, 0, lookupFixtureExperience),
+    ).toThrow(/incomplete or out of order/);
 
     const extra = {
       ...makeCompleteShareSubmission(),
       internalSessionId: 'secret',
     };
-    expect(() => validateSharedStorySubmission(extra, 0)).toThrow(
-      /Unexpected or missing fields/,
-    );
+    expect(() =>
+      validateSharedStorySubmission(extra, 0, lookupFixtureExperience),
+    ).toThrow(/Unexpected or missing fields/);
 
     const running = { ...makeCompleteShareSubmission(), status: 'READY' };
-    expect(() => validateSharedStorySubmission(running, 0)).toThrow(
-      /Only completed stories/,
-    );
+    expect(() =>
+      validateSharedStorySubmission(running, 0, lookupFixtureExperience),
+    ).toThrow(/Only completed stories/);
   });
 });

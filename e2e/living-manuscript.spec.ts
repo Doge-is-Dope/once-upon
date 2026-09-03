@@ -824,7 +824,9 @@ test('completes the story within six registrations and shares a unique story lin
   await expect(
     reader.getByRole('link', { name: 'Enter Room Seven' }),
   ).toBeVisible();
-  await expect(reader.getByText('A recovered record')).toBeVisible();
+  await expect(
+    reader.getByText('A recovered record', { exact: true }),
+  ).toBeVisible();
   await expect(
     reader.getByText(/This read-only copy is available until/),
   ).toBeVisible();
@@ -1067,6 +1069,7 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
   const clientAddress = `test-${crypto.randomUUID()}`;
   const requestId = crypto.randomUUID();
   const submission = makeCompleteShareSubmission(requestId, {
+    experience: experienceDefinition,
     lastChapterProse: '<img src=x onerror="window.__sharedXss=true">',
   });
   const denied = await request.post('/api/shared-stories', {
@@ -1120,7 +1123,9 @@ test('enforces public-share origin, idempotency, conflict, rate, and text safety
   for (let index = 0; index < 10; index += 1) {
     const response = await request.post('/api/shared-stories', {
       headers,
-      data: makeCompleteShareSubmission(crypto.randomUUID()),
+      data: makeCompleteShareSubmission(crypto.randomUUID(), {
+        experience: experienceDefinition,
+      }),
     });
     expect(response.status(), `rate request ${index + 1}`).toBe(
       index < 9 ? 201 : 429,

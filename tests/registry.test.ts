@@ -45,6 +45,25 @@ describe('experience registry', () => {
     ).toThrow('requires a versioned agent contract');
   });
 
+  it('rejects a presentation the frame cannot render', () => {
+    const unsupported = {
+      ...experienceDefinition,
+      id: 'unsupported-presentation',
+      story: {
+        ...experienceDefinition.story,
+        interactions: experienceDefinition.story.interactions.map(
+          (interaction, index) =>
+            index === 0
+              ? { ...interaction, presentation: 'hologram' }
+              : interaction,
+        ),
+      },
+    };
+    expect(() => createExperienceRegistry([unsupported])).toThrow(
+      'uses presentation hologram, which frame book cannot render',
+    );
+  });
+
   it('rejects duplicate authored interaction or tool identities', () => {
     const duplicate = {
       ...experienceDefinition,

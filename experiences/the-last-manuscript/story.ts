@@ -2,6 +2,7 @@ import type { StoryDefinition } from '@/lib/runtime/types';
 
 export const lastManuscriptStory: StoryDefinition = {
   id: 'last-manuscript-living-v4',
+  narration: 'record',
   prologue: {
     title: 'The question at 5:41',
     prose:
@@ -94,6 +95,7 @@ export const lastManuscriptStory: StoryDefinition = {
       description:
         'Rub the discovered pencil across the notepad only when the player explicitly asks to reveal the impressions left by the missing page.',
       cue: 'Faint grooves cross the blank page. The side of the pencil can make them legible.',
+      announcement: 'The pencil has raised words on the notepad.',
       requiredDiscoveryIds: ['pencil_found'],
       requiredInteractionIds: [],
       requiredFactIds: [],
@@ -159,6 +161,7 @@ export const lastManuscriptStory: StoryDefinition = {
       description:
         'Read the sewn papers found behind the wardrobe only when the player explicitly asks to open or examine them. Carry every revealed fact into the next chapter.',
       cue: 'Pages taken from different forms have been sewn into one volume. The note asked you to read all of them before deciding what to say.',
+      announcement: 'The door has opened onto the corridor.',
       requiredDiscoveryIds: ['manuscript_found'],
       requiredInteractionIds: ['north_station_memory'],
       requiredFactIds: ['north_station_flashback'],

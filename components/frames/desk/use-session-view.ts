@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ExperienceController } from '@/lib/runtime/controller';
-import type { ExperienceSession } from '@/lib/runtime/types';
+import type {
+  ExperienceDefinition,
+  ExperienceSession,
+} from '@/lib/runtime/types';
 import { formatChapterLabel } from '@/lib/manuscript/prose';
+import { resolvePresentation } from './presentations';
 
 const ANNOUNCEMENT_GAP_MS = 1200;
 
@@ -23,7 +27,11 @@ export function useSessionView(controller: ExperienceController) {
       const before = previous.current;
       setSession(snapshot);
       if (snapshot.revision !== before.revision) {
-        const message = describeRevision(before, snapshot);
+        const message = describeRevision(
+          controller.definition,
+          before,
+          snapshot,
+        );
         if (message) announce(message);
       }
       previous.current = snapshot;
@@ -91,6 +99,7 @@ function useAnnouncer() {
 }
 
 export function describeRevision(
+  experience: ExperienceDefinition,
   before: ExperienceSession,
   after: ExperienceSession,
 ): string {
@@ -100,13 +109,13 @@ export function describeRevision(
     receipt &&
     receipt.receiptId !== before.pendingTurn?.effectReceipt?.receiptId
   ) {
-    if (receipt.presentation === 'memory_flashback')
-      return 'A memory has been added to the manuscript.';
-    if (receipt.presentation === 'pressed_writing')
-      return 'The pencil has raised words on the notepad.';
-    if (receipt.presentation === 'world_shift')
-      return 'The door has opened onto the corridor.';
-    return 'The page has changed.';
+    const interaction = experience.story.interactions.find(
+      ({ id }) => id === receipt.interactionId,
+    );
+    return (
+      interaction?.announcement ??
+      resolvePresentation(receipt.presentation).announce
+    );
   }
   if (after.chapters.length > before.chapters.length) {
     const chapter = after.chapters.at(-1);

@@ -7,7 +7,11 @@ import {
 } from '../lib/runtime/engine';
 import type { ExperienceSession } from '../lib/runtime/types';
 import { registerExperienceTools } from '../lib/webmcp/tools';
-import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
+import {
+  fixtureIds,
+  fixtureProtectedTerms,
+  recordFixtureExperience,
+} from './support/fixture-story';
 import {
   operationId,
   ordinaryProse,
@@ -120,38 +124,38 @@ function installRejectedModelContext(error: Error) {
 
 async function controllerFor(session?: ExperienceSession) {
   const initial =
-    session ?? createExperienceSession(experienceDefinition, testContext());
-  const controller = new ExperienceController(experienceDefinition, initial);
+    session ?? createExperienceSession(recordFixtureExperience, testContext());
+  const controller = new ExperienceController(recordFixtureExperience, initial);
   return { controller };
 }
 
-function pencilAvailableSession() {
-  let session = createExperienceSession(experienceDefinition, testContext());
+function keyAvailableSession() {
+  let session = createExperienceSession(recordFixtureExperience, testContext());
   session = beginStoryTurn(
-    experienceDefinition,
+    recordFixtureExperience,
     session,
     {
       operationId: operationId('prep_begin'),
       expectedSessionId: session.sessionId,
       expectedRevision: session.revision,
-      playerChoice: 'I search the desk drawer and find a pencil.',
+      playerChoice: 'I search beneath the desk and find a small key.',
     },
     testContext(),
   ).session;
   return commitStoryChapter(
-    experienceDefinition,
+    recordFixtureExperience,
     session,
     {
       operationId: operationId('prep_chapter'),
       expectedSessionId: session.sessionId,
       expectedRevision: session.revision,
       turnId: session.pendingTurn!.turnId,
-      title: 'A pencil in the drawer',
+      title: 'A key beneath the desk',
       prose: ordinaryProse,
       recordProse: ordinaryRecordProse,
       continuitySummary:
-        'You found a pencil near the table. The torn notebook, handleless door, wardrobe, and unanswered North Station question remain in the room.',
-      discoveryIds: ['pencil_found'],
+        'You found a small key beneath the desk. The blank ledger, handleless door, lamp, and the unanswered question about the study remain in the room.',
+      discoveryIds: [fixtureIds.discoveries.key],
       status: 'continue',
     },
     testContext(),
@@ -208,14 +212,16 @@ describe('WebMCP living tool surface', () => {
       untrustedContentHint: true,
     });
     expect(getState).not.toHaveProperty('exposedTo');
-    expect(getState.title).toBe('Start or resume The Last Manuscript');
+    expect(getState.title).toBe('Start or resume Fixture Story');
     expect(getState.description).toContain('before every player turn');
     expect(getState.description.length).toBeLessThan(240);
-    expect(getState.description).not.toContain('last-manuscript-agent-v1');
+    expect(getState.description).not.toContain('fixture-agent-v0');
     expect(getState.description).not.toContain(
       'close second-person novel prose',
     );
-    expect(getState.description).not.toContain('Sixth time');
+    expect(getState.description).not.toContain(
+      fixtureProtectedTerms.drawerNote,
+    );
     const bootstrap = (await getState.execute({})) as {
       content: Array<{ text: string }>;
       structuredContent: {
@@ -233,7 +239,7 @@ describe('WebMCP living tool surface', () => {
     };
     expect(bootstrap.structuredContent.state.bootstrap).toEqual({
       protocolVersion: 'living-manuscript-v2',
-      contractVersion: 'last-manuscript-agent-v2',
+      contractVersion: fixtureIds.contract,
       instructions: expect.stringContaining('recordProse'),
       mode: 'opening',
     });
@@ -321,7 +327,7 @@ describe('WebMCP living tool surface', () => {
       operationId: operationId('web_begin'),
       expectedSessionId: controller.getSnapshot()!.sessionId,
       expectedRevision: 1,
-      playerChoice: 'I examine the moving wallpaper before proceeding.',
+      playerChoice: 'I examine the indented ledger page before proceeding.',
     };
     const result = (await begin.tool.execute(beginInput)) as {
       content: Array<{ text: string }>;
@@ -351,7 +357,7 @@ describe('WebMCP living tool surface', () => {
         prose: ordinaryProse,
         recordProse: ordinaryRecordProse,
         continuitySummary:
-          'You listened while the correction room stayed closed and quiet.',
+          'You listened while the locked study stayed closed and quiet.',
         discoveryIds: [],
         status: 'continue',
       })) as { content: Array<{ text: string }> };
@@ -396,13 +402,13 @@ describe('WebMCP living tool surface', () => {
 
   it('registers an unlocked story object without leaking its fact in metadata', async () => {
     const registry = installModelContext();
-    const { controller } = await controllerFor(pencilAvailableSession());
+    const { controller } = await controllerFor(keyAvailableSession());
     const cleanup = await registerExperienceTools(controller, () => {});
     expect([...registry.current.keys()]).toEqual([
       'get_story_state',
       'begin_story_turn',
       'commit_story_chapter',
-      'reveal_pressed_words',
+      fixtureIds.tools.drawer,
     ]);
     const getState = registry.current.get('get_story_state')!.tool;
     const state = (await getState.execute({})) as {
@@ -413,31 +419,31 @@ describe('WebMCP living tool surface', () => {
     expect(state.structuredContent.state.requiredNextTool).toBe('none');
     expect(state.structuredContent.state.allowedNextTools).toEqual([
       'begin_story_turn',
-      'reveal_pressed_words',
+      fixtureIds.tools.drawer,
     ]);
-    const pencil = registry.current.get('reveal_pressed_words')!.tool;
+    const drawer = registry.current.get(fixtureIds.tools.drawer)!.tool;
     const metadata = JSON.stringify({
-      name: pencil.name,
-      title: pencil.title,
-      description: pencil.description,
-      inputSchema: pencil.inputSchema,
+      name: drawer.name,
+      title: drawer.title,
+      description: drawer.description,
+      inputSchema: drawer.inputSchema,
     });
-    expect(metadata).not.toContain('Sixth time');
-    expect(metadata).not.toContain('Close your eyes');
-    expect(pencil.description).toContain('explicitly asks');
-    expect(pencil.description).toContain(
+    expect(metadata).not.toContain(fixtureProtectedTerms.drawerNote);
+    expect(metadata).not.toContain('The panel is behind the lamp');
+    expect(drawer.description).toContain('explicitly asks');
+    expect(drawer.description).toContain(
       'commit_story_chapter in the same response before replying',
     );
 
     const before = controller.getSnapshot()!;
     await registry.current.get('begin_story_turn')!.tool.execute({
-      operationId: operationId('ordinary_while_pencil_unlocked'),
+      operationId: operationId('ordinary_while_drawer_unlocked'),
       expectedSessionId: before.sessionId,
       expectedRevision: before.revision,
-      playerChoice: 'I reread the note without touching the pencil to it.',
+      playerChoice: 'I look at the key without trying it in the drawer.',
     });
     await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(registry.current.has('reveal_pressed_words')).toBe(true);
+    expect(registry.current.has(fixtureIds.tools.drawer)).toBe(true);
     const pending = (await getState.execute({})) as {
       structuredContent: {
         state: { allowedNextTools: string[]; requiredNextTool: string };
@@ -451,16 +457,16 @@ describe('WebMCP living tool surface', () => {
       'get_story_state',
       'begin_story_turn',
       'commit_story_chapter',
-      'reveal_pressed_words',
+      fixtureIds.tools.drawer,
     ]);
     cleanup();
   });
 
   it('waits for every concurrent invocation before retiring a story object', async () => {
     const registry = installModelContext();
-    const { controller } = await controllerFor(pencilAvailableSession());
+    const { controller } = await controllerFor(keyAvailableSession());
     const cleanup = await registerExperienceTools(controller, () => {});
-    const pencil = registry.current.get('reveal_pressed_words')!.tool;
+    const drawer = registry.current.get(fixtureIds.tools.drawer)!.tool;
     const originalInvoke = controller.invokeInteraction.bind(controller);
     let releaseFirst: () => void = () => undefined;
     const firstGate = new Promise<void>((resolve) => {
@@ -474,59 +480,59 @@ describe('WebMCP living tool surface', () => {
     };
     const snapshot = controller.getSnapshot()!;
     const first = Promise.resolve(
-      pencil.execute({
+      drawer.execute({
         operationId: operationId('concurrent_first'),
         expectedSessionId: snapshot.sessionId,
         expectedRevision: snapshot.revision,
-        playerChoice: 'I shade the pressed writing with the pencil.',
+        playerChoice: 'I unlock the drawer with the key.',
       }),
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
     const second = Promise.resolve(
-      pencil.execute({
+      drawer.execute({
         operationId: operationId('concurrent_second'),
         expectedSessionId: snapshot.sessionId,
         expectedRevision: snapshot.revision,
-        playerChoice: 'I shade the pressed writing with the pencil.',
+        playerChoice: 'I unlock the drawer with the key.',
       }),
     );
     await second;
     await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(registry.current.has('reveal_pressed_words')).toBe(true);
+    expect(registry.current.has(fixtureIds.tools.drawer)).toBe(true);
 
     releaseFirst();
     await first;
     await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(registry.current.has('reveal_pressed_words')).toBe(false);
+    expect(registry.current.has(fixtureIds.tools.drawer)).toBe(false);
     cleanup();
   });
 
   it('cancels before mutation and returns one canonical agent receipt after invocation', async () => {
     const registry = installModelContext();
-    const { controller } = await controllerFor(pencilAvailableSession());
+    const { controller } = await controllerFor(keyAvailableSession());
     const cleanup = await registerExperienceTools(controller, () => {});
-    const pencil = registry.current.get('reveal_pressed_words')!.tool;
+    const drawer = registry.current.get(fixtureIds.tools.drawer)!.tool;
     const beforeRevision = controller.getSnapshot().revision;
     const cancelled = new AbortController();
     cancelled.abort();
     await expect(
-      pencil.execute(
+      drawer.execute(
         {
           operationId: operationId('cancelled'),
           expectedSessionId: controller.getSnapshot().sessionId,
           expectedRevision: beforeRevision,
-          playerChoice: 'I rub the pencil over the notepad.',
+          playerChoice: 'I turn the key in the drawer.',
         },
         { signal: cancelled.signal },
       ),
     ).rejects.toMatchObject({ name: 'AbortError' });
     expect(controller.getSnapshot().revision).toBe(beforeRevision);
 
-    const result = (await pencil.execute({
-      operationId: operationId('web_pencil'),
+    const result = (await drawer.execute({
+      operationId: operationId('web_drawer'),
       expectedSessionId: controller.getSnapshot().sessionId,
       expectedRevision: beforeRevision,
-      playerChoice: 'I rub the pencil across the torn notepad.',
+      playerChoice: 'I open the drawer with the key.',
     })) as {
       content: Array<{ text: string }>;
       structuredContent: {
@@ -536,8 +542,8 @@ describe('WebMCP living tool surface', () => {
     expect(result.structuredContent.effectReceipt).toMatchObject({
       facts: [
         {
-          id: 'sixth_attempt_note',
-          value: expect.stringContaining('Sixth time'),
+          id: fixtureIds.facts.drawerNote,
+          value: expect.stringContaining(fixtureProtectedTerms.drawerNote),
         },
       ],
     });
@@ -551,7 +557,7 @@ describe('WebMCP living tool surface', () => {
 
   it('rejects coercion, extra fields, mixed arrays, and unknown IDs', async () => {
     const registry = installModelContext();
-    const { controller } = await controllerFor(pencilAvailableSession());
+    const { controller } = await controllerFor(keyAvailableSession());
     const cleanup = await registerExperienceTools(controller, () => {});
     const before = controller.getSnapshot();
     const begin = registry.current.get('begin_story_turn')!.tool;
@@ -599,8 +605,8 @@ describe('WebMCP living tool surface', () => {
       title: 'Strict input',
       prose: ordinaryProse,
       recordProse: ordinaryRecordProse,
-      continuitySummary: 'The room remains unchanged.',
-      discoveryIds: ['pencil_found', 7],
+      continuitySummary: 'The study remains unchanged.',
+      discoveryIds: [fixtureIds.discoveries.key, 7],
       status: 'continue',
     })) as { structuredContent: { ok: boolean; code: string } };
     expect(invalidChapter.structuredContent).toMatchObject({

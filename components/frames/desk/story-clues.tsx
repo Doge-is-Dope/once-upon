@@ -6,6 +6,7 @@ import { BookOpenTextIcon } from '@phosphor-icons/react/dist/ssr/BookOpenText';
 import { XIcon } from '@phosphor-icons/react/dist/ssr/X';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { resolveBookCopy } from '@/lib/frames/book';
 import { derivePlayerClues } from '@/lib/manuscript/clue-journal';
 import type {
   ExperienceDefinition,
@@ -33,6 +34,7 @@ export function StoryClues({
     () => derivePlayerClues(experience, session),
     [experience, session],
   );
+  const copy = useMemo(() => resolveBookCopy(experience.frame), [experience]);
   const prologueClueIds = useMemo(
     () =>
       new Set(
@@ -140,9 +142,9 @@ export function StoryClues({
           <div className="story-clues-sheet-header">
             <div>
               <p className="story-clues-eyebrow">
-                Notes from the room · {clues.length} found
+                {copy.notes.eyebrow} · {clues.length} found
               </p>
-              <h2 id={CLUES_TITLE_ID}>Things I noticed</h2>
+              <h2 id={CLUES_TITLE_ID}>{copy.notes.title}</h2>
             </div>
             <button
               aria-label="Close notes"
@@ -175,9 +177,7 @@ export function StoryClues({
               );
             })}
           </ol>
-          <p className="story-clues-footnote">
-            Only what I have noticed so far.
-          </p>
+          <p className="story-clues-footnote">{copy.notes.footnote}</p>
         </div>
       </dialog>
     </div>

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
 import { derivePlayerClues } from '../lib/manuscript/clue-journal';
 import {
   beginStoryTurn,
@@ -14,83 +13,71 @@ import {
   ordinaryRecordProse,
   testContext,
 } from './helpers';
+import { recordFixtureExperience } from './support/fixture-story';
 
 describe('player clue journal', () => {
   it('follows the complete authored reveal and lead sequence', () => {
     const context = testContext();
-    let session = createExperienceSession(experienceDefinition, context);
+    let session = createExperienceSession(recordFixtureExperience, context);
     expect(clueSummary(session)).toEqual([
-      ['The Torn Page', null],
-      ['Behind the Wardrobe', null],
+      ['The Blank Ledger', null],
+      ['Behind the Lamp', null],
     ]);
 
-    session = ordinaryTurn(session, 'find_pencil', ['pencil_found'], context);
+    session = ordinaryTurn(session, 'find_key', ['key_found'], context);
     expect(clueSummary(session)).toEqual([
-      [
-        'The Pencil',
-        'Turn the pencil sideways and shade across the shallow grooves on the blank page.',
-      ],
-      ['The Torn Page', null],
-      ['Behind the Wardrobe', null],
+      ['The Key', 'Try the key in the drawer beneath the desk.'],
+      ['The Blank Ledger', null],
+      ['Behind the Lamp', null],
     ]);
 
-    session = interactionTurn(session, 'pressed_writing', 'pressed', context);
+    session = interactionTurn(session, 'drawer', 'drawer', context);
     expect(session.phase).toBe('AWAITING_CHAPTER');
     expect(clueSummary(session)).toEqual([
-      ['The Impressed Note', null],
-      ['The Pencil', null],
-      ['The Torn Page', null],
-      ['Behind the Wardrobe', null],
+      ['The Drawer Note', null],
+      ['The Key', null],
+      ['The Blank Ledger', null],
+      ['Behind the Lamp', null],
     ]);
 
-    session = finishTurn(session, 'pressed_chapter', 'continue', [], context);
+    session = finishTurn(session, 'drawer_chapter', 'continue', [], context);
     expect(clueSummary(session)[0]).toEqual([
-      'The Impressed Note',
-      'Close my eyes and begin with the North Station announcement.',
+      'The Drawer Note',
+      'Close my eyes and begin with the bell.',
     ]);
 
-    session = interactionTurn(
-      session,
-      'north_station_memory',
-      'memory',
-      context,
-    );
+    session = interactionTurn(session, 'memory', 'memory', context);
     expect(clueSummary(session).slice(0, 2)).toEqual([
       ['The Returned Memory', null],
-      ['The Impressed Note', null],
+      ['The Drawer Note', null],
     ]);
 
     session = finishTurn(session, 'memory_chapter', 'continue', [], context);
     expect(
-      clueSummary(session).find(([title]) => title === 'Behind the Wardrobe'),
+      clueSummary(session).find(([title]) => title === 'Behind the Lamp'),
     ).toEqual([
-      'Behind the Wardrobe',
-      'Move the wardrobe aside and search the narrow gap where the tapping came from.',
+      'Behind the Lamp',
+      'Move the lamp aside and search the wall behind it.',
     ]);
 
-    session = ordinaryTurn(
-      session,
-      'find_manuscript',
-      ['manuscript_found'],
-      context,
-    );
+    session = ordinaryTurn(session, 'find_panel', ['panel_found'], context);
     expect(clueSummary(session)[0]).toEqual([
-      'The Sewn Manuscript',
-      'Open the sewn volume and read all the papers before deciding what to tell the speaker.',
+      'The Wall Panel',
+      'Open the panel and read the ledger before answering the voice.',
     ]);
 
-    session = interactionTurn(session, 'last_manuscript', 'last', context);
-    expect(derivePlayerClues(experienceDefinition, session)).toHaveLength(6);
+    session = interactionTurn(session, 'panel', 'panel', context);
+    expect(derivePlayerClues(recordFixtureExperience, session)).toHaveLength(6);
     expect(
-      derivePlayerClues(experienceDefinition, session).every(
+      derivePlayerClues(recordFixtureExperience, session).every(
         ({ lead }) => lead === null,
       ),
     ).toBe(true);
 
-    session = finishTurn(session, 'last_chapter', 'complete', [], context);
+    session = finishTurn(session, 'panel_chapter', 'complete', [], context);
     expect(session.phase).toBe('COMPLETE');
     expect(
-      derivePlayerClues(experienceDefinition, session).every(
+      derivePlayerClues(recordFixtureExperience, session).every(
         ({ lead }) => lead === null,
       ),
     ).toBe(true);
@@ -98,26 +85,21 @@ describe('player clue journal', () => {
 
   it('omits every locked clue and internal runtime term', () => {
     const context = testContext();
-    const initial = createExperienceSession(experienceDefinition, context);
+    const initial = createExperienceSession(recordFixtureExperience, context);
     const initialJson = JSON.stringify(
-      derivePlayerClues(experienceDefinition, initial),
+      derivePlayerClues(recordFixtureExperience, initial),
     );
     expect(initialJson).not.toMatch(
-      /reveal_pressed_words|follow_north_station_memory|pencil_found|sixth_attempt_note|Sixth time|national_correction_network|North Station reads 183\/184/,
+      /open_the_drawer|follow_the_memory|key_found|drawer_note|Do not answer yet|panel_truth|a corridor of doors/,
     );
 
-    const pencil = ordinaryTurn(
-      initial,
-      'safe_pencil',
-      ['pencil_found'],
-      context,
+    const key = ordinaryTurn(initial, 'safe_key', ['key_found'], context);
+    const keyJson = JSON.stringify(
+      derivePlayerClues(recordFixtureExperience, key),
     );
-    const pencilJson = JSON.stringify(
-      derivePlayerClues(experienceDefinition, pencil),
-    );
-    expect(pencilJson).toContain('The Pencil');
-    expect(pencilJson).not.toMatch(
-      /sixth_attempt_note|Sixth time|North Station reads 183\/184/,
+    expect(keyJson).toContain('The Key');
+    expect(keyJson).not.toMatch(
+      /drawer_note|Do not answer yet|a corridor of doors/,
     );
   });
 });
@@ -125,7 +107,7 @@ describe('player clue journal', () => {
 function clueSummary(
   session: ExperienceSession,
 ): Array<[string, string | null]> {
-  return derivePlayerClues(experienceDefinition, session).map(
+  return derivePlayerClues(recordFixtureExperience, session).map(
     ({ title, lead }) => [title, lead],
   );
 }
@@ -137,7 +119,7 @@ function ordinaryTurn(
   context: ReturnType<typeof testContext>,
 ): ExperienceSession {
   const started = beginStoryTurn(
-    experienceDefinition,
+    recordFixtureExperience,
     session,
     {
       operationId: operationId(`${suffix}_begin`),
@@ -163,7 +145,7 @@ function interactionTurn(
   context: ReturnType<typeof testContext>,
 ): ExperienceSession {
   return invokeStoryInteraction(
-    experienceDefinition,
+    recordFixtureExperience,
     session,
     {
       operationId: operationId(`${suffix}_interaction`),
@@ -185,18 +167,18 @@ function finishTurn(
 ): ExperienceSession {
   const receipt = session.pendingTurn?.effectReceipt;
   return commitStoryChapter(
-    experienceDefinition,
+    recordFixtureExperience,
     session,
     {
       operationId: operationId(suffix),
       expectedSessionId: session.sessionId,
       expectedRevision: session.revision,
       turnId: session.pendingTurn!.turnId,
-      title: 'The room answers',
+      title: 'The study answers',
       prose: ordinaryProse,
       recordProse: ordinaryRecordProse,
       continuitySummary:
-        'You remain inside the room while the wall speaker waits and the ventilation moves air behind the wardrobe.',
+        'You remain inside the study while the voice waits and the lamp keeps its steady light against the wall.',
       discoveryIds,
       effectReceiptId: receipt?.receiptId,
       representedFactIds: receipt?.factIds,

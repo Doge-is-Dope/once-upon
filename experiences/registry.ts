@@ -3,6 +3,7 @@ import {
   hasMatchingParagraphStructure,
   hasSecondPersonPronoun,
 } from '@/lib/manuscript/prose';
+import { FRAME_PRESENTATIONS } from '@/lib/frames/book';
 import type { ExperienceDefinition } from '@/lib/runtime/types';
 
 export const DEFAULT_EXPERIENCE_ID = experienceDefinitions[0].id;
@@ -34,18 +35,28 @@ function validateStoryDefinition(definition: ExperienceDefinition): void {
     throw new Error(
       `Experience ${definition.id} requires a versioned agent contract.`,
     );
-  if (!story.prologue.prose.trim() || !story.prologue.recordProse.trim())
+  const record = story.narration === 'record';
+  if (!story.prologue.prose.trim() || (record && !story.prologue.recordProse))
     throw new Error(`Experience ${definition.id} declares no prologue.`);
-  validateRecordText(
-    definition.id,
-    story.prologue.prose,
-    story.prologue.recordProse,
-  );
-  validateRecordText(
-    definition.id,
-    story.completionPassage.prose,
-    story.completionPassage.recordProse,
-  );
+  if (!story.completionPassage.prose.trim())
+    throw new Error(
+      `Experience ${definition.id} declares no completion passage.`,
+    );
+  if (record) {
+    validateRecordText(
+      definition.id,
+      story.prologue.prose,
+      story.prologue.recordProse,
+    );
+    validateRecordText(
+      definition.id,
+      story.completionPassage.prose,
+      story.completionPassage.recordProse,
+    );
+  } else {
+    rejectRecordText(definition.id, story.prologue.recordProse);
+    rejectRecordText(definition.id, story.completionPassage.recordProse);
+  }
   const discoveryIds = new Set(story.discoveryIds);
   if (discoveryIds.size !== story.discoveryIds.length)
     throw new Error(
@@ -64,9 +75,17 @@ function validateStoryDefinition(definition: ExperienceDefinition): void {
       );
     interactionIds.add(interaction.id);
     toolNames.add(interaction.toolName);
+    if (
+      !FRAME_PRESENTATIONS[definition.frame.id]?.has(interaction.presentation)
+    )
+      throw new Error(
+        `Interaction ${interaction.id} uses presentation ${interaction.presentation}, which frame ${definition.frame.id} cannot render.`,
+      );
     for (const fact of interaction.sealedFacts) {
       factIds.add(fact.id);
-      validateRecordText(definition.id, fact.value, fact.recordValue);
+      if (record)
+        validateRecordText(definition.id, fact.value, fact.recordValue);
+      else rejectRecordText(definition.id, fact.recordValue);
     }
   }
   for (const interaction of story.interactions) {
@@ -169,12 +188,22 @@ function validateStoryDefinition(definition: ExperienceDefinition): void {
       );
 }
 
+function rejectRecordText(
+  experienceId: string,
+  recordText: string | undefined,
+): void {
+  if (recordText !== undefined)
+    throw new Error(
+      `Experience ${experienceId} is prose-only but declares record text.`,
+    );
+}
+
 function validateRecordText(
   experienceId: string,
   prose: string,
-  recordProse: string,
+  recordProse: string | undefined,
 ): void {
-  if (!prose.trim() || !recordProse.trim())
+  if (!prose.trim() || !recordProse?.trim())
     throw new Error(
       `Experience ${experienceId} requires both authored text versions.`,
     );

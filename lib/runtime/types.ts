@@ -8,7 +8,8 @@ export interface StoryChapter {
   id: string;
   title: string;
   prose: string;
-  recordProse: string;
+  /** Official record text; present only in `record` stories. */
+  recordProse?: string;
   createdAt: number;
   turnId: string | null;
   discoveryIds: DiscoveryId[];
@@ -28,10 +29,17 @@ export interface WorldFact {
   revealedAt: number;
 }
 
+/**
+ * Names how a frame presents an interaction's effect on the page. The
+ * experience registry validates each id against the frame's manifest
+ * (see lib/frames/book.ts), so a story cannot name an unsupported one.
+ */
+export type StoryPresentationId = string;
+
 export interface InteractionEffectReceipt {
   receiptId: string;
   interactionId: InteractionId;
-  presentation: 'pressed_writing' | 'memory_flashback' | 'world_shift';
+  presentation: StoryPresentationId;
   factIds: FactId[];
   facts: Array<{ id: FactId; value: string }>;
   createdAt: number;
@@ -89,16 +97,22 @@ export interface StoryInteractionDefinition {
   title: string;
   description: string;
   cue: string;
+  /**
+   * Screen-reader line spoken when this interaction's effect lands on the
+   * page. Falls back to the presentation's default when omitted.
+   */
+  announcement?: string;
   requiredDiscoveryIds: readonly DiscoveryId[];
   requiredInteractionIds: readonly InteractionId[];
   requiredFactIds: readonly FactId[];
   sealedFacts: ReadonlyArray<{
     id: FactId;
     value: string;
-    recordValue: string;
+    /** Required in `record` stories, forbidden otherwise. */
+    recordValue?: string;
     protectedTerms: readonly string[];
   }>;
-  presentation: InteractionEffectReceipt['presentation'];
+  presentation: StoryPresentationId;
   completionPolicy: 'must_continue' | 'may_complete' | 'must_complete';
 }
 
@@ -136,24 +150,69 @@ export interface StoryClueDefinition {
   };
 }
 
+/**
+ * `prose` stories carry one player-facing text. `record` stories also keep
+ * an official third-person record of every passage: the agent must submit
+ * `recordProse` with each chapter, the restricted sheet censors its lines,
+ * and the fixed ending rewrites itself into the record after typing.
+ */
+export type StoryNarration = 'prose' | 'record';
+
 export interface StoryDefinition {
   id: string;
+  narration: StoryNarration;
   prologue: {
     title: string;
     prose: string;
-    recordProse: string;
+    /** Required in `record` stories, forbidden otherwise. */
+    recordProse?: string;
     continuitySummary: string;
   };
   clues: readonly StoryClueDefinition[];
-  completionPassage: { prose: string; recordProse: string };
+  completionPassage: { prose: string; recordProse?: string };
   discoveryIds: readonly DiscoveryId[];
   discoveryRequirements: readonly StoryDiscoveryRequirement[];
   completionRequiredFactIds: readonly FactId[];
   interactions: readonly StoryInteractionDefinition[];
 }
 
+/**
+ * Player-facing wording the book frame renders around the manuscript. The
+ * frame ships neutral defaults; a story overrides only the lines it wants
+ * in its own voice.
+ */
+export interface BookFrameCopy {
+  /** Running head printed above every sheet. */
+  runningHead: string;
+  /** Prompt above the player's next move, by story stage and agent state. */
+  turnPrompt: {
+    opening: string;
+    next: string;
+    openingWaiting: string;
+    nextWaiting: string;
+  };
+  /** Character action appended to the resume message copied for the agent. */
+  resumeMove: string;
+  /** Hint shown when no story object is currently available. */
+  hint: { opening: string; continuing: string };
+  /** Clue notebook labels. */
+  notes: { eyebrow: string; title: string; footnote: string };
+  /** Shared, read-only copy page. */
+  shared: { returnLabel: string };
+}
+
+export interface BookFrameCopyOverrides {
+  runningHead?: string;
+  turnPrompt?: Partial<BookFrameCopy['turnPrompt']>;
+  resumeMove?: string;
+  hint?: Partial<BookFrameCopy['hint']>;
+  notes?: Partial<BookFrameCopy['notes']>;
+  shared?: Partial<BookFrameCopy['shared']>;
+}
+
 export interface FrameDefinition {
   id: 'book';
+  copy?: BookFrameCopyOverrides;
 }
 
 export interface AgentContract {
@@ -250,7 +309,8 @@ export interface CommitStoryChapterInput {
   turnId: string;
   title: string;
   prose: string;
-  recordProse: string;
+  /** Required in `record` stories, rejected otherwise. */
+  recordProse?: string;
   continuitySummary: string;
   discoveryIds: DiscoveryId[];
   status: 'continue' | 'complete';
