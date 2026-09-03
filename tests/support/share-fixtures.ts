@@ -1,4 +1,4 @@
-import type { ExperienceDefinition } from '../../lib/runtime/types';
+import type { ExperienceDefinition } from '@/lib/runtime/types';
 import { recordFixtureExperience } from './fixture-story';
 
 type ShareChapter = {

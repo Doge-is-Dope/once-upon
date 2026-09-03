@@ -19,7 +19,7 @@ export function StoryHeaderTitle({ title }: { title: string }) {
   );
 }
 
-export function headerTitleAnimation(title: string): {
+function headerTitleAnimation(title: string): {
   characterCount: number;
   durationMs: number;
 } {

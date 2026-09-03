@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { redactParagraphs } from '../lib/manuscript/redaction';
+import { redactParagraphs } from '@/lib/manuscript/redaction';
 
 const paragraphs = [
   '"Please answer: what happened at North Station at 5:41 p.m. on May twelfth?"',

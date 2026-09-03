@@ -3,7 +3,7 @@ import {
   parseSharedStoryDocument,
   ShareValidationError,
   validateSharedStorySubmission,
-} from '../lib/share/document';
+} from '@/lib/share/document';
 import {
   lookupFixtureExperience,
   makeCompleteShareSubmission,

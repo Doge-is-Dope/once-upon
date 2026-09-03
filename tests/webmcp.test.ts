@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { ExperienceController } from '../lib/runtime/controller';
+import { ExperienceController } from '@/lib/runtime/controller';
 import {
   beginStoryTurn,
   commitStoryChapter,
   createExperienceSession,
-} from '../lib/runtime/engine';
-import type { ExperienceSession } from '../lib/runtime/types';
-import { registerExperienceTools } from '../lib/webmcp/tools';
+} from '@/lib/runtime/engine';
+import type { ExperienceSession } from '@/lib/runtime/types';
+import { registerExperienceTools } from '@/lib/webmcp/tools';
 import {
   fixtureIds,
   fixtureProtectedTerms,

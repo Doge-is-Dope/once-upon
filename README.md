@@ -121,6 +121,7 @@ expires after 30 days.
 
 ```text
 app/                              Routes and global metadata
+components/experience-app.tsx     Root client shell: controller, frame renderer, error boundary
 components/frames/desk/           Living Manuscript UI, presentations, inspector
 experiences/<story-id>/           Declarative story, starter, and agent contract
 lib/frames/                        Frame manifests and default copy
@@ -128,9 +129,14 @@ lib/runtime/                       In-memory narrative state machine
 lib/manuscript/                    Shared reading order and text export
 lib/share/                         Public document validation and D1 access
 lib/webmcp/                        State-derived WebMCP registration
+lib/security/                      Shared security headers for pages and API responses
+db/ + drizzle/                     Drizzle schema and generated D1 migrations
 tests/                             Deterministic engine and tool tests
 tests/support/                     Neutral fixture story and share fixtures
 e2e/                               Full browser journey, reset, and sharing
+e2e/support/                       WebMCP mock injected into Playwright
+docs/                              Story guide, recovery protocol, WebMCP evals, compatibility record
+scripts/                           Paper texture generator
 ```
 
 Game sessions never use browser storage. `sessionId`, revision, and the

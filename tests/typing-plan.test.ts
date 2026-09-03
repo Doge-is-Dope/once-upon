@@ -4,7 +4,7 @@ import {
   describeTypingSeconds,
   estimateTypingMs,
   splitTypingTokens,
-} from '../lib/manuscript/typing-plan';
+} from '@/lib/manuscript/typing-plan';
 
 describe('typing plan', () => {
   it('tokenizes without losing characters', () => {

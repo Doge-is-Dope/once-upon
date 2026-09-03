@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pageCountFromExtent } from '../components/frames/desk/use-sheet-pages';
+import { pageCountFromExtent } from '@/components/frames/desk/use-sheet-pages';
 
 describe('sheet page count', () => {
   it('uses only the real multicol content extent', () => {

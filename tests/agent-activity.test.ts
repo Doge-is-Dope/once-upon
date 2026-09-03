@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { describeRevision } from '../components/frames/desk/use-session-view';
-import { applyActivity } from '../components/frames/desk/use-webmcp-connection';
-import { createExperienceSession } from '../lib/runtime/engine';
+import { describeRevision } from '@/components/frames/desk/use-session-view';
+import { applyActivity } from '@/components/frames/desk/use-webmcp-connection';
+import { createExperienceSession } from '@/lib/runtime/engine';
 import { testContext } from './helpers';
 import { recordFixtureExperience } from './support/fixture-story';
 

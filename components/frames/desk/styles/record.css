@@ -882,8 +882,7 @@
       overflow: hidden;
     }
 
-    .title-kicker,
-    .ending-kicker {
+    .title-kicker {
       margin: 0 0 0.85rem;
       color: var(--gold);
       font-family: var(--font-mono);
@@ -1498,9 +1497,7 @@
       margin-top: 0.35rem;
     }
 
-    .agent-handoff-instruction,
-    .agent-handoff.is-waiting > p,
-    .agent-handoff.is-unavailable > p {
+    .agent-handoff-instruction {
       max-width: 58ch;
       margin: 0;
       color: var(--muted-ink);
@@ -2046,40 +2043,6 @@
       line-height: 1.35;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-
-    .ending-stats {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem 2rem;
-      margin: 1rem 0 0;
-    }
-
-    .ending-stats div {
-      display: flex;
-      align-items: baseline;
-      gap: 0.5rem;
-    }
-
-    .ending-stats dt {
-      color: var(--muted-ink);
-      font-family: var(--font-type);
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-
-    .ending-stats dt::after {
-      content: ':';
-    }
-
-    .ending-stats dd {
-      margin: 0;
-      color: var(--ink);
-      font-family: var(--font-type);
-      font-size: 1rem;
-      font-weight: 700;
     }
 
     .ending-share-actions {

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { derivePlayerClues } from '../lib/manuscript/clue-journal';
+import { derivePlayerClues } from '@/lib/manuscript/clue-journal';
 import {
   beginStoryTurn,
   commitStoryChapter,
   createExperienceSession,
   invokeStoryInteraction,
-} from '../lib/runtime/engine';
-import type { ExperienceSession } from '../lib/runtime/types';
+} from '@/lib/runtime/engine';
+import type { ExperienceSession } from '@/lib/runtime/types';
 import {
   operationId,
   ordinaryProse,

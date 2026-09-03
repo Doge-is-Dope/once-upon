@@ -1,4 +1,4 @@
-import type { EngineContext } from '../lib/runtime/types';
+import type { EngineContext } from '@/lib/runtime/types';
 
 export function testContext(): EngineContext {
   let sequence = 0;

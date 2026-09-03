@@ -1,9 +1,9 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { StoryClues } from '../components/frames/desk/story-clues';
-import { createExperienceSession } from '../lib/runtime/engine';
-import type { ExperienceSession } from '../lib/runtime/types';
+import { StoryClues } from '@/components/frames/desk/story-clues';
+import { createExperienceSession } from '@/lib/runtime/engine';
+import type { ExperienceSession } from '@/lib/runtime/types';
 import { testContext } from './helpers';
 import { recordFixtureExperience } from './support/fixture-story';
 

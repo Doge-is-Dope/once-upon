@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { StoryHeaderTitle } from '../components/frames/desk/story-header-title';
+import { StoryHeaderTitle } from '@/components/frames/desk/story-header-title';
 
 describe('StoryHeaderTitle', () => {
   it('bridges a Unicode-safe character count into CSS animation variables', () => {

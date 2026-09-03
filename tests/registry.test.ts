@@ -3,8 +3,8 @@ import {
   createExperienceRegistry,
   DEFAULT_EXPERIENCE_ID,
   getExperience,
-} from '../experiences/registry';
-import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
+} from '@/experiences/registry';
+import { experienceDefinition } from '@/experiences/the-last-manuscript/definition';
 
 describe('experience registry', () => {
   it('resolves the curated living manuscript', () => {

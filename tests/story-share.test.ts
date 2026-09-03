@@ -3,8 +3,8 @@ import {
   createSharedStorySubmission,
   deriveManuscriptReadModel,
   manuscriptToText,
-} from '../lib/manuscript/read-model';
-import { createExperienceSession } from '../lib/runtime/engine';
+} from '@/lib/manuscript/read-model';
+import { createExperienceSession } from '@/lib/runtime/engine';
 import { testContext } from './helpers';
 import { recordFixtureExperience } from './support/fixture-story';
 

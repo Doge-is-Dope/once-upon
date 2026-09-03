@@ -6,7 +6,7 @@ vi.mock('@/components/frames/registry', () => ({
   renderExperienceFrame: () => null,
 }));
 
-import { ExperienceApp, isMobileBrowser } from '../components/experience-app';
+import { ExperienceApp, isMobileBrowser } from '@/components/experience-app';
 
 describe('experience support gate', () => {
   it('server-renders only the safe static restriction screen', () => {

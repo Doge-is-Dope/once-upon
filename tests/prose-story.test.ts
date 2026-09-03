@@ -1,29 +1,29 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
-import { StoryScroll } from '../components/frames/desk/sheet';
-import { createExperienceRegistry } from '../experiences/registry';
+import { StoryScroll } from '@/components/frames/desk/sheet';
+import { createExperienceRegistry } from '@/experiences/registry';
 import {
   createSharedStorySubmission,
   deriveManuscriptReadModel,
   manuscriptToText,
-} from '../lib/manuscript/read-model';
-import { ExperienceController } from '../lib/runtime/controller';
+} from '@/lib/manuscript/read-model';
+import { ExperienceController } from '@/lib/runtime/controller';
 import {
   beginStoryTurn,
   commitStoryChapter,
   createExperienceSession,
   invokeStoryInteraction,
-} from '../lib/runtime/engine';
+} from '@/lib/runtime/engine';
 import type {
   ExperienceDefinition,
   ExperienceSession,
-} from '../lib/runtime/types';
-import { validateSharedStorySubmission } from '../lib/share/document';
+} from '@/lib/runtime/types';
+import { validateSharedStorySubmission } from '@/lib/share/document';
 import {
   livingManuscriptProtocol,
   registerExperienceTools,
-} from '../lib/webmcp/tools';
+} from '@/lib/webmcp/tools';
 import {
   fixtureExperience,
   fixtureIds,

@@ -1,12 +1,12 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { StoryScroll } from '../components/frames/desk/sheet';
+import { StoryScroll } from '@/components/frames/desk/sheet';
 import type {
   ExperienceSession,
   InteractionEffectReceipt,
   StoryChapter,
-} from '../lib/runtime/types';
+} from '@/lib/runtime/types';
 import {
   fixtureIds,
   fixtureProtectedTerms,

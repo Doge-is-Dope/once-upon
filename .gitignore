@@ -42,5 +42,3 @@ next-env.d.ts
 /work/
 
 # local tool state and generated media
-.devpost-hackathon-state.json
-/artifacts/

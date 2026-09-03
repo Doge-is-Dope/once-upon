@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ExperienceController } from '../lib/runtime/controller';
-import { createExperienceSession } from '../lib/runtime/engine';
+import { ExperienceController } from '@/lib/runtime/controller';
+import { createExperienceSession } from '@/lib/runtime/engine';
 import { operationId, testContext } from './helpers';
 import { recordFixtureExperience } from './support/fixture-story';
 

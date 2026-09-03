@@ -2,7 +2,7 @@ import type {
   ExperienceDefinition,
   StoryDefinition,
   StoryInteractionDefinition,
-} from '../../lib/runtime/types';
+} from '@/lib/runtime/types';
 
 /**
  * A small authored story with the same shape as The Last Manuscript — three

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BackspaceText,
   buildRewriteParts,
-} from '../components/frames/desk/backspace-text';
+} from '@/components/frames/desk/backspace-text';
 
 afterEach(() => {
   vi.useRealTimers();

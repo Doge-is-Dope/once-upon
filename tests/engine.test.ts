@@ -6,11 +6,11 @@ import {
   deriveToolSurface,
   invokeStoryInteraction,
   toStoryState,
-} from '../lib/runtime/engine';
+} from '@/lib/runtime/engine';
 import type {
   ExperienceDefinition,
   ExperienceSession,
-} from '../lib/runtime/types';
+} from '@/lib/runtime/types';
 import {
   operationId,
   ordinaryProse,

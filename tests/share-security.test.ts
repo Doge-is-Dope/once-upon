@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { readSharedStoryFromDatabase } from '../lib/share/database';
+import { readSharedStoryFromDatabase } from '@/lib/share/database';
 import {
   hasSecureShareSigningSecret,
   SHARE_SIGNING_SECRET_MIN_BYTES,
-} from '../lib/share/security';
+} from '@/lib/share/security';
 
 describe('shared story security', () => {
   it('requires at least 32 bytes of signing-secret entropy material', () => {
