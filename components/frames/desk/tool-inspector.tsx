@@ -32,11 +32,11 @@ export function WebMCPInspector({
     .map(({ interaction }) => interaction.toolName);
 
   return (
-    <details className="webmcp-inspector">
-      <summary>
-        <span>Page tools</span>
+    <div className="webmcp-inspector">
+      <div className="inspector-status">
+        <h2>Page tools</h2>
         <small>{statusLabel(status, activeTool)}</small>
-      </summary>
+      </div>
       <div className="inspector-body">
         <p className="inspector-intro">
           Three core tools are always available. Each discovery unlocks a
@@ -58,7 +58,7 @@ export function WebMCPInspector({
           ))}
         </ol>
       </div>
-    </details>
+    </div>
   );
 }
 
@@ -73,7 +73,7 @@ function ToolGroup({
 }) {
   return (
     <section className="tool-group" aria-label={`${label} page tools`}>
-      <h2>{label}</h2>
+      <h3>{label}</h3>
       {tools.length ? (
         <ul>
           {tools.map((name) => (

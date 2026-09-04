@@ -1,11 +1,21 @@
 @layer frame {
   @layer record {
     .frame-book {
+      /* The record and the notebook beside it share one height, sized so
+         header, sheet and gutters fit the viewport without page scroll. */
+      --sheet-height: clamp(30rem, calc(100dvh - 12rem), 58rem);
       position: relative;
       min-height: 100vh;
       min-height: 100dvh;
       overflow-x: clip;
       overflow-y: visible;
+    }
+
+    /* While the opening title still stands above the sheet, the sheet
+       gives up exactly that much height so the desk stays in the viewport;
+       the title collapses on the first choice and the sheet grows back. */
+    .frame-book:not([data-story-started]) {
+      --sheet-height: clamp(28rem, calc(100dvh - 17rem), 58rem);
     }
 
     .restricted-experience {
@@ -312,50 +322,152 @@
       outline-offset: 3px;
     }
 
-    .story-clues-popover {
+    /* ---------- the notebook beside the record ---------- */
+    /* Floating by default: a pad that slides in from the right edge when
+       the header key opens it. Wide desks dock it instead (below). */
+    .desk-rail {
       position: fixed;
-      inset: 0;
-      width: 100%;
-      max-width: none;
-      height: 100%;
-      max-height: none;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: transparent;
-      border: 0;
+      z-index: 30;
+      top: 5rem;
+      inset-inline-end: 1rem;
+      display: flex;
+      flex-direction: column;
+      width: min(22rem, calc(100vw - 2rem));
+      max-height: calc(100dvh - 6rem);
+      color: #352a1d;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      translate: 0.75rem 0;
+      transition:
+        opacity 160ms ease,
+        translate 220ms var(--ease-out),
+        visibility 0s linear 220ms;
     }
 
-    .story-clues-popover::backdrop {
-      background: rgb(7 6 5 / 46%);
-      backdrop-filter: blur(2px) saturate(0.88);
+    .desk-rail[data-open] {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      translate: 0;
+      transition-delay: 0s;
+    }
+
+    @media (min-width: 74rem) {
+      .desk-rail {
+        position: relative;
+        z-index: auto;
+        top: auto;
+        inset-inline-end: auto;
+        width: auto;
+        height: var(--sheet-height);
+        max-height: none;
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        translate: 0;
+        transition: none;
+      }
+    }
+
+    .desk-rail-tabs {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      gap: 0.25rem;
+      margin-top: 0.9rem;
+      padding: 0.45rem 0.9rem 0;
+      border-bottom: 1px solid rgb(93 68 39 / 28%);
+    }
+
+    .desk-rail-tab {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      min-height: 2.75rem;
+      margin-bottom: -1px;
+      padding: 0.55rem 0.8rem 0.5rem;
+      color: #8b7a5e;
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      font-family: var(--font-type);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .desk-rail-tab:hover {
+      color: #352a1d;
+    }
+
+    .desk-rail-tab[aria-selected='true'] {
+      color: #352a1d;
+      border-bottom-color: #8b5718;
+    }
+
+    .desk-rail-tab-count {
+      color: #786747;
+      font-weight: 400;
+    }
+
+    .desk-rail-tab-dot {
+      width: 0.4rem;
+      height: 0.4rem;
+      border-radius: 50%;
+      background: var(--stamp);
+      box-shadow: 0 0 0 2px rgb(109 47 31 / 18%);
+    }
+
+    .desk-rail-close {
+      position: absolute;
+      z-index: 3;
+      top: 1.2rem;
+      inset-inline-end: 0.9rem;
+      display: grid;
+      width: 2.25rem;
+      height: 2.25rem;
+      place-items: center;
+      padding: 0;
+      color: var(--muted-ink);
+      background: rgb(var(--rule-ink) / 5%);
+      border: 1px solid rgb(var(--rule-ink) / 30%);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .desk-rail-close:hover {
+      color: var(--ink);
+      border-color: rgb(var(--rule-ink) / 55%);
+    }
+
+    .desk-rail-panel {
+      flex: 1;
+      min-height: 0;
+      padding: 1.6rem 1.25rem 1.25rem;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: rgb(94 74 48 / 48%) transparent;
+    }
+
+    .desk-rail[data-tabbed] .desk-rail-panel {
+      padding-top: 0.6rem;
+    }
+
+    .desk-rail-panel[hidden] {
+      display: none;
+    }
+
+    .desk-rail-panel:focus-visible {
+      outline: 2px solid #6d3d0f;
+      outline-offset: -2px;
     }
 
     .story-clues-sheet {
-      --story-clues-top: clamp(4.75rem, 10dvh, 6.5rem);
-      position: absolute;
-      top: var(--story-clues-top);
-      left: 50%;
-      width: min(25rem, calc(100dvw - 1.75rem));
-      max-height: calc(100dvh - var(--story-clues-top) - 1rem);
-      padding: 2rem 1.55rem 1.35rem;
-      overflow-y: auto;
-      overscroll-behavior: contain;
       color: #352a1d;
-      background:
-        repeating-linear-gradient(
-          0deg,
-          transparent 0 1.625rem,
-          rgb(101 76 43 / 8%) 1.6875rem
-        ),
-        linear-gradient(175deg, #eee3c2, #d8c9a2);
-      border: 1px solid rgb(255 246 223 / 32%);
-      border-radius: 0.125rem;
-      box-shadow:
-        -1.125rem 2rem 3.75rem rgb(0 0 0 / 52%),
-        0.3125rem 0.5rem 0 -0.25rem #ad9d78;
-      transform: translateX(-50%) rotate(-0.2deg);
-      scrollbar-color: rgb(94 74 48 / 48%) transparent;
     }
 
     .story-clues-binding {
@@ -429,45 +541,31 @@
     }
 
     .story-clues-sheet-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 1rem;
-      padding-bottom: 1rem;
+      padding-bottom: 0.8rem;
       border-bottom: 1px solid rgb(93 68 39 / 28%);
     }
 
-    .story-clues-close {
-      display: grid;
-      width: 2.75rem;
-      height: 2.75rem;
-      flex: 0 0 auto;
-      place-items: center;
-      padding: 0;
-      color: var(--muted-ink);
-      background: rgb(var(--rule-ink) / 5%);
-      border: 1px solid rgb(var(--rule-ink) / 30%);
-      border-radius: 50%;
-      cursor: pointer;
+    /* The floating notebook's close key sits over the header's corner. */
+    .desk-rail-close ~ .desk-rail-panel .story-clues-sheet-header {
+      padding-inline-end: 2.5rem;
     }
 
-    .story-clues-close:hover {
-      color: var(--ink);
-      border-color: rgb(var(--rule-ink) / 55%);
+    .story-clues-empty {
+      margin: 1rem 0 0;
+      color: #665943;
+      font-family: var(--font-hand);
+      font-size: 1.3rem;
+      line-height: 1.25;
+      rotate: -0.4deg;
+      text-wrap: pretty;
     }
 
-    .story-clues-eyebrow,
     .story-clue-state {
       font-family: var(--font-type);
       font-size: 0.7rem;
       font-weight: 700;
       letter-spacing: 0.1em;
       text-transform: uppercase;
-    }
-
-    .story-clues-eyebrow {
-      margin: 0 0 0.3rem;
-      color: #786747;
     }
 
     .story-clues-sheet h2 {
@@ -505,7 +603,7 @@
     .story-clue-entry h3 {
       margin: 0;
       font-family: var(--font-hand);
-      font-size: 1.65rem;
+      font-size: 1.55rem;
       font-weight: 500;
       line-height: 1;
       text-decoration: underline;
@@ -523,7 +621,7 @@
       margin: 0.45rem 0 0;
       color: #473b2c;
       font-family: var(--font-hand);
-      font-size: 1.375rem;
+      font-size: 1.3rem;
       font-weight: 400;
       line-height: 1.27;
       text-wrap: pretty;
@@ -613,11 +711,10 @@
       position: fixed;
       z-index: -1;
       inset: 0;
-      background: rgb(8 7 6 / 16%);
+      background: rgb(8 7 6 / 10%);
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
-      backdrop-filter: blur(4px) saturate(0.86);
       transition:
         opacity 160ms ease,
         visibility 0s linear 160ms;
@@ -817,10 +914,29 @@
     /* The hero collapse never animates layout: margins and grid rows jump
    to their final values in one pass, and book-experience plays a FLIP
    transform on the shell to carry the manuscript to its new position. */
+    /* One column for the record on ordinary desks; wide desks add the
+       notebook column beside it. Nothing stacks below the sheet, so the
+       page itself never needs to scroll. */
     .story-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 48rem);
+      align-items: start;
+      justify-content: center;
+      column-gap: 2rem;
       width: min(100% - 2rem, 58rem);
       margin: clamp(1rem, 2.5vw, 2rem) auto 0;
-      padding-block-end: 8rem;
+      padding-block-end: clamp(1rem, 3vh, 2rem);
+    }
+
+    @media (min-width: 74rem) {
+      .story-shell {
+        grid-template-columns: minmax(0, 48rem) 22rem;
+        width: min(100% - 2rem, 74rem);
+      }
+    }
+
+    .story-shell > .title-block {
+      grid-column: 1 / -1;
     }
 
     .story-shell:focus {
@@ -836,10 +952,14 @@
       width: min(100%, 48rem);
       margin-inline: auto;
       isolation: isolate;
+      transition: translate 220ms var(--ease-out);
     }
 
-    .story-manuscript-stage[data-notes-available='true'] {
-      padding-bottom: 3.25rem;
+    /* When the floating notebook opens on a narrower desk the record slides
+       left by the spare felt on its side, so the pad covers as little of
+       the page as the width allows. */
+    .frame-book[data-rail-open] .story-manuscript-stage {
+      translate: min(0px, calc((50rem - 100vw) / 2)) 0;
     }
 
     .story-manuscript-content {
@@ -966,7 +1086,7 @@
       display: flex;
       flex-direction: column;
       width: min(100%, 48rem);
-      height: clamp(30rem, calc(100dvh - 12rem), 58rem);
+      height: var(--sheet-height);
       margin-inline: auto;
       padding: clamp(1.25rem, 3vw, 2rem) clamp(1.5rem, 5vw, 3.5rem)
         clamp(1rem, 2vw, 1.5rem);
@@ -1147,21 +1267,6 @@
       50% {
         opacity: 0.55;
       }
-    }
-
-    .sheet-finish-typing {
-      min-height: 2.25rem;
-      margin: 0;
-      padding-inline: 0.85rem;
-      color: var(--muted-ink);
-      font-size: 0.78rem !important;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      background: transparent;
-      border: 1px solid rgb(var(--rule-ink) / 35%);
-      border-radius: 0.15rem;
-      cursor: pointer;
-      font-family: var(--font-type);
     }
 
     .sheet-typing-status,
@@ -1619,8 +1724,12 @@
    the last letter off every line-ending word. */
     .story-chapter.is-fresh .tw-word,
     .completion-passage.is-fresh .tw-word {
+      /* Hidden by the base clip until the word's scheduled start. The
+     animation fills forwards only: a backwards fill of a jump-start
+     reveal let every waiting word leak its first glyph during the delay. */
+      clip-path: inset(0 100% 0 0);
       animation: word-type var(--wd, 80ms) steps(var(--chars, 1), jump-start)
-        var(--td, 0ms) both;
+        var(--td, 0ms) forwards;
     }
 
     @keyframes word-type {
@@ -2231,44 +2340,39 @@
       }
     }
 
+    /* The tool inspector: typed onto the same notepad, ink on paper. */
     .webmcp-inspector {
-      width: min(100%, 48rem);
-      margin: 1.25rem auto 0;
-      color: var(--parchment-soft);
-      background: rgb(26 23 19 / 88%);
-      border: 1px solid rgb(234 219 185 / 14%);
-      border-radius: 0.25rem;
+      color: #352a1d;
+      font-family: var(--font-type);
     }
 
-    .webmcp-inspector > summary {
+    .inspector-status {
       display: flex;
-      align-items: center;
+      flex-wrap: wrap;
+      align-items: baseline;
       justify-content: space-between;
-      gap: 1rem;
-      padding: 1rem 1.2rem;
-      color: var(--cream);
-      cursor: pointer;
-      font-family: var(--font-type);
-      font-size: 0.86rem;
+      gap: 0.2rem 0.75rem;
+      margin: 0 0 0.6rem;
+    }
+
+    .inspector-status h2 {
+      margin: 0;
+      color: #786747;
+      font-size: 0.7rem;
       font-weight: 700;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
     }
 
-    .webmcp-inspector > summary small {
-      color: var(--parchment-dim);
+    .inspector-status small {
+      color: #8b5718;
       font-family: var(--font-mono);
-      font-size: 0.72rem;
-      font-weight: 400;
-    }
-
-    .inspector-body {
-      padding: 0 1.2rem 1.2rem;
-      border-top: 1px solid rgb(234 219 185 / 10%);
-      font-family: var(--font-type);
+      font-size: 0.7rem;
     }
 
     .inspector-intro {
       max-width: 64ch;
+      margin: 0 0 0.35rem;
       font-size: 0.84rem;
       line-height: 1.6;
     }
@@ -2280,22 +2384,22 @@
 
     .tool-group {
       display: grid;
-      grid-template-columns: 8rem 1fr;
-      gap: 1rem;
+      gap: 0.5rem;
       padding-block: 0.75rem;
-      border-top: 1px solid rgb(234 219 185 / 8%);
+      border-top: 1px solid rgb(93 68 39 / 24%);
     }
 
-    .tool-group h2,
+    .tool-group h3,
     .tool-group p {
       margin: 0;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
     }
 
-    .tool-group h2 {
-      color: #96866e;
-      text-transform: uppercase;
+    .tool-group h3 {
+      color: #786747;
+      font-weight: 700;
       letter-spacing: 0.1em;
+      text-transform: uppercase;
     }
 
     .tool-group ul {
@@ -2312,39 +2416,41 @@
       align-items: center;
       gap: 0.45rem;
       padding: 0.3rem 0.45rem;
-      color: #d6c9b2;
-      background: rgb(255 255 255 / 4%);
-      border: 1px solid rgb(255 255 255 / 9%);
+      color: #352a1d;
+      background: rgb(var(--rule-ink) / 6%);
+      border: 1px solid rgb(var(--rule-ink) / 28%);
       border-radius: 0.2rem;
     }
 
     .tool-group li.is-running {
-      border-color: var(--gold);
+      border-color: #8b5718;
     }
 
     .tool-group li span {
-      color: var(--gold);
+      color: #8b5718;
       font-size: 0.65rem;
     }
 
     .empty-tools {
-      color: #7f725e;
+      color: #8b7a5e;
     }
 
     .interaction-timeline {
       display: grid;
       gap: 0.75rem;
-      margin: 1rem 0 0;
-      padding: 1rem 0;
+      margin: 0.75rem 0 0;
+      padding: 0.75rem 0 0;
       list-style: none;
-      border-top: 1px solid rgb(234 219 185 / 8%);
+      border-top: 1px solid rgb(93 68 39 / 24%);
     }
 
     .interaction-timeline > li {
       display: grid;
-      grid-template-columns: minmax(8rem, 0.7fr) 2fr;
-      gap: 1rem;
-      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .interaction-timeline strong {
+      font-size: 0.86rem;
     }
 
     .timeline-steps {
@@ -2354,7 +2460,7 @@
     }
 
     .timeline-steps > span {
-      color: #6f6455;
+      color: #a3937a;
       font-size: 0.68rem;
     }
 
@@ -2363,7 +2469,7 @@
     }
 
     .timeline-steps > span.is-complete {
-      color: var(--gold);
+      color: #8b5718;
     }
 
     .message-screen {
@@ -2424,17 +2530,6 @@
         gap: 0.3rem;
       }
 
-      .story-clues-sheet {
-        top: 5rem;
-        left: 0.625rem;
-        right: 0.625rem;
-        bottom: 0.625rem;
-        width: auto;
-        max-height: none;
-        padding: 1.875rem 1.25rem 1.125rem;
-        transform: rotate(-0.2deg);
-      }
-
       .title-deck {
         font-size: 1rem;
       }
@@ -2454,17 +2549,6 @@
       .notepad-artifact .revealed-fragment {
         font-size: clamp(1.6rem, 7vw, 3.4rem);
       }
-
-      .tool-group,
-      .interaction-timeline > li {
-        grid-template-columns: 1fr;
-        gap: 0.5rem;
-      }
-
-      .webmcp-inspector > summary {
-        align-items: flex-start;
-        flex-direction: column;
-      }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -2477,6 +2561,11 @@
         animation: none !important;
         scroll-behavior: auto !important;
         transition: none !important;
+      }
+
+      /* With the reveal animation gone, typed words are simply visible. */
+      .frame-book .tw-word {
+        clip-path: none !important;
       }
     }
 
@@ -2586,9 +2675,8 @@
 
     @media (prefers-contrast: more) {
       .memory-flashback,
-      .story-clues-sheet,
+      .desk-rail,
       .story-hint-panel,
-      .webmcp-inspector,
       .settings-panel,
       .story-header {
         border-color: var(--parchment-soft);

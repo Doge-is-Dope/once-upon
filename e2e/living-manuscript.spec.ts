@@ -149,7 +149,6 @@ test('moves from the opening hero into the manuscript after the first choice', a
   await expect(
     page.getByRole('button', { name: 'Hint', exact: true }),
   ).toBeDisabled();
-  await expect(page.locator('.sheet-finish-typing')).toBeVisible();
   await expect(page.locator('#your-turn')).toHaveCount(1, {
     timeout: 25_000,
   });
@@ -157,29 +156,34 @@ test('moves from the opening hero into the manuscript after the first choice', a
   await expect(
     page.getByRole('button', { name: 'Hint', exact: true }),
   ).toBeEnabled();
-  await expect(page.locator('.sheet-finish-typing')).toBeHidden();
-  const notes = page.getByRole('button', {
-    name: 'Open clue notebook',
-    exact: true,
-  });
-  await expect(notes).toBeVisible();
+  await expect(page.locator('.sheet-typing-status')).toHaveCount(0);
+  // On a wide desk the notebook is docked beside the record, level with
+  // it and as tall as it, and nothing stacks below the sheet.
+  await expect(
+    page.getByRole('button', { name: /^Open clue notebook/ }),
+  ).toHaveCount(0);
+  const rail = page.locator('#desk-rail');
+  await expect(rail).toBeVisible();
+  await expect(rail.locator('.story-clue-entry')).toHaveCount(2);
   const notebookPlacement = await page.evaluate(() => {
-    const trigger = document
-      .querySelector('.story-clues-trigger')!
-      .getBoundingClientRect();
+    const rail = document.querySelector('#desk-rail')!.getBoundingClientRect();
     const manuscript = document
       .querySelector('.manuscript')!
       .getBoundingClientRect();
     return {
-      rightInset: manuscript.right - trigger.right,
-      exposedHeight: trigger.bottom - manuscript.bottom,
+      gap: rail.left - manuscript.right,
+      topOffset: Math.abs(rail.top - manuscript.top),
+      heightDifference: Math.abs(rail.height - manuscript.height),
+      pageScrolls: document.documentElement.scrollHeight > window.innerHeight,
     };
   });
-  expect(Math.abs(notebookPlacement.rightInset)).toBeLessThan(16);
-  expect(notebookPlacement.exposedHeight).toBeGreaterThanOrEqual(44);
+  expect(notebookPlacement.gap).toBeGreaterThanOrEqual(16);
+  expect(notebookPlacement.topOffset).toBeLessThan(2);
+  expect(notebookPlacement.heightDifference).toBeLessThan(2);
+  expect(notebookPlacement.pageScrolls).toBe(false);
 });
 
-test('lets the reader finish typing early and shows a refused entry', async ({
+test('shows a refused entry and settles typing on its own', async ({
   page,
 }) => {
   await page.goto(EXPERIENCE_PATH);
@@ -239,11 +243,12 @@ test('lets the reader finish typing early and shows a refused entry', async ({
   );
   await expect(page.locator('.agent-failure-note')).toHaveCount(0);
   await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(1);
-  const finish = page.locator('.sheet-finish-typing');
-  await expect(finish).toBeVisible();
+  await expect(page.locator('.sheet-typing-status')).toBeVisible();
   await expect(hintIcon).toHaveCSS('animation-name', 'none');
-  await finish.click();
-  await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(0);
+  // There is no way to cut the typing short: the record settles by itself.
+  await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(0, {
+    timeout: 25_000,
+  });
   await expect(page.locator('#your-turn')).toHaveCount(1);
   await expect(
     page.getByRole('heading', { name: 'What do you do next?' }),
@@ -374,13 +379,19 @@ test('keeps a player-safe clue journal and acknowledges new clues on close', asy
   await page.goto(EXPERIENCE_PATH);
   await waitForTool(page, 'get_story_state');
   let state = await readState(page);
-  const stage = page.locator('.story-manuscript-stage');
-  const trigger = stage.locator('.story-clues-trigger');
-  const popover = page.locator('#story-clues-popover');
+  const rail = page.locator('#desk-rail');
   const sheet = page.locator('.story-clues-sheet');
   const pageIndicator = page.locator('.sheet-page-indicator');
 
-  await expect(trigger).toHaveCount(0);
+  // The docked notebook is always beside the record; it stays empty until
+  // a chapter has been written to take notes from. With the inspector off
+  // it is a single page: no section tabs, no eyebrow above the heading.
+  await expect(rail).toBeVisible();
+  await expect(sheet).toContainText('Nothing noted yet.');
+  await expect(sheet.locator('.story-clue-entry')).toHaveCount(0);
+  await expect(rail.getByRole('tab')).toHaveCount(0);
+  await expect(rail.locator('.desk-rail-tabs')).toHaveCount(0);
+  await expect(sheet.locator('.story-clues-eyebrow')).toHaveCount(0);
   state = await ordinaryTurn(
     page,
     state,
@@ -395,35 +406,28 @@ test('keeps a player-safe clue journal and acknowledges new clues on close', asy
   await expect(page.locator('.sheet-pager .story-clues-trigger')).toHaveCount(
     0,
   );
-  await expect(trigger).toHaveCount(1);
-  await expect(trigger).toHaveText('Notes');
-  await expect(trigger).toHaveAttribute('aria-label', 'Open clue notebook');
-  await expect(trigger).toHaveAttribute('aria-controls', 'story-clues-popover');
-  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-  await expect(trigger).not.toHaveAttribute('data-new', 'true');
-  await expect(trigger).not.toContainText(/\d/);
-  await expect(popover).toBeHidden();
-  await trigger.press('Enter');
-  await expect(popover).toBeVisible();
-  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-  await expect(
-    sheet.getByRole('button', { name: 'Close notes' }),
-  ).toBeFocused();
-  await expect(sheet).toContainText('Notes from the room · 2 found');
+  await expect(rail.getByRole('tab')).toHaveCount(0);
+  await expect(sheet.locator('.story-clue-entry')).toHaveCount(2);
+  await expect(sheet).not.toContainText('found');
   await expect(sheet.locator('.story-clue-state')).toHaveText([
     'Noted',
     'Noted',
   ]);
-  await expect(sheet.getByRole('button')).toHaveCount(1);
+  await expect(sheet.getByRole('button')).toHaveCount(0);
   expect(await sheet.innerText()).not.toMatch(
     /reveal_pressed_words|pencil_found|sixth_attempt_note|North Station reads 183\/184/,
   );
+  // Reading and note-taking share the viewport: the page keys keep working
+  // while the notebook is in view, and the record is never made inert.
+  await expect(page.locator('.story-manuscript-content')).not.toHaveAttribute(
+    'inert',
+  );
+  await page.mouse.move(8, 8);
   const indicatorBefore = await pageIndicator.textContent();
+  await page.keyboard.press('ArrowLeft');
+  await expect(pageIndicator).not.toHaveText(indicatorBefore!);
   await page.keyboard.press('ArrowRight');
-  expect(await pageIndicator.textContent()).toBe(indicatorBefore);
-  await page.keyboard.press('Escape');
-  await expect(popover).toBeHidden();
-  await expect(trigger).toBeFocused();
+  await expect(pageIndicator).toHaveText(indicatorBefore!);
 
   state = await ordinaryTurn(
     page,
@@ -433,13 +437,15 @@ test('keeps a player-safe clue journal and acknowledges new clues on close', asy
     'The pencil beneath the desk',
   );
   await waitForTool(page, 'reveal_pressed_words');
-  await expect(trigger).toHaveAttribute(
-    'aria-label',
-    'Open clue notebook, new note available',
+  // The new note waits until the chapter has finished typing, then shows
+  // as New until the reader looks at the notebook.
+  await expect(sheet).not.toContainText('The Pencil');
+  await expect(sheet.locator('.story-clue-entry')).toHaveCount(3, {
+    timeout: 25_000,
+  });
+  await expect(sheet.locator('.story-clue-entry[data-new="true"]')).toHaveCount(
+    1,
   );
-  await expect(trigger).toHaveAttribute('data-new', 'true');
-  await trigger.click();
-  await expect(sheet).toContainText('Notes from the room · 3 found');
   await expect(sheet.locator('.story-clue-entry').first()).toContainText(
     'The Pencil',
   );
@@ -451,12 +457,7 @@ test('keeps a player-safe clue journal and acknowledges new clues on close', asy
     /reveal_pressed_words|pencil_found|sixth_attempt_note|Sixth time/,
   );
 
-  await popover.click({ position: { x: 8, y: 180 } });
-  await expect(popover).toBeHidden();
-  await expect(trigger).toBeFocused();
-  await expect(trigger).toHaveAttribute('aria-label', 'Open clue notebook');
-  await expect(trigger).not.toHaveAttribute('data-new', 'true');
-  await trigger.click();
+  await sheet.hover();
   await expect(sheet.locator('.story-clue-entry').first()).toContainText(
     'Noted',
   );
@@ -585,10 +586,7 @@ test('opens and dismisses the accessible settings panel', async ({ page }) => {
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   await expect(panel).toBeVisible();
   await expect(backdrop).toBeVisible();
-  await expect(backdrop).toHaveCSS(
-    'backdrop-filter',
-    'blur(4px) saturate(0.86)',
-  );
+  await expect(backdrop).toHaveCSS('backdrop-filter', 'none');
   const reset = page.getByRole('button', { name: 'Start over', exact: true });
   await expect(reset).toBeVisible();
   await expect(reset).toHaveCSS('text-align', 'center');
@@ -600,11 +598,35 @@ test('opens and dismisses the accessible settings panel', async ({ page }) => {
 
   await debugMode.click();
   await expect(panel).toBeVisible();
+  // The inspector opens as the Tools tab of the docked notebook, so the
+  // page still does not scroll.
+  const toolsTab = page.getByRole('tab', { name: 'Tools' });
+  await expect(toolsTab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await expect(page.locator('.desk-rail-tabs')).toHaveCSS(
+    'justify-content',
+    'center',
+  );
   await expect(page.locator('.webmcp-inspector')).toBeVisible();
+  await expect(page.locator('#desk-rail')).toContainText('get_story_state');
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollHeight <= window.innerHeight,
+    ),
+  ).toBe(true);
 
   await backdrop.click({ position: { x: 20, y: 120 } });
   await expect(panel).toBeHidden();
   await expect(backdrop).toBeHidden();
+  await page.getByRole('tab', { name: /^Notes/ }).click();
+  await expect(page.locator('.webmcp-inspector')).toBeHidden();
+  // Switching the inspector back off removes the section tabs again.
+  await trigger.click();
+  await debugMode.click();
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.locator('.webmcp-inspector')).toHaveCount(0);
+  await backdrop.click({ position: { x: 20, y: 120 } });
+  await expect(panel).toBeHidden();
 
   await trigger.click();
   await expect(panel).toBeVisible();
@@ -721,7 +743,6 @@ test('completes the story within six registrations and shares a unique story lin
   const pageHeldDuringRewrite = Number(
     (await page.locator('.sheet-page-indicator').innerText()).match(/\d+/)?.[0],
   );
-  await page.locator('.sheet-finish-typing').click();
   await expect(
     page.getByRole('textbox', { name: 'Manuscript copy link' }),
   ).toHaveCount(0);
@@ -807,10 +828,8 @@ test('completes the story within six registrations and shares a unique story lin
   await expect(page.locator('.sheet-page-indicator')).toHaveText(
     pageCountBeforeShare,
   );
-  await page.getByRole('button', { name: /^Open clue notebook/ }).click();
   await expect(page.locator('.story-clue-entry')).toHaveCount(6);
   await expect(page.locator('.story-clue-lead')).toHaveCount(0);
-  await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Copy story' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Download .txt' })).toHaveCount(
     0,
@@ -946,7 +965,9 @@ test('reload and Reset create a fresh document session', async ({ page }) => {
   await expect(
     page.getByRole('button', { name: /^Open clue notebook/ }),
   ).toHaveCount(0);
-  await expect(page.locator('.story-clues-sheet')).toHaveCount(0);
+  await expect(page.locator('.story-clues-sheet')).toContainText(
+    'Nothing noted yet.',
+  );
 
   const stale = await callTool<ToolResult>(page, 'begin_story_turn', {
     operationId: operationId('stale'),
@@ -975,7 +996,9 @@ test('reload and Reset create a fresh document session', async ({ page }) => {
   await expect(
     page.getByRole('button', { name: /^Open clue notebook/ }),
   ).toHaveCount(0);
-  await expect(page.locator('.story-clues-sheet')).toHaveCount(0);
+  await expect(page.locator('.story-clues-sheet')).toContainText(
+    'Nothing noted yet.',
+  );
 });
 
 test('keeps the manuscript usable at narrow width, zoom, and reduced motion', async ({
@@ -1009,56 +1032,51 @@ test('keeps the manuscript usable at narrow width, zoom, and reduced motion', as
     name: 'Open clue notebook',
     exact: true,
   });
-  await notesTrigger.scrollIntoViewIfNeeded();
-  const notebookLayout = await page.evaluate(() => {
-    const trigger = document
-      .querySelector('.story-clues-trigger')!
-      .getBoundingClientRect();
-    const manuscript = document
-      .querySelector('.manuscript')!
-      .getBoundingClientRect();
-    const controls = document
-      .querySelector('.sheet-controls')!
-      .getBoundingClientRect();
+  // Too narrow to dock the notebook: the header key floats it over the
+  // felt, beside the record rather than over it, and Escape puts it away.
+  await expect(
+    page.locator('.story-header-actions .story-clues-trigger'),
+  ).toHaveCount(1);
+  await expect(notesTrigger).toHaveAttribute('aria-controls', 'desk-rail');
+  await expect(notesTrigger).toHaveAttribute('aria-expanded', 'false');
+  const rail = page.locator('#desk-rail');
+  await expect(rail).toBeHidden();
+  const triggerLayout = await notesTrigger.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
     return {
-      trigger: {
-        x: trigger.x,
-        right: trigger.right,
-        bottom: trigger.bottom,
-        width: trigger.width,
-        height: trigger.height,
-      },
-      manuscriptBottom: manuscript.bottom,
-      controlsBottom: controls.bottom,
+      x: bounds.x,
+      right: bounds.right,
+      width: bounds.width,
+      height: bounds.height,
     };
   });
-  expect(notebookLayout.trigger.x).toBeGreaterThanOrEqual(0);
-  expect(notebookLayout.trigger.right).toBeLessThanOrEqual(641);
-  expect(notebookLayout.trigger.width).toBeGreaterThanOrEqual(44);
-  expect(notebookLayout.trigger.height).toBeGreaterThanOrEqual(44);
-  expect(
-    notebookLayout.trigger.bottom - notebookLayout.manuscriptBottom,
-  ).toBeGreaterThanOrEqual(44);
-  expect(notebookLayout.controlsBottom).toBeLessThanOrEqual(
-    notebookLayout.manuscriptBottom,
-  );
+  expect(triggerLayout.x).toBeGreaterThanOrEqual(0);
+  expect(triggerLayout.right).toBeLessThanOrEqual(641);
+  expect(triggerLayout.width).toBeGreaterThanOrEqual(44);
+  expect(triggerLayout.height).toBeGreaterThanOrEqual(44);
   await notesTrigger.click();
-  const clueBounds = await page
-    .locator('.story-clues-sheet')
-    .evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return {
-        x: bounds.x,
-        right: bounds.right,
-        top: bounds.top,
-        bottom: bounds.bottom,
-      };
-    });
+  await expect(rail).toBeVisible();
+  await expect(notesTrigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(rail.getByRole('button', { name: 'Close notes' })).toBeFocused();
+  const clueBounds = await rail.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      x: bounds.x,
+      right: bounds.right,
+      top: bounds.top,
+      bottom: bounds.bottom,
+    };
+  });
   expect(clueBounds.x).toBeGreaterThanOrEqual(0);
   expect(clueBounds.right).toBeLessThanOrEqual(641);
   expect(clueBounds.top).toBeGreaterThanOrEqual(0);
   expect(clueBounds.bottom).toBeLessThanOrEqual(800);
+  await expect(page.locator('.story-manuscript-content')).not.toHaveAttribute(
+    'inert',
+  );
   await page.keyboard.press('Escape');
+  await expect(rail).toBeHidden();
+  await expect(notesTrigger).toBeFocused();
   await page.getByRole('button', { name: 'Hint', exact: true }).click();
   const hintBounds = await page
     .locator('#story-hint-panel')
@@ -1332,6 +1350,7 @@ test('keeps every surface inside short desktop columns through the ending', asyn
   await scrollSheetToElement(lastParagraph);
   await expect(lastParagraph).toContainText('The subject continues walking.');
   await expectElementInsideActiveSheet(lastParagraph);
+  // Too narrow to dock: the notebook floats from the header key.
   await page.getByRole('button', { name: /^Open clue notebook/ }).click();
   await expect(page.locator('.story-clues-sheet')).toBeVisible();
   await expect(page.locator('.story-clue-entry')).toHaveCount(6);
@@ -1379,8 +1398,9 @@ test('keeps typed words inside their column while typing', async ({ page }) => {
   }
   expect(violations, JSON.stringify(violations.slice(0, 5))).toEqual([]);
 
-  await page.locator('.sheet-finish-typing').click();
-  await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(0);
+  await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(0, {
+    timeout: 60_000,
+  });
   await waitForSheetToSettle(page);
   await expectPaginationToMatchLayout(page);
 });

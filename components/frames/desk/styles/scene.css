@@ -206,11 +206,6 @@
       box-shadow: inset 0 -2px 0 rgb(var(--rule-ink) / 16%);
     }
 
-    .sheet-finish-typing {
-      font-size: 0.68rem !important;
-      letter-spacing: 0.12em;
-    }
-
     .sheet-footer[data-new-pages]
       .sheet-controls
       button:last-child:not(:disabled) {
@@ -222,24 +217,13 @@
     }
 
     /* ---------- notes ---------- */
-    .story-manuscript-stage[data-notes-available='true'] {
-      padding-bottom: 2rem;
-    }
-
-    .story-clues-control {
-      position: absolute;
-      z-index: 3;
-      right: 0.5rem;
-      bottom: 0;
-      translate: 0 50%;
-    }
-
+    /* The header key that opens the floating notebook on narrower desks. */
     .story-clues-trigger {
       display: flex;
       min-height: 2.75rem;
       align-items: center;
       gap: 0.45rem;
-      padding: 0.55rem 0.75rem;
+      padding: 0.45rem 0.8rem;
       color: var(--cream);
       background: var(--panel);
       border: 1px solid rgb(var(--brass-rgb) / 50%);
@@ -285,9 +269,9 @@
 /* ---------- notebook and secondary surfaces ---------- */
 @layer frame {
   @layer scene {
-    /* Notebook: a plain ruled pad, bound with the same green cloth. */
-    .story-clues-sheet {
-      color: #352a1d;
+    /* Notebook: a plain ruled pad, bound with the same green cloth, lying
+       on the felt beside the record. */
+    .desk-rail {
       background:
         repeating-linear-gradient(
           0deg,
@@ -296,29 +280,24 @@
         ),
         url('/textures/paper-grain.webp') left top / 512px 512px repeat,
         linear-gradient(175deg, #efe5c8, #dfd2ad);
-      border: 0;
       border-radius: 2px;
       box-shadow:
         inset 0 0 0 1px rgb(255 250 235 / 55%),
         0 1px 0 rgb(0 0 0 / 30%),
         0 2px 3px rgb(0 0 0 / 35%),
         -0.75rem 1.5rem 2.75rem rgb(0 0 0 / 50%);
-      transform: translateX(-50%) rotate(-0.35deg);
-    }
-
-    .story-clues-popover::backdrop {
-      background: rgb(var(--felt-rgb) / 55%);
-    }
-
-    @media (max-width: 40rem) {
-      .story-clues-sheet {
-        transform: rotate(-0.2deg);
-      }
     }
 
     /* Cloth binding across the top instead of torn spiral holes. */
     .story-clues-binding {
+      position: absolute;
+      z-index: 2;
+      top: 0;
+      left: 0;
+      width: 100%;
       height: 0.9rem;
+      pointer-events: none;
+      border-radius: 2px 2px 0 0;
       background:
         url('/textures/cloth-weave.webp') left top / 256px 256px repeat,
         linear-gradient(

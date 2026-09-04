@@ -36,9 +36,10 @@ export const DEFAULT_BOOK_COPY: BookFrameCopy = {
       'Follow a detail from the latest chapter, revisit an earlier clue, or try something unexpected.',
   },
   notes: {
-    eyebrow: 'Notes',
     title: 'Things I noticed',
     footnote: 'Only what I have noticed so far.',
+    empty:
+      'Nothing noted yet. The first observations arrive with the next chapter.',
   },
   shared: { returnLabel: 'Begin your own copy' },
 };

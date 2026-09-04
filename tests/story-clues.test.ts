@@ -1,11 +1,22 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { StoryClues } from '@/components/frames/desk/story-clues';
+import {
+  StoryClues,
+  StoryCluesTrigger,
+} from '@/components/frames/desk/story-clues';
+import { resolveBookCopy } from '@/lib/frames/book';
+import { derivePlayerClues } from '@/lib/manuscript/clue-journal';
 import { createExperienceSession } from '@/lib/runtime/engine';
 import type { ExperienceSession } from '@/lib/runtime/types';
 import { testContext } from './helpers';
 import { recordFixtureExperience } from './support/fixture-story';
+
+const prologueClueIds = new Set(
+  recordFixtureExperience.story.clues
+    .filter(({ revealedBy }) => revealedBy.kind === 'prologue')
+    .map(({ id }) => id),
+);
 
 describe('story clues markup', () => {
   it('renders only the two already-observed prologue clues', () => {
@@ -13,11 +24,7 @@ describe('story clues markup', () => {
       createExperienceSession(recordFixtureExperience, testContext()),
     );
 
-    expect(html).toContain('aria-label="Open clue notebook"');
-    expect(html).toContain('>Notes</span>');
-    expect(html).toContain('class="story-clues-binding"');
-    expect(html).not.toContain('new note available');
-    expect(html).toContain('Notes · 2 found');
+    expect(occurrences(html, 'class="story-clue-entry"')).toBe(2);
     expect(html).toContain('Things I noticed');
     expect(occurrences(html, '>Noted</span>')).toBe(2);
     expect(html).not.toContain('>New</span>');
@@ -26,6 +33,19 @@ describe('story clues markup', () => {
     expect(html).not.toContain('open_the_drawer');
     expect(html).not.toContain('key_found');
     expect(html).not.toContain('×');
+  });
+
+  it('keeps the notebook empty until a chapter has been written', () => {
+    const html = render(
+      createExperienceSession(recordFixtureExperience, testContext()),
+      { available: false },
+    );
+
+    expect(html).toContain('Things I noticed');
+    expect(html).toContain('Nothing noted yet.');
+    expect(html).not.toContain('story-clue-entry');
+    expect(html).not.toContain('>Noted</span>');
+    expect(html).not.toContain('Only what I have noticed so far.');
   });
 
   it('adds a discovered clue as New without rendering its internal ID', () => {
@@ -46,10 +66,7 @@ describe('story clues markup', () => {
     };
     const html = render(discovered);
 
-    expect(html).toContain('Notes · 3 found');
-    expect(html).toContain(
-      'aria-label="Open clue notebook, new note available"',
-    );
+    expect(occurrences(html, 'class="story-clue-entry"')).toBe(3);
     expect(html).toContain('data-new="true"');
     expect(html).toContain('The Key');
     expect(html).toContain('>New</span>');
@@ -58,16 +75,45 @@ describe('story clues markup', () => {
     expect(html).not.toContain('drawer_note');
     expect(html).not.toContain('Do not answer yet');
   });
+
+  it('labels the header key by whether a new note is waiting', () => {
+    const quiet = renderToStaticMarkup(
+      createElement(StoryCluesTrigger, {
+        hasNewClues: false,
+        onToggle: () => undefined,
+        open: false,
+      }),
+    );
+    expect(quiet).toContain('aria-label="Open clue notebook"');
+    expect(quiet).toContain('aria-controls="desk-rail"');
+    expect(quiet).toContain('>Notes</span>');
+    expect(quiet).not.toContain('new note available');
+
+    const waiting = renderToStaticMarkup(
+      createElement(StoryCluesTrigger, {
+        hasNewClues: true,
+        onToggle: () => undefined,
+        open: true,
+      }),
+    );
+    expect(waiting).toContain(
+      'aria-label="Open clue notebook, new note available"',
+    );
+    expect(waiting).toContain('aria-expanded="true"');
+    expect(waiting).toContain('>New</span>');
+  });
 });
 
-function render(session: ExperienceSession): string {
+function render(
+  session: ExperienceSession,
+  { available = true }: { available?: boolean } = {},
+): string {
   return renderToStaticMarkup(
     createElement(StoryClues, {
-      experience: recordFixtureExperience,
-      onAnnounce: () => undefined,
-      onOpenChange: () => undefined,
-      open: false,
-      session,
+      acknowledgedClueIds: prologueClueIds,
+      available,
+      clues: derivePlayerClues(recordFixtureExperience, session),
+      copy: resolveBookCopy(recordFixtureExperience.frame),
     }),
   );
 }

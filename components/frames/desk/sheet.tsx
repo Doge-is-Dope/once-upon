@@ -226,23 +226,6 @@ export function StoryScroll({
     typingPlan,
   ]);
 
-  // Lets the reader finish a chapter at their own pace: the words settle
-  // at once, the caret stops, and the ending moves on to its rewrite.
-  const finishTyping = useCallback(() => {
-    if (!typingActive) return;
-    settleFreshChapter();
-    if (followingHead.current) goToLastPage();
-    if (session.phase === 'COMPLETE' && endingStage === 'original')
-      settleEnding();
-  }, [
-    endingStage,
-    goToLastPage,
-    session.phase,
-    settleEnding,
-    settleFreshChapter,
-    typingActive,
-  ]);
-
   // The typing follower: a newly typed entry is followed like paper feeding
   // through the machine — start at the entry's first page, ride the typing
   // head with a single block caret, advance when the head crosses onto the
@@ -490,13 +473,6 @@ export function StoryScroll({
           {!availabilityVisible && typingActive ? (
             <div className="sheet-typing-status" id="your-turn">
               <p>The record is typing…</p>
-              <button
-                className="sheet-finish-typing"
-                onClick={finishTyping}
-                type="button"
-              >
-                Finish typing
-              </button>
             </div>
           ) : null}
           {!availabilityVisible &&

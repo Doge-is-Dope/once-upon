@@ -66,8 +66,8 @@ export function StorySettings({
           <div className="setting-row-copy">
             <label htmlFor="debug-mode-toggle">Tool inspector</label>
             <p id="debug-mode-description">
-              Show the page tools your agent can call and their lifecycle. For
-              judges and developers.
+              Show the page tools your agent can call, in a Tools tab of the
+              notebook beside the record. For judges and developers.
             </p>
           </div>
           <input

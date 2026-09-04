@@ -17,19 +17,24 @@ import type {
   ExperienceDefinition,
   ExperienceSession,
 } from '@/lib/runtime/types';
+import { DeskRail } from './desk-rail';
 import { DeskScene } from './desk-scene';
 import { StoryHeaderTitle } from './story-header-title';
-import { StoryClues } from './story-clues';
+import { StoryCluesTrigger } from './story-clues';
 import { StoryHint } from './story-hint';
 import { StorySettings } from './settings-panel';
 import { StoryScroll } from './sheet';
+import { useClueJournal } from './use-clue-journal';
+import { useMediaQuery } from './use-media-query';
 import { useSessionView } from './use-session-view';
 import { useWebMCPConnection } from './use-webmcp-connection';
 import type { WebMCPStatus } from '@/lib/webmcp/tools';
-import { WebMCPInspector } from './tool-inspector';
 
 const DEBUG_MODE_STORAGE_KEY = 'once-upon:debug-mode';
 const DEBUG_MODE_CHANGE_EVENT = 'once-upon:debug-mode-change';
+// Wide enough for the record (48rem), the notebook (22rem) and the gutters
+// between them; narrower desks float the notebook over the felt instead.
+const DOCKED_RAIL_QUERY = '(min-width: 74rem)';
 // How long a pending turn may sit with no tool activity before the page
 // offers the reader a way to nudge their agent.
 const QUIET_AGENT_MS = 45_000;
@@ -105,11 +110,26 @@ export function DeskExperience({
   const storyStarted =
     session.pendingTurn !== null || session.chapters.length > 1;
   const notesAvailable = session.chapters.length > 1;
-  const [cluesOpen, setCluesOpen] = useState(false);
   const [typingActive, setTypingActive] = useState(false);
   const handleTypingChange = useCallback(
     (typing: boolean) => setTypingActive(typing),
     [],
+  );
+  const docked = useMediaQuery(DOCKED_RAIL_QUERY);
+  const journal = useClueJournal(experience, session, {
+    typingActive,
+    onAnnounce: announce,
+  });
+  const acknowledgeClues = journal.acknowledge;
+  const clueCount = journal.clues.length;
+  const [cluesOpen, setCluesOpen] = useState(false);
+  const handleCluesOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) announce(`Notes opened. ${clueCount} found.`);
+      else acknowledgeClues();
+      setCluesOpen(open);
+    },
+    [acknowledgeClues, announce, clueCount],
   );
   const agentQuiet = useQuietAgent(
     session.phase === 'AWAITING_CHAPTER' && activeTool === null,
@@ -135,6 +155,7 @@ export function DeskExperience({
       className="frame-book"
       data-agent-active={agentActive || undefined}
       data-agent-running={activeTool ? 'true' : undefined}
+      data-rail-open={(cluesOpen && !docked) || undefined}
       data-story-started={storyStarted || undefined}
       data-story-presentations={activePresentations.join(' ') || undefined}
       data-typing={typingActive || undefined}
@@ -156,6 +177,13 @@ export function DeskExperience({
           <StoryHeaderTitle title={experience.title} />
         </div>
         <div className="story-header-actions">
+          {!docked && (notesAvailable || debugMode) ? (
+            <StoryCluesTrigger
+              hasNewClues={journal.hasNewClues}
+              onToggle={() => handleCluesOpenChange(!cluesOpen)}
+              open={cluesOpen}
+            />
+          ) : null}
           {webMCPStatus === 'connected' ? (
             <StoryHint
               disabled={!hintAvailable}
@@ -173,7 +201,7 @@ export function DeskExperience({
       </p>
       <main className="story-shell" id="manuscript-content" tabIndex={-1}>
         {showOpeningHero ? (
-          <div className="title-block" data-visible inert={cluesOpen}>
+          <div className="title-block" data-visible>
             <div className="title-block-content">
               <h1>{experience.title}</h1>
               <p className="title-deck">
@@ -185,16 +213,8 @@ export function DeskExperience({
         ) : (
           <h1 className="sr-only">{experience.title}</h1>
         )}
-        {/* The clue notebook hangs off the sheet's lower edge once there
-            is a written chapter to take notes from; it never crowds the
-            header and never lives inside the paginated flow. */}
-        <div
-          className="story-manuscript-stage"
-          data-notes-available={notesAvailable || undefined}
-        >
-          {/* The open notebook sits in the top layer; the page beneath it
-              goes inert while the notebook itself stays reachable. */}
-          <div className="story-manuscript-content" inert={cluesOpen}>
+        <div className="story-manuscript-stage">
+          <div className="story-manuscript-content">
             {/* Two earlier sheets under the record: the case file the
                 bookmark is threaded through. */}
             <div aria-hidden="true" className="sheet-under sheet-under-b" />
@@ -207,32 +227,32 @@ export function DeskExperience({
               experience={experience}
               onAnnounce={announce}
               onTypingChange={handleTypingChange}
-              pageNavigationEnabled={!cluesOpen}
+              pageNavigationEnabled
               onRetryConnection={handleRetryConnection}
               session={session}
               webMCPSetupHint={setupHint}
               webMCPStatus={webMCPStatus}
             />
           </div>
-          {notesAvailable ? (
-            <StoryClues
-              experience={experience}
-              key={session.sessionId}
-              onAnnounce={announce}
-              onOpenChange={setCluesOpen}
-              open={cluesOpen}
-              session={session}
-            />
-          ) : null}
         </div>
-        {debugMode ? (
-          <WebMCPInspector
-            activeTool={activeTool}
-            experience={experience}
-            session={session}
-            status={webMCPStatus}
-          />
-        ) : null}
+        {/* The notebook sits beside the record, never over it or under
+            it: reading and note-taking share one viewport. */}
+        <DeskRail
+          acknowledgedClueIds={journal.acknowledgedClueIds}
+          activeTool={activeTool}
+          clues={journal.clues}
+          copy={copy}
+          debugMode={debugMode}
+          docked={docked}
+          experience={experience}
+          hasNewClues={journal.hasNewClues}
+          notesAvailable={notesAvailable}
+          onAcknowledge={acknowledgeClues}
+          onOpenChange={handleCluesOpenChange}
+          open={cluesOpen}
+          session={session}
+          webMCPStatus={webMCPStatus}
+        />
       </main>
     </div>
   );

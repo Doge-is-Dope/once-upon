@@ -21,7 +21,6 @@ export const experienceDefinition: ExperienceDefinition = {
         opening:
           'Look closer at something on the page, answer the speaker, or test the door.',
       },
-      notes: { eyebrow: 'Notes from the room' },
       shared: { returnLabel: 'Enter Room Seven' },
     },
   },

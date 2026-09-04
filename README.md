@@ -122,7 +122,7 @@ expires after 30 days.
 ```text
 app/                              Routes and global metadata
 components/experience-app.tsx     Root client shell: controller, frame renderer, error boundary
-components/frames/desk/           Living Manuscript UI, presentations, inspector
+components/frames/desk/           Living Manuscript UI, presentations, notebook rail, inspector
 experiences/<story-id>/           Declarative story, starter, and agent contract
 lib/frames/                        Frame manifests and default copy
 lib/runtime/                       In-memory narrative state machine
