@@ -37,9 +37,6 @@ export const DEFAULT_BOOK_COPY: BookFrameCopy = {
   },
   notes: {
     title: 'Things I noticed',
-    footnote: 'Only what I have noticed so far.',
-    empty:
-      'Nothing noted yet. The first observations arrive with the next chapter.',
   },
   shared: { returnLabel: 'Begin your own copy' },
 };

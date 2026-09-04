@@ -112,10 +112,9 @@ rejected without consuming the pending receipt.
 
 ## Sharing a completed manuscript
 
-Nothing is uploaded during play. After completion, the player may explicitly
-choose **Create a link**. The server validates and rebuilds the reader document,
-then stores only that anonymous, unlisted, read-only copy in D1. The link
-expires after 30 days.
+Nothing is uploaded during play. When the story ends, the page creates an
+anonymous, unlisted, read-only copy and shows its link. The link expires after
+30 days.
 
 ## Project layout
 

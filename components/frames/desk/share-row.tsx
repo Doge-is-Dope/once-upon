@@ -2,7 +2,7 @@
 
 import { CheckIcon } from '@phosphor-icons/react/dist/ssr/Check';
 import { CopySimpleIcon } from '@phosphor-icons/react/dist/ssr/CopySimple';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createSharedStorySubmission,
   deriveManuscriptReadModel,
@@ -13,7 +13,7 @@ import type {
 } from '@/lib/runtime/types';
 import { useClipboardCopy } from './use-clipboard-copy';
 
-type PublishState = 'idle' | 'publishing' | 'ready' | 'failed';
+type PublishState = 'publishing' | 'ready' | 'failed';
 
 const SHARE_REQUEST_STORAGE_PREFIX = 'once-upon:share-request:';
 const UUID_PATTERN =
@@ -34,7 +34,7 @@ export function StoryShare({
   );
   const requestId = useRef<string | null>(null);
   const linkInputRef = useRef<HTMLTextAreaElement>(null);
-  const [publishState, setPublishState] = useState<PublishState>('idle');
+  const [publishState, setPublishState] = useState<PublishState>('publishing');
   const [publicLink, setPublicLink] = useState('');
   const [error, setError] = useState('');
   const { copied, copy: copyPublicLink } = useClipboardCopy({
@@ -82,13 +82,20 @@ export function StoryShare({
     }
   }, [manuscript, onAnnounce, session.sessionId]);
 
+  // The copy is prepared as soon as the ending settles; the reader only
+  // has to pick the link up. The request id keeps a repeat mount (or a
+  // retry) from storing a second copy.
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void publish();
+  }, [publish]);
+
   return (
     <div className="ending-share">
       <h2>Pass the manuscript on</h2>
-      <p>
-        Create an anonymous, unlisted copy that disappears in 30 days. Nothing
-        is uploaded until you choose to.
-      </p>
+      <p>An anonymous, unlisted copy. The link expires in 30 days.</p>
       {publicLink ? (
         <div className="public-link-result">
           <label className="sr-only" htmlFor="public-story-link">
@@ -119,14 +126,14 @@ export function StoryShare({
             )}
           </button>
         </div>
-      ) : publishState === 'idle' || publishState === 'failed' ? (
+      ) : publishState === 'failed' ? (
         <div className="ending-share-actions">
           <button
             className="share-button"
             type="button"
             onClick={() => void publish()}
           >
-            {publishState === 'failed' ? 'Try again' : 'Create a link'}
+            Try again
           </button>
         </div>
       ) : (

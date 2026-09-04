@@ -550,16 +550,6 @@
       padding-inline-end: 2.5rem;
     }
 
-    .story-clues-empty {
-      margin: 1rem 0 0;
-      color: #665943;
-      font-family: var(--font-hand);
-      font-size: 1.3rem;
-      line-height: 1.25;
-      rotate: -0.4deg;
-      text-wrap: pretty;
-    }
-
     .story-clue-state {
       font-family: var(--font-type);
       font-size: 0.7rem;
@@ -628,28 +618,52 @@
     }
 
     .story-clue-lead {
-      margin-top: 0.75rem;
-      padding: 0.625rem 0.25rem 0.2rem;
-      rotate: -0.5deg;
+      position: relative;
+      margin-top: 0.7rem;
+      padding: 0.45rem 0.7rem 0.4rem 0.8rem;
+      rotate: -0.4deg;
     }
 
-    .story-clue-lead-label {
-      display: block;
-      margin-bottom: 0.1rem;
-      color: #7b4b12;
-      font-family: var(--font-hand);
-      font-size: 1.25rem;
-      font-weight: 500;
+    /* The red pen: a loose ring drawn over the lead, slightly askew. */
+    .story-clue-circle {
+      position: absolute;
+      inset: -0.55rem -0.7rem -0.5rem -0.8rem;
+      width: calc(100% + 1.5rem);
+      height: calc(100% + 1.05rem);
+      overflow: visible;
+      color: #b8321f;
+      pointer-events: none;
+      rotate: -1.1deg;
     }
 
-    .story-clues-footnote {
-      margin: 1rem 0 0;
-      color: #665943;
-      font-family: var(--font-hand);
-      font-size: 1.1875rem;
-      line-height: 1.2;
-      rotate: -0.6deg;
+    .story-clue-circle-ink {
+      fill: currentColor;
+      opacity: 0.86;
     }
+
+    /* The mask's centreline is normalised to length 1; its dash offset
+       runs from 1 to 0 so the ink appears along the pen's path. The pace is
+       a hand's: a quick start, easing through the far side, a short flick
+       to finish. With animations off the ring is simply there. */
+    .story-clue-circle-reveal {
+      fill: none;
+      stroke: #fff;
+      stroke-width: 7;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 0;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      animation: clue-ring-draw 640ms
+        linear(0, 0.09 10%, 0.24 22%, 0.46 38%, 0.62 52%, 0.76 66%, 0.9 82%, 0.97 92%, 1)
+        220ms both;
+    }
+
+    @keyframes clue-ring-draw {
+      from {
+        stroke-dashoffset: 1;
+      }
+    }
+
 
     .story-hint-panel,
     .settings-panel {

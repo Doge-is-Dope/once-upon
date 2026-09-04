@@ -387,7 +387,6 @@ test('keeps a player-safe clue journal and acknowledges new clues on close', asy
   // a chapter has been written to take notes from. With the inspector off
   // it is a single page: no section tabs, no eyebrow above the heading.
   await expect(rail).toBeVisible();
-  await expect(sheet).toContainText('Nothing noted yet.');
   await expect(sheet.locator('.story-clue-entry')).toHaveCount(0);
   await expect(rail.getByRole('tab')).toHaveCount(0);
   await expect(rail.locator('.desk-rail-tabs')).toHaveCount(0);
@@ -797,12 +796,11 @@ test('completes the story within six registrations and shares a unique story lin
   });
   const pageCountBeforeShare =
     (await page.locator('.sheet-page-indicator').textContent()) ?? '';
-  // Nothing is uploaded until the reader asks for a copy.
-  await expect(publicLink).toHaveCount(0);
-  await expect(
-    page.getByText('Nothing is uploaded until you choose to.'),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Create a link' }).click();
+  // The copy is prepared as soon as the ending settles; no button to press.
+  await expect(page.getByRole('button', { name: 'Create a link' })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText('The link expires in 30 days.')).toBeVisible();
   await expect(publicLink).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('.ending-share > p')).toHaveCSS(
     'white-space',
@@ -965,9 +963,7 @@ test('reload and Reset create a fresh document session', async ({ page }) => {
   await expect(
     page.getByRole('button', { name: /^Open clue notebook/ }),
   ).toHaveCount(0);
-  await expect(page.locator('.story-clues-sheet')).toContainText(
-    'Nothing noted yet.',
-  );
+  await expect(page.locator('.story-clue-entry')).toHaveCount(0);
 
   const stale = await callTool<ToolResult>(page, 'begin_story_turn', {
     operationId: operationId('stale'),
@@ -996,9 +992,7 @@ test('reload and Reset create a fresh document session', async ({ page }) => {
   await expect(
     page.getByRole('button', { name: /^Open clue notebook/ }),
   ).toHaveCount(0);
-  await expect(page.locator('.story-clues-sheet')).toContainText(
-    'Nothing noted yet.',
-  );
+  await expect(page.locator('.story-clue-entry')).toHaveCount(0);
 });
 
 test('keeps the manuscript usable at narrow width, zoom, and reduced motion', async ({

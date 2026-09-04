@@ -211,7 +211,7 @@ export interface BookFrameCopy {
   /** Hint shown when no story object is currently available. */
   hint: { opening: string; continuing: string };
   /** Clue notebook labels. */
-  notes: { title: string; footnote: string; empty: string };
+  notes: { title: string };
   /** Shared, read-only copy page. */
   shared: { returnLabel: string };
 }

@@ -286,10 +286,11 @@ describe('WebMCP availability', () => {
     expect(html).not.toContain('The subject opens their eyes.');
     expect(html).not.toContain('The manuscript rests.');
     expect(html).not.toContain('webmcp-availability');
-    expect(html).not.toContain('Preparing a copy…');
     expect(html).toContain('Pass the manuscript on');
-    expect(html).toContain('Nothing is uploaded until you choose to.');
-    expect(html).toContain('>Create a link</button>');
+    expect(html).toContain('The link expires in 30 days.');
+    // The copy is prepared on its own once the ending settles.
+    expect(html).toContain('Preparing a copy…');
+    expect(html).not.toContain('>Create a link</button>');
     expect(html).not.toContain('>Share story</button>');
   });
 });

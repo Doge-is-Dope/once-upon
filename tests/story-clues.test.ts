@@ -42,10 +42,9 @@ describe('story clues markup', () => {
     );
 
     expect(html).toContain('Things I noticed');
-    expect(html).toContain('Nothing noted yet.');
+    expect(html).not.toContain('story-clue-entry');
     expect(html).not.toContain('story-clue-entry');
     expect(html).not.toContain('>Noted</span>');
-    expect(html).not.toContain('Only what I have noticed so far.');
   });
 
   it('adds a discovered clue as New without rendering its internal ID', () => {
@@ -70,7 +69,8 @@ describe('story clues markup', () => {
     expect(html).toContain('data-new="true"');
     expect(html).toContain('The Key');
     expect(html).toContain('>New</span>');
-    expect(html).toContain('→ Try this');
+    expect(html).toContain('story-clue-circle');
+    expect(html).not.toContain('Try this');
     expect(html).not.toContain('key_found');
     expect(html).not.toContain('drawer_note');
     expect(html).not.toContain('Do not answer yet');
