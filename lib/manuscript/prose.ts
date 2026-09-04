@@ -32,6 +32,18 @@ export function formatChapterLabel(index: number): string {
   return index === 0 ? 'Prologue' : `Chapter ${index}`;
 }
 
+/**
+ * A fixed ending that also carries its official wording. Independent of the
+ * story's narration mode: when present, the sheet rewrites the ending's last
+ * paragraph after typing and the restricted sheet censors its lines.
+ */
+export function hasRecordedEnding(passage: {
+  prose: string;
+  recordProse?: string;
+}): passage is { prose: string; recordProse: string } {
+  return passage.recordProse !== undefined;
+}
+
 export function resolveRecordedEnding(
   prose: readonly string[],
   recordProse: readonly string[],

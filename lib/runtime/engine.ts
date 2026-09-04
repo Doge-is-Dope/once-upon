@@ -365,7 +365,11 @@ export function invokeStoryInteraction(
     interactionId: interaction.id,
     presentation: interaction.presentation,
     factIds: interaction.sealedFacts.map(({ id }) => id),
-    facts: interaction.sealedFacts.map(({ id, value }) => ({ id, value })),
+    facts: interaction.sealedFacts.map(({ id, value, agentNote }) => ({
+      id,
+      value,
+      ...(agentNote !== undefined ? { agentNote } : {}),
+    })),
     createdAt: now,
   };
   for (const fact of interaction.sealedFacts) {
@@ -507,7 +511,7 @@ export function commitStoryChapter(
         failure(
           definition,
           'CHAPTER_REQUIRED',
-          `Represent the exact effect receipt ${pendingReceipt.receiptId}.`,
+          `This turn carries effect receipt ${pendingReceipt.receiptId}: set effectReceiptId to ${pendingReceipt.receiptId} and representedFactIds to exactly [${pendingReceipt.factIds.join(', ')}]. Both fields are required while a receipt is pending.`,
           session,
         ),
       );
@@ -522,6 +526,7 @@ export function commitStoryChapter(
           definition,
           'INVALID_INPUT',
           [
+            `representedFactIds must list every fact in receipt ${pendingReceipt.receiptId}.`,
             missing.length ? `Missing: ${missing.join(', ')}.` : '',
             unexpected.length ? `Unexpected: ${unexpected.join(', ')}.` : '',
           ]

@@ -222,6 +222,21 @@ describe('WebMCP living tool surface', () => {
     expect(getState.description).not.toContain(
       fixtureProtectedTerms.drawerNote,
     );
+    const commitTool = registry.current.get('commit_story_chapter')!.tool;
+    expect(commitTool.description).toContain(
+      'include effectReceiptId and representedFactIds',
+    );
+    const commitProperties = (
+      commitTool.inputSchema as {
+        properties: Record<string, { description?: string }>;
+      }
+    ).properties;
+    expect(commitProperties.effectReceiptId.description).toContain(
+      'Required whenever state.pending.effectReceipt is present',
+    );
+    expect(commitProperties.representedFactIds.description).toContain(
+      'Required whenever state.pending.effectReceipt is present',
+    );
     const bootstrap = (await getState.execute({})) as {
       content: Array<{ text: string }>;
       structuredContent: {
@@ -548,7 +563,9 @@ describe('WebMCP living tool surface', () => {
       ],
     });
     expect(result.content[0].text).not.toContain('{"');
-    expect(result.content[0].text).toContain('REQUIRED NEXT: commit receipt');
+    expect(result.content[0].text).toContain(
+      `REQUIRED NEXT: call commit_story_chapter with effectReceiptId ${result.structuredContent.effectReceipt.receiptId} and representedFactIds [${fixtureIds.facts.drawerNote}]`,
+    );
     expect(controller.getSnapshot().pendingTurn?.effectReceipt?.receiptId).toBe(
       result.structuredContent.effectReceipt.receiptId,
     );

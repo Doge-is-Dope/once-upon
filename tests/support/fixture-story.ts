@@ -47,6 +47,12 @@ export const fixtureIds = {
 } as const;
 
 /** Sealed wording the engine must reject in agent-written text. */
+/** Receipt-only guidance that must never reach the page or a shared copy. */
+export const fixtureAgentNotes = {
+  memorySecond:
+    'If the player repeats the voice’s version exactly, it answers only “Words correct.” and the door stays shut.',
+} as const;
+
 export const fixtureProtectedTerms = {
   drawerNote: 'Do not answer yet',
   memoryReturn: 'The bell rings twice before the door',
@@ -100,8 +106,11 @@ const interactions: readonly StoryInteractionDefinition[] = [
       },
       {
         id: fixtureIds.facts.memorySecond,
+        heading: 'The voice',
         value:
           'When you open your eyes the study is unchanged. The voice repeats its version: “Nothing happened in the study.”',
+        agentNote:
+          'If the player repeats the voice’s version exactly, it answers only “Words correct.” and the door stays shut.',
         recordValue:
           'When the subject opens their eyes the study is unchanged. The voice repeats its version: “Nothing happened in the study.”',
         protectedTerms: [fixtureProtectedTerms.memorySecond],
@@ -244,14 +253,17 @@ export const recordFixtureExperience: ExperienceDefinition = {
   },
 };
 
-function withoutRecordLayer(story: StoryDefinition): StoryDefinition {
+function withoutRecordLayer(
+  story: StoryDefinition,
+  { keepEnding = false }: { keepEnding?: boolean } = {},
+): StoryDefinition {
   const prologue = { ...story.prologue };
   delete prologue.recordProse;
   const completionPassage = { ...story.completionPassage };
-  delete completionPassage.recordProse;
+  if (!keepEnding) delete completionPassage.recordProse;
   return {
     ...story,
-    id: 'fixture-story-prose-v1',
+    id: keepEnding ? 'fixture-story-monitored-v1' : 'fixture-story-prose-v1',
     narration: 'prose',
     prologue,
     completionPassage,
@@ -265,6 +277,22 @@ function withoutRecordLayer(story: StoryDefinition): StoryDefinition {
     })),
   };
 }
+
+/**
+ * Prose narration that still carries the ending's official wording: the
+ * agent writes only prose, but the fixed ending rewrites its last paragraph.
+ */
+export const monitoredFixtureExperience: ExperienceDefinition = {
+  ...recordFixtureExperience,
+  id: 'fixture-story-monitored',
+  title: 'Monitored Fixture Story',
+  story: withoutRecordLayer(recordStory, { keepEnding: true }),
+  agentContract: {
+    version: 'fixture-monitored-agent-v1',
+    instructions:
+      'Write in close second person. Never reveal or foreshadow that an official version of the record exists. Keep every scene inside the study until the final authored fact opens the wall. An interaction receipt is already visible prose; begin after it.',
+  },
+};
 
 /** The same story with no official record: prose only. */
 export const fixtureExperience: ExperienceDefinition = {

@@ -7,7 +7,9 @@ import type {
   InteractionEffectReceipt,
   StoryChapter,
 } from '@/lib/runtime/types';
+import { deriveManuscriptReadModel } from '@/lib/manuscript/read-model';
 import {
+  fixtureAgentNotes,
   fixtureIds,
   fixtureProtectedTerms,
   recordFixtureExperience,
@@ -49,11 +51,33 @@ describe('memory flashback presentation', () => {
     expect(occurrences(html, 'class="memory-flashback"')).toBe(1);
     expect(html).toContain('<h3>Memory</h3>');
     expect(html).toContain('data-effect-receipt="effect_memory"');
-    expect(html).not.toContain(fixtureProtectedTerms.memorySecond);
     expect(html.indexOf('class="memory-flashback')).toBeLessThan(
       html.indexOf('class="writing-marker"'),
     );
     expect(html).not.toContain('<dialog');
+  });
+
+  it('shows what the room does after the memory as a present-time return', () => {
+    const html = render(pendingSession());
+
+    // The second fact is on the page under its authored heading, after the
+    // remembered scene and before the pending move.
+    expect(occurrences(html, 'class="memory-return"')).toBe(1);
+    expect(html).toContain('<p class="eyebrow">The voice</p>');
+    expect(html).toContain(fixtureProtectedTerms.memorySecond);
+    expect(html.indexOf('class="memory-flashback')).toBeLessThan(
+      html.indexOf('class="memory-return"'),
+    );
+    expect(html.indexOf('class="memory-return"')).toBeLessThan(
+      html.indexOf('class="writing-marker"'),
+    );
+    // The agent-only branch never reaches the page or its read model.
+    expect(html).not.toContain(fixtureAgentNotes.memorySecond);
+    expect(
+      JSON.stringify(
+        deriveManuscriptReadModel(recordFixtureExperience, committedSession()),
+      ),
+    ).not.toContain(fixtureAgentNotes.memorySecond);
   });
 
   it('anchors the saved flashback to its chapter across later chapters', () => {
@@ -66,8 +90,10 @@ describe('memory flashback presentation', () => {
     const laterHeading = html.indexOf('<h2>The wall panel</h2>');
 
     expect(occurrences(html, 'class="memory-flashback"')).toBe(1);
-    expect(chapterHeading).toBeLessThan(memory);
-    expect(memory).toBeLessThan(chapterProse);
+    // The effect the reader already watched land keeps its place ahead of
+    // the chapter heading that follows it.
+    expect(memory).toBeLessThan(chapterHeading);
+    expect(chapterHeading).toBeLessThan(chapterProse);
     expect(chapterProse).toBeLessThan(laterHeading);
     expect(occurrences(laterRenderHtml, 'class="memory-flashback"')).toBe(1);
     expect(laterRenderHtml).not.toContain('memory-flashback is-fresh');
@@ -247,6 +273,12 @@ describe('WebMCP availability', () => {
 
     expect(recordEnding).toContain('The subject continues walking.');
     expect(html).toContain(recordEnding);
+    // Both versions of the ending are kept hidden so the last paragraph
+    // reserves its taller height; only the record wording is readable.
+    expect(occurrences(html, 'class="completion-ending-sizer"')).toBe(2);
+    expect(html).toContain(
+      `<span class="completion-ending-text">${recordEnding}</span>`,
+    );
     expect(html).not.toContain('<del>');
     expect(html).not.toContain('<ins>');
     expect(html).not.toContain('record-revision');

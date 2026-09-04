@@ -1613,10 +1613,13 @@
    fraction of the boxes and animations. The hidden state lives in the
    keyframe, so with animations disabled the words are simply visible.
    The block caret riding the newest glyph is a single element driven
-   by the typing follower in story-scroll. */
+   by the typing follower in story-scroll. The steps jump at the start,
+   not the end: a finished animation can report a progress a hair under
+   1, and an end-stepped reveal then holds one glyph short, which cut
+   the last letter off every line-ending word. */
     .story-chapter.is-fresh .tw-word,
     .completion-passage.is-fresh .tw-word {
-      animation: word-type var(--wd, 80ms) steps(var(--chars, 1), end)
+      animation: word-type var(--wd, 80ms) steps(var(--chars, 1), jump-start)
         var(--td, 0ms) both;
     }
 
@@ -1683,6 +1686,25 @@
       text-shadow: 0 0 0.5px rgb(var(--ink-rgb) / 35%);
     }
 
+    /* The rewritten last paragraph stays whole on one page, and its two
+   hidden copies reserve the taller version's height so typing and the
+   rewrite never reflow the columns around it. */
+    .completion-passage p:last-of-type {
+      break-inside: avoid;
+    }
+
+    .completion-ending {
+      display: grid;
+    }
+
+    .completion-ending > * {
+      grid-area: 1 / 1;
+    }
+
+    .completion-ending-sizer {
+      visibility: hidden;
+    }
+
     .backspace-replacement {
       display: inline;
     }
@@ -1744,11 +1766,44 @@
       margin-top: 1rem;
     }
 
-    .memory-flashback h3 {
+    /* What the room does after the memory: present time, so it reads as
+   the next lines of the record rather than another tinted artifact. */
+    .memory-return {
+      position: relative;
+      z-index: 2;
+      margin: 1.75rem 0;
+    }
+
+    .memory-return p:not(.eyebrow) {
+      max-width: 68ch;
+      margin: 0 0 1.1rem;
+      font-family: var(--font-type);
+      font-size: clamp(0.92rem, 2.2vw, 1rem);
+      line-height: 1.75;
+      text-shadow: 0 0 0.5px rgb(var(--ink-rgb) / 35%);
+    }
+
+    /* Keep every heading and label on the same column as the line that
+   follows it, so a receipt title or chapter number never ends a page alone. */
+    .story-chapter h2,
+    .memory-flashback h3,
+    .memory-return .eyebrow,
+    .world-shift h3,
+    .generic-story-effect h3,
+    .chapter-number {
+      /* Chrome only honours break-after: avoid on a box it does not
+   fragment itself; a heading whose line box ends flush with the column
+   was being split at its margin and the avoid was lost. */
+      break-inside: avoid;
       break-after: avoid;
     }
 
-    .memory-flashback-prose p:first-child {
+    .memory-flashback-prose p:first-child,
+    .memory-return .eyebrow + p,
+    .world-shift h3 + p,
+    .generic-story-effect h3 + p,
+    .chapter-number + h2,
+    .story-chapter h2 + * {
       break-before: avoid;
     }
 
@@ -1784,6 +1839,10 @@
       min-height: 8rem;
       padding: 2rem 2rem 1.5rem;
       break-inside: avoid;
+      /* A scroll container is monolithic, so when a short column cannot
+   hold the heading and the notepad together Chrome breaks between them
+   instead of tearing the notepad (its clip-path cannot fragment). */
+      overflow: hidden;
       background:
         linear-gradient(
           180deg,
@@ -2506,6 +2565,10 @@
       padding: 1.25rem;
       background: rgb(255 250 235 / 28%);
       border: 1px solid rgb(var(--rule-ink) / 22%);
+    }
+
+    .shared-effect-return {
+      margin-block: 1.5rem;
     }
 
     .shared-story-footer {

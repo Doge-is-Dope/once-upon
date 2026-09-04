@@ -5,6 +5,7 @@ import { cache } from 'react';
 import { DEFAULT_EXPERIENCE_ID, getExperience } from '@/experiences/registry';
 import { resolveBookCopy } from '@/lib/frames/book';
 import { resolveRecordedEnding } from '@/lib/manuscript/prose';
+import type { SharedStoryDocument } from '@/lib/share/document';
 import { readSharedStory } from '@/lib/share/repository';
 
 export const dynamic = 'force-dynamic';
@@ -70,18 +71,9 @@ export default async function SharedStoryPage({
             className="shared-chapter"
             key={`${chapterIndex}-${chapter.title}`}
           >
+            {chapter.effect ? <SharedEffect effect={chapter.effect} /> : null}
             <p className="chapter-number">{chapter.label}</p>
             <h2>{chapter.title}</h2>
-            {chapter.effect ? (
-              <aside
-                className={`shared-effect shared-effect-${chapter.effect.presentation}`}
-              >
-                <h3>{chapter.effect.title}</h3>
-                {chapter.effect.paragraphs.map((paragraph, index) => (
-                  <p key={index}>{paragraph}</p>
-                ))}
-              </aside>
-            ) : null}
             {chapter.prose.map((paragraph, index) => (
               <p key={index}>{paragraph}</p>
             ))}
@@ -106,5 +98,47 @@ export default async function SharedStoryPage({
         </footer>
       </article>
     </main>
+  );
+}
+
+type SharedEffectProps = {
+  effect: NonNullable<SharedStoryDocument['chapters'][number]['effect']>;
+};
+
+/**
+ * Mirrors the sheet's own presentation rules: a memory shows its first fact
+ * as the remembered scene and each later fact as a present-time return under
+ * its heading. Older documents without per-fact groups keep the flat list.
+ */
+function SharedEffect({ effect }: SharedEffectProps) {
+  const facts = 'facts' in effect ? effect.facts : undefined;
+  if (effect.presentation === 'memory_flashback' && facts?.length) {
+    const [memory, ...returns] = facts;
+    return (
+      <>
+        <aside className="shared-effect shared-effect-memory_flashback">
+          <h3>Memory</h3>
+          {memory!.paragraphs.map((paragraph, index) => (
+            <p key={index}>{paragraph}</p>
+          ))}
+        </aside>
+        {returns.map((fact, factIndex) => (
+          <div className="shared-effect-return" key={factIndex}>
+            <p className="eyebrow">{fact.heading ?? 'Afterward'}</p>
+            {fact.paragraphs.map((paragraph, index) => (
+              <p key={index}>{paragraph}</p>
+            ))}
+          </div>
+        ))}
+      </>
+    );
+  }
+  return (
+    <aside className={`shared-effect shared-effect-${effect.presentation}`}>
+      <h3>{effect.title}</h3>
+      {effect.paragraphs.map((paragraph, index) => (
+        <p key={index}>{paragraph}</p>
+      ))}
+    </aside>
   );
 }

@@ -18,6 +18,7 @@ import {
   testContext,
 } from './helpers';
 import {
+  fixtureAgentNotes,
   fixtureIds,
   fixtureProtectedTerms,
   recordFixtureExperience as experience,
@@ -221,6 +222,41 @@ describe('living manuscript engine', () => {
     expect(toStoryState(experience, session).requiredChapterStatus).toBe(
       'continue',
     );
+    const missingReceipt = commit(
+      session,
+      operationId('drawer_missing_receipt'),
+      [],
+      { prose: `${ordinaryProse} Inside the drawer, a folded note.` },
+    );
+    expect(missingReceipt.response).toMatchObject({
+      ok: false,
+      code: 'CHAPTER_REQUIRED',
+    });
+    const missingReceiptMessage = (
+      missingReceipt.response as { message: string }
+    ).message;
+    expect(missingReceiptMessage).toContain('effectReceiptId');
+    expect(missingReceiptMessage).toContain('representedFactIds');
+    expect(missingReceiptMessage).toContain(drawerReceipt.receiptId);
+    for (const id of drawerReceipt.factIds)
+      expect(missingReceiptMessage).toContain(id);
+    const missingFact = commit(
+      session,
+      operationId('drawer_missing_fact'),
+      [],
+      {
+        prose: `${ordinaryProse} Inside the drawer, a folded note.`,
+        effectReceiptId: drawerReceipt.receiptId,
+        representedFactIds: [],
+      },
+    );
+    expect(missingFact.response).toMatchObject({
+      ok: false,
+      code: 'INVALID_INPUT',
+      message: expect.stringMatching(
+        /^representedFactIds must list every fact in receipt /,
+      ),
+    });
     const prematureEnding = commit(
       session,
       operationId('drawer_early_complete'),
@@ -311,6 +347,14 @@ describe('living manuscript engine', () => {
       testContext(),
     ).session;
     const memoryReceipt = memory.pendingTurn!.effectReceipt!;
+    // The receipt carries the agent-only branch; the world facts do not.
+    expect(memoryReceipt.facts[1]).toMatchObject({
+      id: fixtureIds.facts.memorySecond,
+      agentNote: fixtureAgentNotes.memorySecond,
+    });
+    expect(memoryReceipt.facts[0]).not.toHaveProperty('agentNote');
+    for (const fact of memory.facts)
+      expect(fact).not.toHaveProperty('agentNote');
     const sameChapterDiscovery = commit(
       memory,
       operationId('memory_chapter_too_early'),

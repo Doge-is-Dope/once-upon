@@ -290,7 +290,7 @@ function makeTool(
       name,
       title: 'Commit the next chapter',
       description:
-        'Finish the exact pending turn when requiredNextTool names this tool. Save all 1–3 prose paragraphs to the webpage before replying.',
+        'Finish the exact pending turn when requiredNextTool names this tool. When the state carries an effect receipt, include effectReceiptId and representedFactIds. Save all 1–3 prose paragraphs to the webpage before replying.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -344,7 +344,8 @@ function makeTool(
           status: { type: 'string', enum: ['continue', 'complete'] },
           effectReceiptId: {
             type: 'string',
-            description: 'Exact pending effect receipt, when present.',
+            description:
+              "Required whenever state.pending.effectReceipt is present: that receipt's exact receiptId. Omit on ordinary turns.",
           },
           representedFactIds: {
             type: 'array',
@@ -360,7 +361,8 @@ function makeTool(
                 ({ sealedFacts }) => sealedFacts.map(({ id }) => id),
               ),
             },
-            description: 'Every fact ID in the pending effect receipt.',
+            description:
+              'Required whenever state.pending.effectReceipt is present: every fact ID in that receipt, no more and no fewer. Omit on ordinary turns.',
           },
         },
         required: [
@@ -562,7 +564,7 @@ function webMCPResult(
       : null;
   const text = result.ok
     ? result.effectReceipt
-      ? `The page changed. REQUIRED NEXT: commit receipt ${result.effectReceipt.receiptId} and its exact facts before any narrative or question.`
+      ? `The page changed. REQUIRED NEXT: call commit_story_chapter with effectReceiptId ${result.effectReceipt.receiptId} and representedFactIds [${result.effectReceipt.factIds.join(', ')}] before any narrative or question.${result.effectReceipt.facts.some(({ agentNote }) => agentNote) ? ' A fact may carry an agentNote: follow it in later chapters and never print it.' : ''}`
       : result.chapter
         ? result.state.phase === 'COMPLETE'
           ? `Final chapter saved. The page will finish the ending on its own (about ${describeTypingSeconds(typingMs ?? 0)} s). Reply with one short closing line and do not describe the ending.`

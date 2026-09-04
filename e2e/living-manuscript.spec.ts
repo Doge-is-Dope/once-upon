@@ -211,16 +211,15 @@ test('lets the reader finish typing early and shows a refused entry', async ({
   await expect(hintTrigger).toBeDisabled();
   await expect(hintIcon).toHaveCSS('animation-name', 'none');
 
-  // A commit the record refuses (second person in the official record) is
+  // A commit the record refuses (second person in the chapter title) is
   // shown to the reader, not only returned to the agent.
   const refused = await callTool<ToolResult>(page, 'commit_story_chapter', {
     operationId: operationId('chapter_refused'),
     expectedSessionId: begun.structuredContent.state.sessionId,
     expectedRevision: begun.structuredContent.state.revision,
     turnId: begun.structuredContent.turnId!,
-    title: 'The door',
+    title: 'You press the door',
     prose: 'You press the door. It does not move.',
-    recordProse: 'You press the door. It does not move.',
     continuitySummary: 'The door stays shut.',
     discoveryIds: [],
     status: 'continue',
@@ -676,6 +675,26 @@ test('completes the story within six registrations and shares a unique story lin
     'Memory at 5:41',
     'continue',
   );
+  // The torn notepad is never split across a page break, and the chapter
+  // heading after it never ends a page alone above its own prose.
+  const notepad = page.locator('.notepad-artifact');
+  expect(await pageIndexOf(notepad)).toBe(
+    await lastFragmentPageIndexOf(notepad),
+  );
+  const notedChapter = page.locator('.story-chapter', { has: notepad });
+  expect(await pageIndexOf(notedChapter.locator('h2'))).toBe(
+    await pageIndexOf(notedChapter.locator('h2 + p')),
+  );
+  // What the room does after the memory is on the page; the branch the
+  // agent may take with it is not.
+  const memoryReturn = page.locator('.memory-return');
+  await expect(memoryReturn).toHaveCount(1);
+  await expect(memoryReturn).toContainText('The speaker');
+  await expect(memoryReturn).toContainText('An equipment fire occurred.');
+  await expect(memoryReturn).toContainText('It asks you to repeat it.');
+  expect(await page.locator('body').innerText()).not.toContain(
+    'Memory response inconsistent',
+  );
   state = await ordinaryTurn(
     page,
     state,
@@ -710,12 +729,23 @@ test('completes the story within six registrations and shares a unique story lin
     timeout: 30_000,
   });
   const rewriteSamples: string[] = [];
+  const rewritePages: string[] = [];
   for (let sample = 0; sample < 3; sample += 1) {
     rewriteSamples.push(
       (await page.locator('.backspace-visual').textContent()) ?? '',
     );
+    rewritePages.push(
+      (await page.locator('.sheet-page-indicator').innerText()).replace(
+        /^Page \d+ of /,
+        '',
+      ),
+    );
     await page.waitForTimeout(80);
   }
+  // The rewrite never changes the page count: its paragraph reserves the
+  // taller of both versions, and nothing announces the revision early.
+  expect(new Set(rewritePages).size).toBe(1);
+  await expect(page.getByText('preparing its revision')).toHaveCount(0);
   expect(
     rewriteSamples.every((text) => text.includes('By the next corner')),
   ).toBe(true);
@@ -760,9 +790,8 @@ test('completes the story within six registrations and shares a unique story lin
   expect(
     await page.locator('.ending-share').evaluate((share) => {
       const description = share.querySelector(':scope > p');
-      const link = share.querySelector<HTMLTextAreaElement>(
-        '#public-story-link',
-      );
+      const link =
+        share.querySelector<HTMLTextAreaElement>('#public-story-link');
       const status = share.closest('.sheet-footer-status');
       if (!description || !link || !status) return false;
 
@@ -836,11 +865,15 @@ test('completes the story within six registrations and shares a unique story lin
     ),
   ).toBe(true);
   await expect(
-    reader.getByRole('heading', {
-      level: 3,
-      name: 'The North Station Memory',
-    }),
+    reader.getByRole('heading', { level: 3, name: 'Memory' }),
   ).toBeVisible();
+  await expect(reader.locator('.shared-effect-return')).toHaveCount(1);
+  await expect(reader.locator('.shared-effect-return')).toContainText(
+    'The speaker',
+  );
+  expect(await reader.locator('body').innerText()).not.toContain(
+    'Memory response inconsistent',
+  );
   await expect(
     reader.getByText('The Last Manuscript', { exact: true }),
   ).toHaveCount(2);
@@ -1247,7 +1280,9 @@ test('keeps every surface inside short desktop columns through the ending', asyn
   );
   // The torn notepad cannot fragment, so it must fit one short column.
   await scrollSheetToElement(page.locator('.notepad-artifact'));
-  await expectElementInsideActiveSheet(page.locator('.notepad-artifact'));
+  // The notepad sits a hair off-axis, so its box may overhang the column
+  // top by a few pixels when it opens a page.
+  await expectElementInsideActiveSheet(page.locator('.notepad-artifact'), 4);
 
   await waitForTool(page, 'follow_north_station_memory');
   state = await interactionTurn(
@@ -1281,6 +1316,18 @@ test('keeps every surface inside short desktop columns through the ending', asyn
   await expect(page.locator('.ending-share')).toBeVisible();
   await waitForSheetToSettle(page);
   await expectPaginationToMatchLayout(page);
+  // Headings and labels never end a column alone: each stays on the same
+  // page as the line that follows it.
+  expect(await pageIndexOf(page.locator('.world-shift h3'))).toBe(
+    await pageIndexOf(page.locator('.world-shift p').first()),
+  );
+  expect(await pageIndexOf(page.locator('.memory-return .eyebrow'))).toBe(
+    await pageIndexOf(page.locator('.memory-return p:not(.eyebrow)').first()),
+  );
+  for (const chapter of await page.locator('.story-chapter').all())
+    expect(await pageIndexOf(chapter.locator('.chapter-number'))).toBe(
+      await pageIndexOf(chapter.locator('h2')),
+    );
   const lastParagraph = page.locator('.completion-passage p').last();
   await scrollSheetToElement(lastParagraph);
   await expect(lastParagraph).toContainText('The subject continues walking.');
@@ -1290,6 +1337,150 @@ test('keeps every surface inside short desktop columns through the ending', asyn
   await expect(page.locator('.story-clue-entry')).toHaveCount(6);
   await expect(page.locator('.story-clue-lead')).toHaveCount(0);
   await page.keyboard.press('Escape');
+});
+
+test('keeps typed words inside their column while typing', async ({ page }) => {
+  test.slow();
+  await page.goto(EXPERIENCE_PATH);
+  await waitForTool(page, 'get_story_state');
+  const initial = await readState(page);
+  const begun = await callTool<ToolResult>(page, 'begin_story_turn', {
+    operationId: operationId('begin_long'),
+    expectedSessionId: initial.sessionId,
+    expectedRevision: initial.revision,
+    playerChoice: 'I walk the walls of the room slowly, touching each one.',
+  });
+  // A chapter long enough to cross a column so typing runs through a
+  // page break while it is still animating.
+  const sentence =
+    'You run your palm along the painted wall and feel where the roller stopped and started again, and the speaker repeats its question while the notepad waits under the lamp. ';
+  const paragraph = sentence.repeat(5).trim();
+  const committed = await callTool<ToolResult>(page, 'commit_story_chapter', {
+    operationId: operationId('chapter_long'),
+    expectedSessionId: begun.structuredContent.state.sessionId,
+    expectedRevision: begun.structuredContent.state.revision,
+    turnId: begun.structuredContent.turnId!,
+    title: 'The walls of the room',
+    prose: `${paragraph}\n\n${paragraph}\n\n${paragraph}`,
+    continuitySummary:
+      'You have walked every wall of the room; the speaker keeps asking about North Station.',
+    discoveryIds: [],
+    status: 'continue',
+  });
+  expect(committed.structuredContent.ok).toBe(true);
+  await expect(
+    page.locator('.story-chapter.is-fresh .tw-word'),
+  ).not.toHaveCount(0);
+
+  const violations: unknown[] = [];
+  for (let sample = 0; sample < 25; sample += 1) {
+    violations.push(...(await typedWordViolations(page)));
+    await page.waitForTimeout(100);
+  }
+  expect(violations, JSON.stringify(violations.slice(0, 5))).toEqual([]);
+
+  await page.locator('.sheet-finish-typing').click();
+  await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(0);
+  await waitForSheetToSettle(page);
+  await expectPaginationToMatchLayout(page);
+});
+
+test('turns to a receipt that lands while the chapter is still typing', async ({
+  page,
+}) => {
+  await page.goto(EXPERIENCE_PATH);
+  await waitForTool(page, 'get_story_state');
+  const state = await ordinaryTurn(
+    page,
+    await readState(page),
+    'I search the table’s edge and find the pencil.',
+    ['pencil_found'],
+    'The pencil at the table’s edge',
+  );
+  await expect(
+    page.locator('.story-chapter.is-fresh .tw-word'),
+  ).not.toHaveCount(0);
+  await waitForTool(page, 'reveal_pressed_words');
+  // The agent uses the object before the page has finished typing: the
+  // chapter settles at once and the reader is carried to the receipt.
+  const revealed = await callTool<ToolResult>(page, 'reveal_pressed_words', {
+    operationId: operationId('reveal_mid_typing'),
+    expectedSessionId: state.sessionId,
+    expectedRevision: state.revision,
+    playerChoice: 'I rub the pencil sideways across the notepad.',
+  });
+  expect(revealed.structuredContent.ok).toBe(true);
+  await expect(page.locator('.story-chapter.is-fresh')).toHaveCount(0);
+  await waitForSheetToSettle(page);
+  await expectPaginationToMatchLayout(page);
+  await expectOnLastPage(page);
+  expect(await pageIndexOf(page.locator('.notepad-artifact'))).toBe(
+    await currentPageIndex(page),
+  );
+});
+
+test('stays on the last page after a receipt lands', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 641, height: 640 });
+  await page.goto(EXPERIENCE_PATH);
+  await waitForTool(page, 'get_story_state');
+
+  let state = await readState(page);
+  state = await ordinaryTurn(
+    page,
+    state,
+    'I search the table’s edge and find the pencil.',
+    ['pencil_found'],
+    'The pencil at the table’s edge',
+  );
+  await waitForTool(page, 'reveal_pressed_words');
+  const revealed = await callTool<ToolResult>(page, 'reveal_pressed_words', {
+    operationId: operationId('reveal_only'),
+    expectedSessionId: state.sessionId,
+    expectedRevision: state.revision,
+    playerChoice: 'I rub the pencil sideways across the notepad.',
+  });
+  expect(revealed.structuredContent.ok).toBe(true);
+  // The receipt adds pages; the sheet must land on the new last page with
+  // the indicator, the Next button, and the content agreeing.
+  await waitForSheetToSettle(page);
+  await expectPaginationToMatchLayout(page);
+  await expectOnLastPage(page);
+  expect(await pageIndexOf(page.locator('.notepad-artifact'))).toBe(
+    await currentPageIndex(page),
+  );
+
+  state = await commit(
+    page,
+    revealed.structuredContent.state,
+    revealed.structuredContent.turnId!,
+    'The missing page answers',
+    [],
+    'continue',
+    revealed.structuredContent.effectReceipt!,
+  );
+  await waitForTool(page, 'follow_north_station_memory');
+  const remembered = await callTool<ToolResult>(
+    page,
+    'follow_north_station_memory',
+    {
+      operationId: operationId('memory_only'),
+      expectedSessionId: state.sessionId,
+      expectedRevision: state.revision,
+      playerChoice: 'I close my eyes and begin with the announcement.',
+    },
+  );
+  expect(remembered.structuredContent.ok).toBe(true);
+  await waitForSheetToSettle(page);
+  await expectPaginationToMatchLayout(page);
+  await expectOnLastPage(page);
+  // The return may fragment across the break; its last line is what the
+  // reader is turned to.
+  expect(
+    await lastFragmentPageIndexOf(
+      page.locator('.memory-return p:not(.eyebrow)').last(),
+    ),
+  ).toBe(await currentPageIndex(page));
 });
 
 /** Resolves once the pager's scroll position holds still across two
@@ -1332,18 +1523,143 @@ async function scrollSheetToElement(element: Locator): Promise<void> {
   });
 }
 
-async function expectElementInsideActiveSheet(element: Locator): Promise<void> {
-  const geometry = await element.evaluate((node) => {
+/** The zero-based page an element starts on, by the app's own page math. */
+async function pageIndexOf(element: Locator): Promise<number> {
+  return element.evaluate((node) => {
+    const pager = node.closest('.sheet-pager')!;
+    const gap =
+      Number.parseFloat(
+        getComputedStyle(pager).getPropertyValue('--page-gap-rem'),
+      ) *
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const stride = pager.getBoundingClientRect().width + gap;
+    const left =
+      node.getBoundingClientRect().left -
+      pager.getBoundingClientRect().left +
+      pager.scrollLeft;
+    return Math.max(0, Math.floor((left + 1) / stride));
+  });
+}
+
+/** The zero-based page holding an element's last line, for text that may
+ *  fragment across a column break. */
+async function lastFragmentPageIndexOf(element: Locator): Promise<number> {
+  return element.evaluate((node) => {
+    const pager = node.closest('.sheet-pager')!;
+    const gap =
+      Number.parseFloat(
+        getComputedStyle(pager).getPropertyValue('--page-gap-rem'),
+      ) *
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const stride = pager.getBoundingClientRect().width + gap;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rects = Array.from(range.getClientRects()).filter(
+      ({ width }) => width > 0,
+    );
+    const last = rects.at(-1) ?? node.getBoundingClientRect();
+    const left =
+      last.left - pager.getBoundingClientRect().left + pager.scrollLeft;
+    return Math.max(0, Math.floor((left + 1) / stride));
+  });
+}
+
+/** The zero-based page the pager is scrolled to. */
+async function currentPageIndex(page: Page): Promise<number> {
+  return page.locator('.sheet-pager').evaluate((pager) => {
+    const gap =
+      Number.parseFloat(
+        getComputedStyle(pager).getPropertyValue('--page-gap-rem'),
+      ) *
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return Math.round(pager.scrollLeft / (pager.clientWidth + gap));
+  });
+}
+
+/** The indicator, the Next button, and the scroll position all agree that
+ *  the reader is on the last page. */
+async function expectOnLastPage(page: Page): Promise<void> {
+  const numbers = (await page.locator('.sheet-page-indicator').innerText())
+    .match(/\d+/g)
+    ?.map(Number);
+  expect(numbers?.[0]).toBe(numbers?.[1]);
+  await expect(page.getByRole('button', { name: 'Next page' })).toBeDisabled();
+}
+
+/**
+ * Every word span of a chapter that is still typing must sit inside the
+ * column it belongs to; the multicol flow's own box gives the column width
+ * and the pager's stride gives each column's origin.
+ */
+async function typedWordViolations(page: Page): Promise<unknown[]> {
+  return page.evaluate(() => {
+    const pager = document.querySelector<HTMLElement>('.sheet-pager');
+    const flow = document.querySelector<HTMLElement>('.sheet-flow');
+    if (!pager || !flow) return ['missing pager'];
+    const gap =
+      Number.parseFloat(
+        getComputedStyle(pager).getPropertyValue('--page-gap-rem'),
+      ) *
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const stride = pager.getBoundingClientRect().width + gap;
+    const pagerRect = pager.getBoundingClientRect();
+    const flowRect = flow.getBoundingClientRect();
+    const violations: unknown[] = [];
+    for (const word of document.querySelectorAll<HTMLElement>(
+      '.is-fresh .tw-word',
+    )) {
+      // A word whose reveal has finished must be fully open: a right inset
+      // still holding a positive share of the box (e.g. `calc(20% - 0.6px)`)
+      // clips its last glyph, which rects cannot see because it is paint only.
+      const clipPath = getComputedStyle(word).clipPath;
+      if (
+        word
+          .getAnimations()
+          .every(({ playState }) => playState === 'finished') &&
+        !/^inset\(0px (?:calc\(0% - [\d.]+px\)|-[\d.]+px|0px) 0px 0px\)$/.test(
+          clipPath,
+        )
+      )
+        violations.push({ text: word.textContent, clipPath });
+      for (const rect of word.getClientRects()) {
+        if (rect.width === 0) continue;
+        const column = Math.floor((rect.left - flowRect.left + 1) / stride);
+        const columnLeft = flowRect.left + column * stride;
+        const columnRight = columnLeft + flowRect.width;
+        if (
+          rect.right > columnRight + 1 ||
+          rect.left < columnLeft - 1 ||
+          rect.top < pagerRect.top - 1 ||
+          rect.bottom > pagerRect.bottom + 1
+        )
+          violations.push({
+            text: word.textContent,
+            rect: { left: rect.left, right: rect.right, top: rect.top },
+            columnLeft,
+            columnRight,
+            pagerBottom: pagerRect.bottom,
+          });
+      }
+    }
+    return violations;
+  });
+}
+
+async function expectElementInsideActiveSheet(
+  element: Locator,
+  tolerance = 1,
+): Promise<void> {
+  const geometry = await element.evaluate((node, slack) => {
     const pager = node.closest('.sheet-pager');
     if (!pager) return { inside: false, reason: 'no pager ancestor' };
     const elementRect = node.getBoundingClientRect();
     const pagerRect = pager.getBoundingClientRect();
     return {
       inside:
-        elementRect.left >= pagerRect.left - 1 &&
-        elementRect.right <= pagerRect.right + 1 &&
-        elementRect.top >= pagerRect.top - 1 &&
-        elementRect.bottom <= pagerRect.bottom + 1,
+        elementRect.left >= pagerRect.left - slack &&
+        elementRect.right <= pagerRect.right + slack &&
+        elementRect.top >= pagerRect.top - slack &&
+        elementRect.bottom <= pagerRect.bottom + slack,
       element: {
         left: elementRect.left,
         right: elementRect.right,
@@ -1358,7 +1674,7 @@ async function expectElementInsideActiveSheet(element: Locator): Promise<void> {
         scrollLeft: pager.scrollLeft,
       },
     };
-  });
+  }, tolerance);
   expect(geometry, JSON.stringify(geometry)).toMatchObject({ inside: true });
 }
 
@@ -1461,8 +1777,6 @@ async function commit(
     title,
     prose:
       'You follow the choice through the quiet room and keep each physical detail in view. The wall speaker waits while the notepad, wardrobe, and handleless door remain where you left them. Nothing supplies an answer for you; the next fact comes only from what you examine.',
-    recordProse:
-      'The subject follows the choice through the quiet room and keeps each physical detail in view. The wall speaker waits while the notepad, wardrobe, and handleless door remain where the subject left them. Nothing supplies an answer for the subject; the next fact comes only from what the subject examines.',
     continuitySummary:
       'You remain in the room with the notepad, wardrobe, wall speaker, and handleless door, following the evidence in the order you found it.',
     discoveryIds,

@@ -41,7 +41,12 @@ export interface InteractionEffectReceipt {
   interactionId: InteractionId;
   presentation: StoryPresentationId;
   factIds: FactId[];
-  facts: Array<{ id: FactId; value: string }>;
+  facts: Array<{
+    id: FactId;
+    value: string;
+    /** Agent-only guidance carried with the receipt; never rendered. */
+    agentNote?: string;
+  }>;
   createdAt: number;
 }
 
@@ -110,6 +115,13 @@ export interface StoryInteractionDefinition {
     value: string;
     /** Required in `record` stories, forbidden otherwise. */
     recordValue?: string;
+    /** Short label a presentation may print above this fact. */
+    heading?: string;
+    /**
+     * Guidance handed to the agent with the effect receipt: branches and
+     * consequences the page never shows. Never rendered or shared.
+     */
+    agentNote?: string;
     protectedTerms: readonly string[];
   }>;
   presentation: StoryPresentationId;
@@ -153,8 +165,11 @@ export interface StoryClueDefinition {
 /**
  * `prose` stories carry one player-facing text. `record` stories also keep
  * an official third-person record of every passage: the agent must submit
- * `recordProse` with each chapter, the restricted sheet censors its lines,
- * and the fixed ending rewrites itself into the record after typing.
+ * `recordProse` with each chapter and every sealed fact pairs a
+ * `recordValue`. Independently of this mode, a story whose
+ * `completionPassage` carries `recordProse` rewrites the ending's last
+ * paragraph into that wording after typing, and the restricted sheet
+ * censors its lines.
  */
 export type StoryNarration = 'prose' | 'record';
 

@@ -1,6 +1,7 @@
 import { experienceDefinitions } from './catalog';
 import {
   hasMatchingParagraphStructure,
+  hasRecordedEnding,
   hasSecondPersonPronoun,
 } from '@/lib/manuscript/prose';
 import { FRAME_PRESENTATIONS } from '@/lib/frames/book';
@@ -42,21 +43,21 @@ function validateStoryDefinition(definition: ExperienceDefinition): void {
     throw new Error(
       `Experience ${definition.id} declares no completion passage.`,
     );
-  if (record) {
+  if (record)
     validateRecordText(
       definition.id,
       story.prologue.prose,
       story.prologue.recordProse,
     );
+  else rejectRecordText(definition.id, story.prologue.recordProse);
+  // The ending may carry its official wording in either mode; a prose story
+  // that gives one still rewrites its last paragraph after typing.
+  if (hasRecordedEnding(story.completionPassage))
     validateRecordText(
       definition.id,
       story.completionPassage.prose,
       story.completionPassage.recordProse,
     );
-  } else {
-    rejectRecordText(definition.id, story.prologue.recordProse);
-    rejectRecordText(definition.id, story.completionPassage.recordProse);
-  }
   const discoveryIds = new Set(story.discoveryIds);
   if (discoveryIds.size !== story.discoveryIds.length)
     throw new Error(
@@ -86,6 +87,17 @@ function validateStoryDefinition(definition: ExperienceDefinition): void {
       if (record)
         validateRecordText(definition.id, fact.value, fact.recordValue);
       else rejectRecordText(definition.id, fact.recordValue);
+      if (
+        fact.heading !== undefined &&
+        (!fact.heading.trim() || fact.heading.length > 40)
+      )
+        throw new Error(
+          `Fact ${fact.id} needs a short, non-empty heading when it declares one.`,
+        );
+      if (fact.agentNote !== undefined && !fact.agentNote.trim())
+        throw new Error(
+          `Fact ${fact.id} declares an empty agent note; omit it instead.`,
+        );
     }
   }
   for (const interaction of story.interactions) {

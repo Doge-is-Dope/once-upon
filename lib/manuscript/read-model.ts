@@ -11,7 +11,12 @@ export type ManuscriptEffect = {
   interactionId: string;
   presentation: InteractionEffectReceipt['presentation'];
   title: string;
-  facts: Array<{ id: string; value: string; recordValue?: string }>;
+  facts: Array<{
+    id: string;
+    value: string;
+    recordValue?: string;
+    heading?: string;
+  }>;
 };
 
 export type ManuscriptChapterBlock = {
@@ -91,18 +96,21 @@ export function resolveChapterEffects(
       ({ id }) => id === use.interactionId,
     );
     if (!interaction) continue;
-    const facts = interaction.sealedFacts.flatMap(({ id, recordValue }) => {
-      const fact = session.facts.find((candidate) => candidate.id === id);
-      return fact
-        ? [
-            {
-              id: fact.id,
-              value: fact.value,
-              ...(recordValue !== undefined ? { recordValue } : {}),
-            },
-          ]
-        : [];
-    });
+    const facts = interaction.sealedFacts.flatMap(
+      ({ id, recordValue, heading }) => {
+        const fact = session.facts.find((candidate) => candidate.id === id);
+        return fact
+          ? [
+              {
+                id: fact.id,
+                value: fact.value,
+                ...(recordValue !== undefined ? { recordValue } : {}),
+                ...(heading !== undefined ? { heading } : {}),
+              },
+            ]
+          : [];
+      },
+    );
     seenReceipts.add(chapter.effectReceiptId);
     effects.set(chapter.id, {
       receiptId: chapter.effectReceiptId,
@@ -127,13 +135,21 @@ export function effectFromReceipt(
     interactionId: receipt.interactionId,
     presentation: receipt.presentation,
     title: interaction?.title ?? 'Story effect',
-    facts: receipt.facts.map((fact) => {
-      const recordValue = interaction?.sealedFacts.find(
-        ({ id }) => id === fact.id,
-      )?.recordValue;
+    // Only the visible fields cross into the page: the receipt's agent
+    // notes stay with the agent.
+    facts: receipt.facts.map(({ id, value }) => {
+      const authored = interaction?.sealedFacts.find(
+        (candidate) => candidate.id === id,
+      );
       return {
-        ...fact,
-        ...(recordValue !== undefined ? { recordValue } : {}),
+        id,
+        value,
+        ...(authored?.recordValue !== undefined
+          ? { recordValue: authored.recordValue }
+          : {}),
+        ...(authored?.heading !== undefined
+          ? { heading: authored.heading }
+          : {}),
       };
     }),
   };
@@ -160,7 +176,8 @@ export function createSharedStorySubmission(
     })),
     completionPassage: {
       prose: model.completionPassage.prose,
-      ...(record && model.completionPassage.recordProse !== undefined
+      // The ending's official wording travels in either narration mode.
+      ...(model.completionPassage.recordProse !== undefined
         ? { recordProse: model.completionPassage.recordProse }
         : {}),
     },

@@ -148,6 +148,18 @@ export function usePagination({
     [goToPage, measure, pageAt],
   );
 
+  // The snap rails render from pageCount one commit after measure(); a
+  // scrollTo issued in that commit lands on a page that has no rail yet
+  // and mandatory snap drags it back to the last existing one. Re-apply
+  // the intended page once the rails for the new count are in the DOM.
+  useLayoutEffect(() => {
+    const result = metrics();
+    if (!result) return;
+    const left = Math.min(targetPage.current, result.count - 1) * result.stride;
+    if (Math.abs(result.pager.scrollLeft - left) > 1)
+      result.pager.scrollTo({ left, behavior: 'auto' });
+  }, [metrics, pageCount]);
+
   useLayoutEffect(() => {
     const pager = pagerRef.current;
     if (!pager) return;

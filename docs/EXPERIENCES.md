@@ -25,32 +25,36 @@ object: adding a story touches `experiences/` and nothing else.
 
 `story.narration` is `'prose'` or `'record'`.
 
-- `prose` stories carry one player-facing text. Authored passages and sealed
-  facts declare only `prose` / `value`; the agent submits only `prose`; the
-  restricted sheet shows the prose plainly; the fixed ending is typed once.
-- `record` stories also keep an official third-person record. Every authored
-  passage pairs `prose` with `recordProse` and every sealed fact pairs `value`
-  with `recordValue` (same paragraph structure, no second-person pronouns). The
-  `commit_story_chapter` schema and the shared turn protocol require
-  `recordProse` from the agent, the restricted sheet censors its lines, the
-  fixed ending rewrites itself into the record after typing, and a shared copy
-  stores both versions.
+- `prose` stories carry one player-facing text. The prologue and sealed
+  facts declare only `prose` / `value`, and the agent submits only `prose`.
+- `record` stories also keep an official third-person record of every
+  chapter. The prologue pairs `prose` with `recordProse` and every sealed fact
+  pairs `value` with `recordValue` (same paragraph structure, no second-person
+  pronouns). The `commit_story_chapter` schema and the shared turn protocol
+  require `recordProse` from the agent, and a shared copy stores both versions.
 
-The registry rejects a `prose` story that declares any record text and a
-`record` story that omits any. The engine rejects a `recordProse` on a prose
-story and a missing one on a record story.
+Independently of narration, a story may give `completionPassage.recordProse`.
+When present, in either mode, the fixed ending rewrites its last paragraph into
+that wording after typing, the restricted sheet censors its lines, and a shared
+copy stores both versions of the ending. The registry validates it as a pair
+(same paragraph count, no second person). Leave it out and the fixed ending is
+typed once and the restricted sheet shows the prose plainly.
+
+The registry rejects a `prose` story that declares a prologue `recordProse` or
+a fact `recordValue`, and a `record` story that omits either. The engine
+rejects a `recordProse` on a prose story and a missing one on a record story.
 
 ## Presentations
 
 Each interaction names a `presentation` the frame can render. The book frame
 supports:
 
-| id                 | Rendering                                                   |
-| ------------------ | ----------------------------------------------------------- |
-| `generic`          | Titled section listing every sealed fact.                   |
-| `pressed_writing`  | A notepad artifact; each fact's first line is the raised fragment. |
-| `memory_flashback` | A remembered scene from the interaction's **first** sealed fact. |
-| `world_shift`      | A titled section; also brightens the desk lamp permanently. |
+| id                 | Rendering                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `generic`          | Titled section listing every sealed fact.                                                                                            |
+| `pressed_writing`  | A notepad artifact; each fact's first line is the raised fragment.                                                                   |
+| `memory_flashback` | A remembered scene from the interaction's **first** sealed fact, then each further fact as a present-time block under its `heading`. |
+| `world_shift`      | A titled section; also brightens the desk lamp permanently.                                                                          |
 
 The manifest lives in `lib/frames/book.ts`; the renderers live in
 `components/frames/desk/presentations/`. The registry rejects an id the frame
@@ -95,7 +99,10 @@ Each story-object interaction owns:
 
 - an authored tool name, title, short description, and visible in-world cue;
 - discovery, fact, and prior-interaction prerequisites;
-- sealed facts that are absent from agent context and the DOM before use;
+- sealed facts that are absent from agent context and the DOM before use. A
+  fact's `value` is what the page shows; an optional `heading` labels it in a
+  presentation, and an optional `agentNote` carries branches or consequences
+  the page never shows — it travels only in the effect receipt;
 - the immediate page presentation;
 - a `completionPolicy`: `must_continue`, `may_complete`, or `must_complete`.
 

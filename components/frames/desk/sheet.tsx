@@ -15,6 +15,7 @@ import {
   type ManuscriptEffect,
 } from '@/lib/manuscript/read-model';
 import {
+  hasRecordedEnding,
   resolveRecordedEnding,
   splitParagraphBlocks,
 } from '@/lib/manuscript/prose';
@@ -74,7 +75,9 @@ export function StoryScroll({
     [experience, session],
   );
   const copy = useMemo(() => resolveBookCopy(experience.frame), [experience]);
-  const recordLayer = experience.story.narration === 'record';
+  // The ending's official wording, not the narration mode, decides whether
+  // the sheet censors its lines and rewrites the ending after typing.
+  const recordedEnding = hasRecordedEnding(manuscript.completionPassage);
   const availabilityVisible =
     session.phase !== 'COMPLETE' && webMCPStatus !== 'connected';
   const pendingEffect = resolvePendingEffect(experience, session);
@@ -126,11 +129,14 @@ export function StoryScroll({
   const stopFollowingHead = useCallback(() => {
     followingHead.current = false;
   }, []);
+  // Typing state is part of the key so that a receipt landing mid-typing,
+  // which settles the chapter, re-enters the page decision as typingEnded.
   const contentKey = [
     manuscript.chapters.length,
     session.phase,
     endingStage,
     pendingReceiptId ?? '',
+    typingActive ? 'typing' : 'settled',
   ].join(':');
   const {
     pagerRef,
@@ -154,6 +160,7 @@ export function StoryScroll({
   const previousReceiptId = useRef<string | null>(null);
   const previousPhase = useRef(session.phase);
   const previousTypingActive = useRef(typingActive);
+  const previousEndingStage = useRef(endingStage);
   const rewriteDelayTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -180,9 +187,9 @@ export function StoryScroll({
     clearRewriteDelay();
     setEndingStage('complete');
   }, [clearRewriteDelay]);
-  // A record story rewrites its ending after the typing settles; a prose
-  // story simply settles.
-  const settleEnding = recordLayer ? beginRewrite : finishRewrite;
+  // An ending with official wording rewrites itself after the typing
+  // settles; a plain ending simply settles.
+  const settleEnding = recordedEnding ? beginRewrite : finishRewrite;
 
   useEffect(() => {
     const enteredComplete =
@@ -200,7 +207,7 @@ export function StoryScroll({
     ).matches;
     if (reducedMotion || !typingPlan) {
       setEndingStage('complete');
-      if (recordLayer) onAnnounce('The record revises its wording.');
+      if (recordedEnding) onAnnounce('The record revises its wording.');
       return;
     }
     setEndingStage('original');
@@ -213,7 +220,7 @@ export function StoryScroll({
   }, [
     clearRewriteDelay,
     onAnnounce,
-    recordLayer,
+    recordedEnding,
     session.phase,
     settleEnding,
     typingPlan,
@@ -354,11 +361,19 @@ export function StoryScroll({
       pendingReceiptId !== null &&
       pendingReceiptId !== previousReceiptId.current;
     const typingEnded = previousTypingActive.current && !typingActive;
+    const endingMoved = endingStage !== previousEndingStage.current;
     previousLatestId.current = latestChapterId;
     previousReceiptId.current = pendingReceiptId;
     previousTypingActive.current = typingActive;
+    previousEndingStage.current = endingStage;
     if (firstContentKey.current) {
       firstContentKey.current = false;
+      return;
+    }
+    if (endingMoved) {
+      // The rewrite and its completion happen on the last page; keep a
+      // reader who is still following the ending there.
+      if (followingHead.current) goToLastPage();
       return;
     }
     if (effectArrived) {
@@ -419,7 +434,7 @@ export function StoryScroll({
                   chapter={chapter}
                   key={chapter.id}
                   plan={fresh && endingStage === 'original' ? typingPlan : null}
-                  redacted={availabilityVisible && recordLayer}
+                  redacted={availabilityVisible && recordedEnding}
                 />
               );
             })}
@@ -510,17 +525,13 @@ export function StoryScroll({
               session={session}
             />
           ) : null}
-          {recordLayer &&
+          {recordedEnding &&
           !availabilityVisible &&
           !typingActive &&
           session.phase === 'COMPLETE' &&
-          endingStage !== 'complete' ? (
+          endingStage === 'rewriting' ? (
             <div className="sheet-rewrite-status" id="your-turn">
-              <p>
-                {endingStage === 'rewriting'
-                  ? 'The record is revising its wording…'
-                  : 'The record is preparing its revision…'}
-              </p>
+              <p>The record is revising its wording…</p>
             </div>
           ) : null}
           {!availabilityVisible &&
@@ -755,6 +766,10 @@ function ChapterBlock({
       className={`story-chapter${plan ? ' is-fresh' : ''}`}
       ref={articleRef}
     >
+      {/* The object's effect stays where the reader watched it land, ahead
+          of the chapter that answers it. It also lets the torn notepad, a
+          monolithic box, take a column without stranding the heading. */}
+      {chapter.effect ? <EffectPresentation effect={chapter.effect} /> : null}
       <p className="chapter-number">{chapter.label}</p>
       <h2>
         {plan ? (
@@ -763,7 +778,6 @@ function ChapterBlock({
           chapter.title
         )}
       </h2>
-      {chapter.effect ? <EffectPresentation effect={chapter.effect} /> : null}
       {paragraphs.map((paragraph, index) => (
         <p key={`${chapter.id}-paragraph-${index}`}>
           {plan?.paragraphs[index] ? (
@@ -812,9 +826,9 @@ function CompletionPassageBlock({
       aria-label="Completion"
       className={`completion-passage${plan ? ' is-fresh' : ''}`}
     >
-      {paragraphs.map((original, index) => (
-        <p key={index}>
-          {index === lastIndex && stage === 'rewriting' && recordParagraphs ? (
+      {paragraphs.map((original, index) => {
+        const content =
+          index === lastIndex && stage === 'rewriting' && recordParagraphs ? (
             <BackspaceText
               onComplete={onRewriteComplete}
               original={original}
@@ -826,9 +840,24 @@ function CompletionPassageBlock({
             <TypedText text={original} words={plan[index]} />
           ) : (
             original
-          )}
-        </p>
-      ))}
+          );
+        // The ending's last paragraph changes length while it is typed and
+        // rewritten; two hidden copies reserve the taller of both versions so
+        // the columns never reflow under the animation.
+        if (index === lastIndex && recordParagraphs)
+          return (
+            <p className="completion-ending" key={index}>
+              <span aria-hidden="true" className="completion-ending-sizer">
+                {original}
+              </span>
+              <span aria-hidden="true" className="completion-ending-sizer">
+                {recordParagraphs[index] ?? original}
+              </span>
+              <span className="completion-ending-text">{content}</span>
+            </p>
+          );
+        return <p key={index}>{content}</p>;
+      })}
     </section>
   );
 }
@@ -856,8 +885,8 @@ function TypedText({
           key={index}
           style={
             {
-              '--td': `${words[index]?.start ?? 0}ms`,
-              '--wd': `${words[index]?.duration ?? 1}ms`,
+              '--td': `${Math.round(words[index]?.start ?? 0)}ms`,
+              '--wd': `${Math.max(1, Math.round(words[index]?.duration ?? 1))}ms`,
               '--chars': `${words[index]?.chars ?? 1}`,
             } as CSSProperties
           }

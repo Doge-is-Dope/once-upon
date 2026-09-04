@@ -3,6 +3,7 @@ import {
   flattenParagraphBlocks,
   formatChapterLabel,
   hasMatchingParagraphStructure,
+  hasRecordedEnding,
   hasSecondPersonPronoun,
 } from '@/lib/manuscript/prose';
 import type { SharedStorySubmissionV2 } from '@/lib/manuscript/read-model';
@@ -61,6 +62,12 @@ export type SharedStoryDocumentV2 = {
       title: string;
       paragraphs: string[];
       recordParagraphs?: string[];
+      /**
+       * The same text grouped per sealed fact with its authored heading, so
+       * the reader page can follow the presentation's own rules. Absent on
+       * documents stored before the field was added.
+       */
+      facts?: Array<{ heading?: string; paragraphs: string[] }>;
     };
   }>;
   completionPassage: SharedRecordText;
@@ -185,13 +192,14 @@ export function validateSharedStorySubmission(
   )
     throw new ShareValidationError('The fixed prologue does not match.');
 
+  const recordedEnding = hasRecordedEnding(experience.story.completionPassage);
   const completion = exactRecord(root.completionPassage, [
     'prose',
-    ...(record ? ['recordProse'] : []),
+    ...(recordedEnding ? ['recordProse'] : []),
   ]);
   if (
     completion.prose !== experience.story.completionPassage.prose ||
-    (record &&
+    (recordedEnding &&
       completion.recordProse !== experience.story.completionPassage.recordProse)
   )
     throw new ShareValidationError(
@@ -240,6 +248,10 @@ export function validateSharedStorySubmission(
               paragraphs: interaction.sealedFacts.flatMap(({ value }) =>
                 flattenParagraphBlocks(value),
               ),
+              facts: interaction.sealedFacts.map(({ value, heading }) => ({
+                ...(heading !== undefined ? { heading } : {}),
+                paragraphs: flattenParagraphBlocks(value),
+              })),
               ...(record
                 ? {
                     recordParagraphs: interaction.sealedFacts.flatMap(
@@ -254,7 +266,7 @@ export function validateSharedStorySubmission(
     }),
     completionPassage: {
       prose: flattenParagraphBlocks(experience.story.completionPassage.prose),
-      ...(record
+      ...(recordedEnding
         ? {
             recordProse: flattenParagraphBlocks(
               experience.story.completionPassage.recordProse ?? '',
@@ -281,7 +293,9 @@ export function validateSharedStorySubmission(
       ),
       completionPassage: {
         prose: completion.prose as string,
-        ...(record ? { recordProse: completion.recordProse as string } : {}),
+        ...(recordedEnding
+          ? { recordProse: completion.recordProse as string }
+          : {}),
       },
     },
     document,

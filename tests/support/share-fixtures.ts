@@ -4,7 +4,7 @@ import { recordFixtureExperience } from './fixture-story';
 type ShareChapter = {
   title: string;
   prose: string;
-  recordProse: string;
+  recordProse?: string;
   effectInteractionId: string | null;
 };
 
@@ -31,27 +31,40 @@ export function makeCompleteShareSubmission(
 ) {
   const { story } = experience;
   const lastIndex = story.interactions.length - 1;
+  // Chapter records exist only for record narration; the ending's record
+  // travels whenever the story declares one.
+  const record = story.narration === 'record';
+  const withRecord = (
+    chapter: ShareChapter,
+    recordProse: string,
+  ): ShareChapter => (record ? { ...chapter, recordProse } : chapter);
   const chapters: ShareChapter[] = [
-    {
-      title: story.prologue.title,
-      prose: story.prologue.prose,
-      recordProse: story.prologue.recordProse!,
-      effectInteractionId: null,
-    },
+    withRecord(
+      {
+        title: story.prologue.title,
+        prose: story.prologue.prose,
+        effectInteractionId: null,
+      },
+      story.prologue.recordProse ?? '',
+    ),
     ...story.interactions.map((interaction, index) =>
       index === lastIndex
-        ? {
-            title: 'The last page',
-            prose: lastChapterProse,
-            recordProse: lastChapterProse,
-            effectInteractionId: interaction.id,
-          }
-        : {
-            title: interaction.title,
-            prose: `You follow ${interaction.title.toLowerCase()} and wait for what it changes.`,
-            recordProse: `The subject follows ${interaction.title.toLowerCase()} and waits for what it changes.`,
-            effectInteractionId: interaction.id,
-          },
+        ? withRecord(
+            {
+              title: 'The last page',
+              prose: lastChapterProse,
+              effectInteractionId: interaction.id,
+            },
+            lastChapterProse,
+          )
+        : withRecord(
+            {
+              title: interaction.title,
+              prose: `You follow ${interaction.title.toLowerCase()} and wait for what it changes.`,
+              effectInteractionId: interaction.id,
+            },
+            `The subject follows ${interaction.title.toLowerCase()} and waits for what it changes.`,
+          ),
     ),
   ];
   return {

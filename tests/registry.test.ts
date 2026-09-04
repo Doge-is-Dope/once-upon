@@ -18,9 +18,16 @@ describe('experience registry', () => {
       /get_story_state|begin_story_turn|commit_story_chapter|revision|receipt/,
     );
     expect(experienceDefinition.agentContract).toMatchObject({
-      version: 'last-manuscript-agent-v2',
-      instructions: expect.stringContaining('recordProse'),
+      version: 'last-manuscript-agent-v3',
+      instructions: expect.not.stringContaining('recordProse'),
     });
+    // The agent writes prose only; the fixed ending still carries the
+    // official wording it rewrites itself into.
+    expect(experienceDefinition.story.narration).toBe('prose');
+    expect(experienceDefinition.story.prologue.recordProse).toBeUndefined();
+    expect(experienceDefinition.story.completionPassage.recordProse).toContain(
+      'The subject continues walking.',
+    );
     expect(experienceDefinition.agentContract.instructions).toContain(
       'interaction receipt is already visible prose',
     );
@@ -31,6 +38,72 @@ describe('experience registry', () => {
       'explicitly chooses to close their eyes',
     );
     expect(memory?.description).toContain('remembered announcement');
+  });
+
+  it('keeps the approved account visible and its branch agent-only', () => {
+    const memory = experienceDefinition.story.interactions.find(
+      ({ id }) => id === 'north_station_memory',
+    )!;
+    const approved = memory.sealedFacts.find(
+      ({ id }) => id === 'approved_north_station_account',
+    )!;
+    expect(approved.heading).toBe('The speaker');
+    expect(approved.value).toContain('It asks you to repeat it.');
+    expect(approved.value).not.toContain('Words correct');
+    expect(approved.agentNote).toContain(
+      'Words correct. Memory response inconsistent.',
+    );
+  });
+
+  it('hands the agent the physical canon the notebook describes', () => {
+    const { instructions } = experienceDefinition.agentContract;
+    expect(instructions).toContain('sewn into one volume with thread');
+    expect(instructions).toContain('coil');
+    expect(instructions).toContain('table’s edge');
+    // Sent with every get_story_state, so it stays bounded.
+    expect(instructions.length).toBeLessThan(2400);
+
+    const pencil = experienceDefinition.story.clues.find(
+      ({ id }) => id === 'pencil',
+    )!;
+    expect(pencil.observation).toContain('edge of the table');
+    expect(pencil.observation).not.toContain('beneath the desk');
+    const manuscript = experienceDefinition.story.clues.find(
+      ({ id }) => id === 'sewn-manuscript',
+    )!;
+    expect(manuscript.observation).toContain('sewn together with thread');
+  });
+
+  it('rejects an empty fact heading or agent note', () => {
+    const withFact = (patch: { heading?: string; agentNote?: string }) => ({
+      ...experienceDefinition,
+      id: 'bad-fact-fields',
+      story: {
+        ...experienceDefinition.story,
+        id: 'bad-fact-fields-v1',
+        interactions: experienceDefinition.story.interactions.map(
+          (interaction, index) =>
+            index === 0
+              ? {
+                  ...interaction,
+                  sealedFacts: interaction.sealedFacts.map((fact) => ({
+                    ...fact,
+                    ...patch,
+                  })),
+                }
+              : interaction,
+        ),
+      },
+    });
+    expect(() =>
+      createExperienceRegistry([withFact({ heading: '   ' })]),
+    ).toThrow('needs a short, non-empty heading');
+    expect(() =>
+      createExperienceRegistry([withFact({ heading: 'x'.repeat(41) })]),
+    ).toThrow('needs a short, non-empty heading');
+    expect(() =>
+      createExperienceRegistry([withFact({ agentNote: '' })]),
+    ).toThrow('declares an empty agent note');
   });
 
   it('rejects an empty agent contract', () => {

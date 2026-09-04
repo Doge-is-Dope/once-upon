@@ -26,6 +26,7 @@ import {
 import {
   fixtureExperience,
   fixtureIds,
+  monitoredFixtureExperience,
   recordFixtureExperience,
 } from './support/fixture-story';
 import { operationId, ordinaryProse, testContext } from './helpers';
@@ -35,7 +36,147 @@ const lookup = (id: string) =>
     ? fixtureExperience
     : id === recordFixtureExperience.id
       ? recordFixtureExperience
-      : null;
+      : id === monitoredFixtureExperience.id
+        ? monitoredFixtureExperience
+        : null;
+
+describe('prose story with a recorded ending', () => {
+  const { story } = monitoredFixtureExperience;
+
+  it('is accepted while chapter-level record text stays rejected', () => {
+    expect(story.narration).toBe('prose');
+    expect(story.completionPassage.recordProse).toContain(
+      'The subject continues walking.',
+    );
+    expect(() =>
+      createExperienceRegistry([monitoredFixtureExperience]),
+    ).not.toThrow();
+
+    const strayPrologue: ExperienceDefinition = {
+      ...monitoredFixtureExperience,
+      story: {
+        ...story,
+        prologue: { ...story.prologue, recordProse: story.prologue.prose },
+      },
+    };
+    expect(() => createExperienceRegistry([strayPrologue])).toThrow(
+      'prose-only but declares record text',
+    );
+
+    const strayFact: ExperienceDefinition = {
+      ...monitoredFixtureExperience,
+      story: {
+        ...story,
+        interactions: story.interactions.map((interaction, index) =>
+          index === 0
+            ? {
+                ...interaction,
+                sealedFacts: interaction.sealedFacts.map((fact) => ({
+                  ...fact,
+                  recordValue: fact.value,
+                })),
+              }
+            : interaction,
+        ),
+      },
+    };
+    expect(() => createExperienceRegistry([strayFact])).toThrow(
+      'prose-only but declares record text',
+    );
+
+    const secondPersonEnding: ExperienceDefinition = {
+      ...monitoredFixtureExperience,
+      story: {
+        ...story,
+        completionPassage: {
+          ...story.completionPassage,
+          recordProse: story.completionPassage.prose,
+        },
+      },
+    };
+    expect(() => createExperienceRegistry([secondPersonEnding])).toThrow(
+      'contains second person',
+    );
+  });
+
+  it('asks the agent for prose only', async () => {
+    expect(livingManuscriptProtocol(monitoredFixtureExperience)).not.toContain(
+      'recordProse',
+    );
+    const schema = await commitSchema(monitoredFixtureExperience);
+    expect(schema.properties).not.toHaveProperty('recordProse');
+    expect(schema.required).not.toContain('recordProse');
+  });
+
+  it('rewrites and censors only the fixed ending', () => {
+    const session = playToCompletion(testContext(), monitoredFixtureExperience);
+    expect(session.phase).toBe('COMPLETE');
+    expect(JSON.stringify(session)).not.toContain('recordProse');
+
+    const complete = render(monitoredFixtureExperience, session, 'connected');
+    expect(complete).toMatch(
+      /class="completion-ending-text">[^<]*The subject continues walking\./,
+    );
+    // The original ending survives only as the hidden height reservation.
+    expect(occurrences(complete, 'You keep walking.')).toBe(1);
+    expect(occurrences(complete, 'class="completion-ending-sizer"')).toBe(2);
+    expect(complete).not.toContain('sheet-rewrite-status');
+
+    const restricted = render(
+      monitoredFixtureExperience,
+      createExperienceSession(monitoredFixtureExperience, testContext()),
+      'unsupported',
+    );
+    expect(restricted).toContain('redacted-run');
+  });
+
+  it('shares the ending with both versions and the chapters with one', () => {
+    const session = playToCompletion(testContext(), monitoredFixtureExperience);
+    const model = deriveManuscriptReadModel(
+      monitoredFixtureExperience,
+      session,
+    );
+    expect(model.completionPassage.recordProse).toContain(
+      'The subject continues walking.',
+    );
+    for (const chapter of model.chapters)
+      expect(chapter).not.toHaveProperty('recordProse');
+
+    const submission = createSharedStorySubmission(
+      model,
+      'd10cbb0f-b6f4-4d61-8cc5-1bf893f12431',
+    );
+    expect(submission.completionPassage).toHaveProperty('recordProse');
+    for (const chapter of submission.chapters)
+      expect(chapter).not.toHaveProperty('recordProse');
+
+    const validated = validateSharedStorySubmission(
+      submission,
+      Date.UTC(2026, 7, 31),
+      lookup,
+    );
+    expect(validated.document.completionPassage.recordProse).toEqual([
+      expect.any(String),
+      expect.stringContaining('The subject continues walking.'),
+    ]);
+    for (const chapter of validated.document.chapters)
+      expect(chapter).not.toHaveProperty('recordProse');
+
+    const { recordProse: _dropped, ...plainEnding } =
+      submission.completionPassage;
+    expect(() =>
+      validateSharedStorySubmission(
+        { ...submission, completionPassage: plainEnding },
+        0,
+        lookup,
+      ),
+    ).toThrow(/Unexpected or missing fields/);
+  });
+});
+
+function occurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
 
 describe('prose-only story', () => {
   it('is accepted by the registry while record text stays paired', () => {
@@ -191,6 +332,7 @@ describe('prose-only story', () => {
     const complete = render(fixtureExperience, session, 'connected');
     expect(complete).not.toContain('sheet-rewrite-status');
     expect(complete).not.toContain('backspace');
+    expect(complete).not.toContain('completion-ending-sizer');
     expect(complete).toContain('You keep walking.');
     expect(complete).not.toContain('The subject continues walking.');
 
@@ -271,26 +413,65 @@ function render(
 
 function playToCompletion(
   context: ReturnType<typeof testContext>,
+  experience: ExperienceDefinition = fixtureExperience,
 ): ExperienceSession {
-  let session = createExperienceSession(fixtureExperience, context);
+  let session = createExperienceSession(experience, context);
   session = ordinaryTurn(
     session,
     'find_key',
     [fixtureIds.discoveries.key],
     context,
+    experience,
   );
-  session = interactionTurn(session, fixtureIds.interactions.drawer, context);
-  session = finishTurn(session, 'drawer_chapter', 'continue', [], context);
-  session = interactionTurn(session, fixtureIds.interactions.memory, context);
-  session = finishTurn(session, 'memory_chapter', 'continue', [], context);
+  session = interactionTurn(
+    session,
+    fixtureIds.interactions.drawer,
+    context,
+    experience,
+  );
+  session = finishTurn(
+    session,
+    'drawer_chapter',
+    'continue',
+    [],
+    context,
+    experience,
+  );
+  session = interactionTurn(
+    session,
+    fixtureIds.interactions.memory,
+    context,
+    experience,
+  );
+  session = finishTurn(
+    session,
+    'memory_chapter',
+    'continue',
+    [],
+    context,
+    experience,
+  );
   session = ordinaryTurn(
     session,
     'find_panel',
     [fixtureIds.discoveries.panel],
     context,
+    experience,
   );
-  session = interactionTurn(session, fixtureIds.interactions.panel, context);
-  return finishTurn(session, 'panel_chapter', 'complete', [], context);
+  session = interactionTurn(
+    session,
+    fixtureIds.interactions.panel,
+    context,
+    experience,
+  );
+  return finishTurn(
+    session,
+    'panel_chapter',
+    'complete',
+    [],
+    context,
+    experience,
+  );
 }
 
 function ordinaryTurn(
@@ -298,9 +479,10 @@ function ordinaryTurn(
   suffix: string,
   discoveryIds: string[],
   context: ReturnType<typeof testContext>,
+  experience: ExperienceDefinition = fixtureExperience,
 ): ExperienceSession {
   const started = beginStoryTurn(
-    fixtureExperience,
+    experience,
     session,
     {
       operationId: operationId(`${suffix}_begin`),
@@ -316,6 +498,7 @@ function ordinaryTurn(
     'continue',
     discoveryIds,
     context,
+    experience,
   );
 }
 
@@ -323,9 +506,10 @@ function interactionTurn(
   session: ExperienceSession,
   interactionId: string,
   context: ReturnType<typeof testContext>,
+  experience: ExperienceDefinition = fixtureExperience,
 ): ExperienceSession {
   const result = invokeStoryInteraction(
-    fixtureExperience,
+    experience,
     session,
     {
       operationId: operationId(`${interactionId}_interaction`),
@@ -346,10 +530,11 @@ function finishTurn(
   status: 'continue' | 'complete',
   discoveryIds: string[],
   context: ReturnType<typeof testContext>,
+  experience: ExperienceDefinition = fixtureExperience,
 ): ExperienceSession {
   const receipt = session.pendingTurn?.effectReceipt;
   const result = commitStoryChapter(
-    fixtureExperience,
+    experience,
     session,
     {
       operationId: operationId(suffix),

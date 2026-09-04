@@ -4,6 +4,7 @@ import {
   ShareValidationError,
   validateSharedStorySubmission,
 } from '@/lib/share/document';
+import { fixtureAgentNotes } from './support/fixture-story';
 import {
   lookupFixtureExperience,
   makeCompleteShareSubmission,
@@ -50,6 +51,34 @@ describe('shared story validation', () => {
     expect(validated.document.expiresAt).toBe('2026-09-30T00:00:00.000Z');
     expect(JSON.stringify(validated.document)).not.toMatch(
       /requestId|interactionId|sessionId|receiptId/,
+    );
+  });
+
+  it('groups effect text per fact with its heading and drops agent notes', () => {
+    const validated = validateSharedStorySubmission(
+      makeCompleteShareSubmission(),
+      Date.UTC(2026, 7, 31),
+      lookupFixtureExperience,
+    );
+    const memory = validated.document.chapters[2]!.effect!;
+    expect(memory.presentation).toBe('memory_flashback');
+    expect(memory.facts).toEqual([
+      {
+        paragraphs: [
+          expect.stringContaining('begin with the bell'),
+          expect.stringContaining('The study was never empty'),
+        ],
+      },
+      {
+        heading: 'The voice',
+        paragraphs: [expect.stringContaining('The voice repeats its version')],
+      },
+    ]);
+    expect(memory.paragraphs).toEqual(
+      memory.facts!.flatMap(({ paragraphs }) => paragraphs),
+    );
+    expect(JSON.stringify(validated.document)).not.toContain(
+      fixtureAgentNotes.memorySecond,
     );
   });
 
