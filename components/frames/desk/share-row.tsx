@@ -128,7 +128,7 @@ export function StoryShare({
           </button>
         </div>
       ) : (
-        <div aria-busy="true" className="public-link-result is-loading">
+        <div aria-busy="true" className="public-link-result">
           <span className="public-link-status">Preparing a copy…</span>
           <button
             aria-label="Copy manuscript link"

@@ -71,7 +71,7 @@ export function WebMCPAvailability({
             <div className="webmcp-flag-result">
               <code>{WEBMCP_FLAG}</code>
               <CopyButton
-                className="inline-copy-action webmcp-flag-copy"
+                className="inline-copy-action"
                 copiedLabel="Chrome flag copied"
                 fallbackLabel="Copy this Chrome flag"
                 iconOnly

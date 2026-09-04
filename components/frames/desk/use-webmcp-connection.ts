@@ -35,8 +35,6 @@ export type WebMCPConnection = {
   agentActive: boolean;
   /** The most recently invoked tool that is still running, if any. */
   activeTool: string | null;
-  /** Number of tool calls currently in flight. */
-  runningCount: number;
   /** Wall-clock time of the last tool call activity, or null. */
   lastActivityAt: number | null;
   /** The most recent failed tool call, cleared by the next success. */
@@ -108,7 +106,6 @@ export function useWebMCPConnection(
     setupHint,
     agentActive,
     activeTool: running.at(-1) ?? null,
-    runningCount: running.length,
     lastActivityAt,
     lastFailure,
     retryConnection,

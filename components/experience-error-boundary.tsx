@@ -27,7 +27,7 @@ export class ExperienceErrorBoundary extends Component<
           prologue.
         </p>
         <button
-          className="copy-button recovery-button"
+          className="copy-button"
           type="button"
           onClick={() => window.location.reload()}
         >

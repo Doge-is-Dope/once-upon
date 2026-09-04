@@ -43,6 +43,5 @@ export function useDismissiblePanel() {
     triggerRef,
     close,
     toggle,
-    closeAndRestoreFocus,
   };
 }

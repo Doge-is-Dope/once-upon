@@ -5,8 +5,6 @@ import { pressedWriting } from './pressed-writing';
 import type { DeskPresentation } from './types';
 import { worldShift } from './world-shift';
 
-export type { DeskPresentation } from './types';
-
 // Keyed by the frame manifest so adding an id to BOOK_PRESENTATION_IDS
 // without a renderer here is a type error, and vice versa.
 export const DESK_PRESENTATIONS: Record<BookPresentationId, DeskPresentation> =

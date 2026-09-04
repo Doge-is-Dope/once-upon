@@ -126,8 +126,6 @@ export function DeskExperience({
         .map(({ presentation }) => String(presentation)),
     ),
   ];
-  // The bulb stays in the header once the agent is connected; it only
-  // lights while a move can be made and the page has finished writing.
   const copy = useMemo(() => resolveBookCopy(experience.frame), [experience]);
   const hint = resolveHint(experience, copy, session);
   const hintAvailable =

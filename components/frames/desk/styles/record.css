@@ -107,16 +107,13 @@
 
     .story-header {
       width: min(100% - 2rem, 72rem);
+      min-height: 3.25rem;
       margin-inline: auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
       color: var(--parchment-muted);
-    }
-
-    .story-header {
-      min-height: 3.25rem;
       border-bottom: 1px solid rgb(234 219 185 / 14%);
     }
 
@@ -238,18 +235,14 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      width: 2.5rem;
+      height: 2.5rem;
+      padding: 0;
       color: var(--parchment-muted);
       background: transparent;
       border: 1px solid transparent;
       border-radius: 0.3rem;
       cursor: pointer;
-    }
-
-    .story-hint-trigger,
-    .story-settings-trigger {
-      width: 2.5rem;
-      height: 2.5rem;
-      padding: 0;
     }
 
     .story-hint-trigger svg,

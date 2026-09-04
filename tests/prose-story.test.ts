@@ -6,7 +6,6 @@ import { createExperienceRegistry } from '@/experiences/registry';
 import {
   createSharedStorySubmission,
   deriveManuscriptReadModel,
-  manuscriptToText,
 } from '@/lib/manuscript/read-model';
 import { ExperienceController } from '@/lib/runtime/controller';
 import {
@@ -147,12 +146,14 @@ describe('prose-only story', () => {
     expect(recordSchema.required).toContain('recordProse');
   });
 
-  it('exports and shares the plain ending', () => {
+  it('shares the plain ending', () => {
     const session = playToCompletion(testContext());
     const model = deriveManuscriptReadModel(fixtureExperience, session);
-    const text = manuscriptToText(model);
-    expect(text).toContain('You keep walking.');
-    expect(text).not.toContain('The subject continues walking.');
+    expect(model.completionPassage.prose).toContain('You keep walking.');
+    expect(model.completionPassage.recordProse).toBeUndefined();
+    expect(JSON.stringify(model)).not.toContain(
+      'The subject continues walking.',
+    );
 
     const submission = createSharedStorySubmission(
       model,

@@ -40,5 +40,3 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
-
-# local tool state and generated media

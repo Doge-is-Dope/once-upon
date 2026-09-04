@@ -1,5 +1,5 @@
 @layer frame {
-  @layer tokens, record, scene, a11y;
+  @layer tokens, record, scene;
 
   @layer tokens {
     :root {
@@ -10,12 +10,10 @@
       --felt-rgb: 27 40 35;
       --brass: #b08d57;
       --brass-lit: #d9b777;
-      --brass-dark: #6e5530;
       --brass-rgb: 176 141 87;
 
       /* The case file */
       --paper: #ece0c4;
-      --paper-edge: #cdbb95;
       --sheet-under: #e3d6b6;
       --sheet-under-2: #dccfae;
       --ink: #241d15;
@@ -39,8 +37,6 @@
 
       /* Motion */
       --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-      --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-      --t-fast: 180ms;
       --t-base: 320ms;
 
       /* Shadows */

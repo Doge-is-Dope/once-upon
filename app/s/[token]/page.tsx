@@ -8,7 +8,6 @@ import { resolveRecordedEnding } from '@/lib/manuscript/prose';
 import { readSharedStory } from '@/lib/share/repository';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 type SharedStoryRouteProps = {
   params: Promise<{ token: string }>;

@@ -270,12 +270,6 @@
       text-transform: uppercase;
     }
 
-    @media (max-width: 40rem) {
-      .story-clues-control {
-        right: 0.5rem;
-      }
-    }
-
     @media (prefers-contrast: more) {
       .desk-felt {
         background: var(--felt-deep);

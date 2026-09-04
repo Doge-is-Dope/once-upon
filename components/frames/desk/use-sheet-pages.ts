@@ -17,8 +17,6 @@ type PaginationMetrics = {
   current: number;
 };
 
-type TurnMode = 'swap' | 'slide' | 'jump' | 'feed';
-
 function paginationMetrics(pager: HTMLDivElement): PaginationMetrics | null {
   const width = pager.getBoundingClientRect().width;
   const flow = pager.querySelector<HTMLElement>('.sheet-flow');
@@ -66,13 +64,12 @@ export function usePagination({
   pagerRef: RefObject<HTMLDivElement | null>;
   page: number;
   pageCount: number;
-  goToPage: (target: number, mode?: TurnMode) => void;
-  goToLastPage: (mode?: TurnMode) => void;
+  goToPage: (target: number) => void;
+  goToLastPage: () => void;
   goToPrevious: () => void;
   goToNext: () => void;
   getCurrentPage: () => number;
   pageAt: (element: Element) => number;
-  reflowTo: (anchor: Element | null, mode?: 'swap' | 'jump') => void;
   measure: () => { count: number };
 } {
   const pagerRef = useRef<HTMLDivElement | null>(null);
@@ -112,26 +109,19 @@ export function usePagination({
   );
 
   const goToPage = useCallback(
-    (requested: number, mode: TurnMode = 'swap') => {
+    (requested: number) => {
       const result = metrics();
       if (!result) return;
       const next = Math.min(Math.max(requested, 0), result.count - 1);
       targetPage.current = next;
       setPage(next);
-      result.pager.scrollTo({
-        left: next * result.stride,
-        behavior:
-          mode === 'slide' &&
-          !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-            ? 'smooth'
-            : 'auto',
-      });
+      result.pager.scrollTo({ left: next * result.stride, behavior: 'auto' });
     },
     [metrics],
   );
 
   const goToLastPage = useCallback(
-    (mode: TurnMode = 'swap') => goToPage(Number.MAX_SAFE_INTEGER, mode),
+    () => goToPage(Number.MAX_SAFE_INTEGER),
     [goToPage],
   );
 
@@ -148,12 +138,12 @@ export function usePagination({
   }, [goToPage, navigationEnabled, onManualNavigation]);
 
   const reflowTo = useCallback(
-    (anchor: Element | null, mode: 'swap' | 'jump' = 'jump') => {
+    (anchor: Element | null) => {
       const { count } = measure();
       const next = anchor
         ? pageAt(anchor)
         : Math.min(targetPage.current, count - 1);
-      goToPage(next, mode);
+      goToPage(next);
     },
     [goToPage, measure, pageAt],
   );
@@ -184,7 +174,7 @@ export function usePagination({
         Array.from(result.flow.children).find(
           (child) => pageAt(child) >= result.current,
         ) ?? null;
-      reflowTo(anchor, 'jump');
+      reflowTo(anchor);
     };
     const observer = new ResizeObserver(([entry]) => {
       const box = entry?.contentRect;
@@ -235,7 +225,6 @@ export function usePagination({
     goToNext,
     getCurrentPage,
     pageAt,
-    reflowTo,
     measure,
   };
 }

@@ -160,20 +160,7 @@ await mkdir(OUT_DIR, { recursive: true });
   await writeTile('felt-grain.webp', size, data);
 }
 
-// 5. Satin ribbing for the bookmark: fine horizontal ribs with a soft
-//    sheen that the strip's own gradient shapes.
-{
-  const size = 128;
-  const data = makeTile(size, (u, v) => {
-    const rib = 0.5 + 0.5 * Math.sin(v * size * Math.PI); // one rib per 2px
-    const slub = fbm(u * 6, v, 64, 2, 211) * 0.5;
-    const alpha = rib * 0.16 + slub * 0.08;
-    return [255, 255, 255, alpha];
-  });
-  await writeTile('satin-rib.webp', size, data);
-}
-
-// 6. Bookcloth weave for the notebook cover: two orthogonal threads.
+// 5. Bookcloth weave for the notebook cover: two orthogonal threads.
 {
   const size = 256;
   const data = makeTile(size, (u, v) => {

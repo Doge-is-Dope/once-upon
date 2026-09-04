@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import '@fontsource-variable/literata/opsz.css';
-import '@fontsource-variable/literata/opsz-italic.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/600.css';
 import '@fontsource-variable/caveat/wght.css';

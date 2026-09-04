@@ -4,11 +4,7 @@ import type {
   InteractionEffectReceipt,
   StoryNarration,
 } from '@/lib/runtime/types';
-import {
-  formatChapterLabel,
-  resolveRecordedEnding,
-  splitParagraphBlocks,
-} from './prose';
+import { formatChapterLabel } from './prose';
 
 export type ManuscriptEffect = {
   receiptId: string;
@@ -35,19 +31,6 @@ export type ManuscriptReadModel = {
   title: string;
   chapters: ManuscriptChapterBlock[];
   completionPassage: { prose: string; recordProse?: string };
-};
-
-export type SharedStorySubmissionV1 = {
-  version: 1;
-  requestId: string;
-  experienceId: string;
-  storyId: string;
-  status: 'COMPLETE';
-  chapters: Array<{
-    title: string;
-    prose: string;
-    effectInteractionId: string | null;
-  }>;
 };
 
 export type SharedStorySubmissionV2 = {
@@ -154,36 +137,6 @@ export function effectFromReceipt(
       };
     }),
   };
-}
-
-export function manuscriptToText(model: ManuscriptReadModel): string {
-  const completionParagraphs = splitParagraphBlocks(
-    model.completionPassage.prose,
-  );
-  const ending =
-    model.completionPassage.recordProse !== undefined
-      ? resolveRecordedEnding(
-          completionParagraphs,
-          splitParagraphBlocks(model.completionPassage.recordProse),
-        )
-      : completionParagraphs;
-  return [
-    model.title,
-    ...model.chapters.flatMap((chapter) => [
-      `${chapter.label}: ${chapter.title}`,
-      ...(chapter.effect
-        ? [
-            chapter.effect.title,
-            ...chapter.effect.facts.map(({ value }) => value),
-          ]
-        : []),
-      chapter.prose,
-    ]),
-    ...ending,
-  ]
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join('\n\n');
 }
 
 export function createSharedStorySubmission(

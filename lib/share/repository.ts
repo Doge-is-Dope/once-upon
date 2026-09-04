@@ -14,7 +14,6 @@ type ShareEnvironment = {
 };
 
 export { ShareRepositoryError } from './database';
-export type { PublishResult } from './database';
 
 export async function publishSharedStory(
   share: ValidatedShare,

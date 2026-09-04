@@ -1,6 +1,5 @@
 /* The desk frame's stylesheet. Order is declared once in tokens.css:
-   later sub-layers win, so scene overrides the ported record styles and
-   a11y overrides everything. */
+   later sub-layers win, so scene overrides the ported record styles. */
 @import './tokens.css';
 @import './record.css';
 @import './scene.css';

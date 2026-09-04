@@ -247,7 +247,7 @@ export function StoryScroll({
     const article = freshArticleRef.current;
     if (!article) return;
     const startPage = pageAt(article);
-    goToPage(startPage, 'feed');
+    goToPage(startPage);
     followingHead.current = true;
     const caret = caretRef.current;
     const pager = pagerRef.current;
@@ -320,7 +320,7 @@ export function StoryScroll({
           // Follow only while the reader is still on the page the typing
           // head just left; a manual turn takes priority.
           if (followingHead.current) {
-            goToPage(nextPage, 'feed');
+            goToPage(nextPage);
             turnSettlesAt = now + 800;
           } else setNewPagesAhead(true);
           headPage = nextPage;
@@ -328,7 +328,7 @@ export function StoryScroll({
       }
       if (elapsed > typingPlan.total + 400) {
         hideCaret();
-        if (followingHead.current) goToLastPage('feed');
+        if (followingHead.current) goToLastPage();
         else setNewPagesAhead(true);
         return;
       }
@@ -542,7 +542,7 @@ export function StoryScroll({
             type="button"
           >
             <span aria-hidden="true">←</span>
-            <span className="sheet-control-label">Previous</span>
+            <span>Previous</span>
           </button>
           <button
             aria-label={
@@ -552,7 +552,7 @@ export function StoryScroll({
             onClick={goToNext}
             type="button"
           >
-            <span className="sheet-control-label">Next</span>
+            <span>Next</span>
             <span aria-hidden="true">→</span>
           </button>
         </div>
