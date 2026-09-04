@@ -33,7 +33,7 @@ export function StoryShare({
     [experience, session],
   );
   const requestId = useRef<string | null>(null);
-  const linkInputRef = useRef<HTMLInputElement>(null);
+  const linkInputRef = useRef<HTMLTextAreaElement>(null);
   const [publishState, setPublishState] = useState<PublishState>('idle');
   const [publicLink, setPublicLink] = useState('');
   const [error, setError] = useState('');
@@ -94,11 +94,13 @@ export function StoryShare({
           <label className="sr-only" htmlFor="public-story-link">
             Manuscript copy link
           </label>
-          <input
+          <textarea
             id="public-story-link"
             onFocus={(event) => event.currentTarget.select()}
             readOnly
             ref={linkInputRef}
+            rows={2}
+            spellCheck={false}
             value={publicLink}
           />
           <button

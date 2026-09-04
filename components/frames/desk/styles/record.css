@@ -1113,6 +1113,8 @@
     }
 
     .sheet-footer-status {
+      container-name: sheet-footer-status;
+      container-type: inline-size;
       min-width: 0;
       max-height: 100%;
       overflow-y: auto;
@@ -2092,22 +2094,25 @@
       break-inside: avoid;
     }
 
-    .public-link-result input {
+    .public-link-result textarea {
       width: 100%;
       min-width: 0;
-      padding: 0.7rem 0.8rem;
+      min-height: 3rem;
+      padding: 0.35rem 0.65rem;
       overflow: hidden;
       color: var(--ink);
       background: transparent;
       border: 0;
       outline: 0;
       font: inherit;
-      font-size: 1rem;
+      font-size: 0.82rem;
       line-height: 1.35;
-      text-overflow: ellipsis;
+      overflow-wrap: anywhere;
+      resize: none;
+      white-space: pre-wrap;
     }
 
-    .public-link-result input:focus-visible {
+    .public-link-result textarea:focus-visible {
       box-shadow: inset 0 0 0 2px var(--focus);
     }
 
@@ -2137,6 +2142,34 @@
       color: var(--muted-ink);
       font-family: var(--font-type);
       font-size: 0.75rem;
+    }
+
+    @container sheet-footer-status (max-width: 34rem) {
+      .ending-share {
+        grid-template-columns: minmax(0, 1fr);
+        align-content: end;
+        gap: 0.1rem;
+      }
+
+      .ending-share > p {
+        grid-column: 1;
+        overflow: visible;
+        line-height: 1.2;
+        text-overflow: clip;
+        white-space: normal;
+      }
+
+      .ending-share-actions,
+      .public-link-result {
+        width: 100%;
+        grid-column: 1;
+        grid-row: auto;
+        margin-top: 0;
+      }
+
+      .ending-share-actions button {
+        width: 100%;
+      }
     }
 
     .webmcp-inspector {

@@ -753,6 +753,28 @@ test('completes the story within six registrations and shares a unique story lin
   ).toBeVisible();
   await page.getByRole('button', { name: 'Create a link' }).click();
   await expect(publicLink).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.ending-share > p')).toHaveCSS(
+    'white-space',
+    'normal',
+  );
+  expect(
+    await page.locator('.ending-share').evaluate((share) => {
+      const description = share.querySelector(':scope > p');
+      const link = share.querySelector<HTMLTextAreaElement>(
+        '#public-story-link',
+      );
+      const status = share.closest('.sheet-footer-status');
+      if (!description || !link || !status) return false;
+
+      return (
+        description.scrollWidth <= description.clientWidth + 1 &&
+        description.scrollHeight <= description.clientHeight + 1 &&
+        link.scrollWidth <= link.clientWidth + 1 &&
+        link.scrollHeight <= link.clientHeight + 1 &&
+        share.scrollHeight <= status.clientHeight + 1
+      );
+    }),
+  ).toBe(true);
   await expect(page.locator('.sheet-page-indicator')).toHaveText(
     pageCountBeforeShare,
   );
