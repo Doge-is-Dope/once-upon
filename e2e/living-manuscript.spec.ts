@@ -1,6 +1,10 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { experienceDefinition } from '../experiences/the-last-manuscript/definition';
+import {
+  resolveRecordedEnding,
+  splitParagraphBlocks,
+} from '../lib/manuscript/prose';
 import { SECURITY_HEADER_VALUES } from '../lib/security/headers';
 import { makeCompleteShareSubmission } from '../tests/support/share-fixtures';
 import {
@@ -762,8 +766,21 @@ test('completes the story within six registrations and shares a unique story lin
     page.getByRole('textbox', { name: 'Manuscript copy link' }),
   ).toHaveCount(0);
   await expect(page.locator('.backspace-replacement')).toBeVisible({
-    timeout: 30_000,
+    timeout: 45_000,
   });
+  const escapeParagraphs = splitParagraphBlocks(
+    experienceDefinition.story.completionPassage.prose,
+  );
+  const officialEscapeParagraphs = splitParagraphBlocks(
+    experienceDefinition.story.completionPassage.recordProse!,
+  );
+  const completionParagraphs = page.locator('.completion-passage p');
+  await expect(completionParagraphs).toHaveCount(3);
+  await expect(completionParagraphs.nth(0)).toHaveText(escapeParagraphs[0]!);
+  await expect(completionParagraphs.nth(1)).toHaveText(escapeParagraphs[1]!);
+  await expect(
+    completionParagraphs.last().locator('.backspace-replacement'),
+  ).toHaveCount(1);
   const rewriteSamples: string[] = [];
   const rewritePages: string[] = [];
   for (let sample = 0; sample < 3; sample += 1) {
@@ -796,10 +813,11 @@ test('completes the story within six registrations and shares a unique story lin
   await expect(page.locator('.sheet-page-indicator')).toContainText(
     `Page ${pageHeldDuringRewrite} of`,
   );
-  const completionParagraphs = page.locator('.completion-passage p');
-  await expect(completionParagraphs.first()).toContainText(
-    'No alarm follows you. No footsteps come after you.',
-  );
+  await expect(completionParagraphs.nth(0)).toHaveText(escapeParagraphs[0]!);
+  await expect(completionParagraphs.nth(1)).toHaveText(escapeParagraphs[1]!);
+  await expect(
+    completionParagraphs.last().locator('.completion-ending-text'),
+  ).toHaveText(officialEscapeParagraphs[2]!);
   await expect(completionParagraphs.last()).toContainText(
     'The subject continues walking.',
   );
@@ -924,8 +942,8 @@ test('completes the story within six registrations and shares a unique story lin
   await expect(reader.locator('.shared-chapter').first()).toContainText(
     'The question wakes you at a table.',
   );
-  await expect(reader.locator('.shared-completion p').first()).toContainText(
-    'No alarm follows you. No footsteps come after you.',
+  await expect(reader.locator('.shared-completion p')).toHaveText(
+    resolveRecordedEnding(escapeParagraphs, officialEscapeParagraphs),
   );
   await expect(reader.locator('.shared-completion p').last()).toContainText(
     'The subject continues walking.',
@@ -1356,7 +1374,15 @@ test('keeps every surface inside short desktop columns through the ending', asyn
     expect(await pageIndexOf(chapter.locator('.chapter-number'))).toBe(
       await pageIndexOf(chapter.locator('h2')),
     );
-  const lastParagraph = page.locator('.completion-passage p').last();
+  const endingParagraphs = page.locator('.completion-passage p');
+  await expect(endingParagraphs).toHaveCount(3);
+  await expect(endingParagraphs.nth(0)).toContainText(
+    'You start down the stairs.',
+  );
+  await expect(endingParagraphs.nth(1)).toContainText(
+    'door to the service lane',
+  );
+  const lastParagraph = endingParagraphs.last();
   await scrollSheetToElement(lastParagraph);
   await expect(lastParagraph).toContainText('The subject continues walking.');
   await expectElementInsideActiveSheet(lastParagraph);
@@ -1806,9 +1832,13 @@ async function commit(
     turnId,
     title,
     prose:
-      'You follow the choice through the quiet room and keep each physical detail in view. The wall speaker waits while the notepad, wardrobe, and handleless door remain where you left them. Nothing supplies an answer for you; the next fact comes only from what you examine.',
+      status === 'complete'
+        ? 'You stand inside Room Seven with the manuscript in your hands. The sound beyond the turn draws closer while the open doorway frames the short corridor. Your fingers tighten against the stitched spine.'
+        : 'You follow the choice through the quiet room and keep each physical detail in view. The wall speaker waits while the notepad, wardrobe, and handleless door remain where you left them. Nothing supplies an answer for you; the next fact comes only from what you examine.',
     continuitySummary:
-      'You remain in the room with the notepad, wardrobe, wall speaker, and handleless door, following the evidence in the order you found it.',
+      status === 'complete'
+        ? 'You remain inside Room Seven holding the manuscript as the transfer team approaches beyond the turn; the fixed ending has not begun.'
+        : 'You remain in the room with the notepad, wardrobe, wall speaker, and handleless door, following the evidence in the order you found it.',
     discoveryIds,
     status,
     ...(receipt

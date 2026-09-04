@@ -1,7 +1,7 @@
 import type { StoryDefinition } from '@/lib/runtime/types';
 
 export const lastManuscriptStory: StoryDefinition = {
-  id: 'last-manuscript-living-v5',
+  id: 'last-manuscript-living-v6',
   narration: 'prose',
   prologue: {
     title: 'The question at 5:41',
@@ -72,9 +72,9 @@ export const lastManuscriptStory: StoryDefinition = {
   ],
   completionPassage: {
     prose:
-      'The elevator descends without stopping. Its doors open onto a narrow service lane wet with rain. No alarm follows you. No footsteps come after you.\n\nBy the next corner, the manuscript is hidden beneath your coat and the building looks like any other office after dark. You keep walking.',
+      'The trolley wheels draw closer to the turn. You close the manuscript, step out of the room, and push open the stairwell door on the same side of the corridor. It closes behind you, muffling the sounds outside. You start down the stairs.\n\nAt ground level, you push open the door to the service lane. Rain touches your face. The stairwell light falls behind you as you pull the door shut and follow the narrow lane toward the street.\n\nBy the next corner, the manuscript is hidden beneath your coat. You look back at a building that looks like any other office after dark. You keep walking.',
     recordProse:
-      'The elevator descends without stopping. Its doors open onto a narrow service lane wet with rain. No alarm follows the subject. No footsteps come after the subject.\n\nBy the next corner, the manuscript is hidden beneath the subject’s coat and the building looks like any other office after dark. The subject continues walking.',
+      'The trolley wheels draw closer to the turn. The subject closes the manuscript, steps out of the room, and pushes open the stairwell door on the same side of the corridor. It closes behind the subject, muffling the sounds outside. The subject starts down the stairs.\n\nAt ground level, the subject pushes open the door to the service lane. Rain touches the subject’s face. The stairwell light falls behind the subject as the subject pulls the door shut and follows the narrow lane toward the street.\n\nBy the next corner, the manuscript is hidden beneath the subject’s coat. The subject looks back at a building that looks like any other office after dark. The subject continues walking.',
   },
   discoveryIds: ['pencil_found', 'manuscript_found'],
   discoveryRequirements: [
@@ -185,9 +185,12 @@ export const lastManuscriptStory: StoryDefinition = {
         {
           id: 'national_correction_network',
           value:
-            'A final notice sounds: “Automatic correction limit reached. Manual transfer team has arrived.” The handleless door unlocks and slides into the wall. You remain inside the room. Across the corridor stand more identical doors. Beneath a row of government department seals, a status board lists incidents from cities across the country, each divided into NEWS, MEDICAL, JUDICIAL, and ASSOCIATED PERSONS. Most rows are marked CONSISTENT. North Station reads 183/184; the remaining entry is Room Seven. A national map beside the board marks active facilities in every region.\n\nNorth Station is not an isolated cover-up. The government maintains public history by changing records first, then sending everyone who remembers another version into rooms like this one. The manuscript’s final page is blank. At the far end of the corridor, an elevator indicator rises toward this floor. Air from the open door lifts the blank page. The indicator reaches your level. The elevator doors begin to open.',
+            'A final notice sounds: “Automatic correction limit reached. Manual transfer team has arrived. Room Seven: prepare for transfer.” The handleless door unlocks and slides into the wall. You remain inside the room, the manuscript in your hands. Room Seven opens onto a short side corridor that turns into the main corridor. Before the turn, on the same side as your room, a door is marked EXIT STAIRS. Across from you, a status board beneath government department seals lists incidents from cities across the country, each divided into NEWS, MEDICAL, JUDICIAL, and ASSOCIATED PERSONS. Most rows are marked CONSISTENT. North Station reads 183/184; the remaining entry is Room Seven. Beside the board, a national map marks active facilities in every region. More identical room doors line the side corridor.\n\nNorth Station is not an isolated cover-up. The government maintains public history by changing records first, then sending everyone who remembers another version into rooms like this one. Air from the open door lifts the manuscript’s final blank page. Beyond the turn, elevator doors slide open. Trolley wheels bump over the threshold. Someone says, “Room Seven.”',
+          agentNote:
+            'End the final chapter with the player still inside Room Seven, holding the manuscript, as the transfer team approaches from beyond the turn. Do not repeat the network explanation or the receipt. Do not move the team around the turn or into the room, add a confrontation, or decide the player’s next action. The fixed completion passage alone takes the player out through the already visible stairwell and down to the service lane before the team reaches the room. The escape is real, not an arranged release; do not invent a helper, fault, new mechanism, or additional surveillance reveal.',
           protectedTerms: [
             'Manual transfer team has arrived',
+            'EXIT STAIRS',
             'North Station reads 183/184',
             'government department seals',
             'active facilities in every region',

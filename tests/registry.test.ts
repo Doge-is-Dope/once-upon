@@ -18,7 +18,7 @@ describe('experience registry', () => {
       /get_story_state|begin_story_turn|commit_story_chapter|revision|receipt/,
     );
     expect(experienceDefinition.agentContract).toMatchObject({
-      version: 'last-manuscript-agent-v3',
+      version: 'last-manuscript-agent-v4',
       instructions: expect.not.stringContaining('recordProse'),
     });
     // The agent writes prose only; the fixed ending still carries the
