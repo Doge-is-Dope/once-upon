@@ -58,10 +58,6 @@ export function DeskRail({
   const [selectedTab, setSelectedTab] = useState<RailTab>('notes');
   const tab: RailTab = debugMode && selectedTab === 'tools' ? 'tools' : 'notes';
   const closeRef = useRef<HTMLButtonElement>(null);
-  const tabRefs = useRef<Record<RailTab, HTMLButtonElement | null>>({
-    notes: null,
-    tools: null,
-  });
 
   // Switching the inspector on in Settings brings its tab forward once.
   const previousDebugMode = useRef(debugMode);
@@ -99,12 +95,6 @@ export function DeskRail({
 
   const hidden = !docked && !open;
   const tabs: RailTab[] = ['notes', 'tools'];
-  const moveTab = (from: RailTab, step: 1 | -1) => {
-    const index = tabs.indexOf(from);
-    const next = tabs[(index + step + tabs.length) % tabs.length]!;
-    setSelectedTab(next);
-    tabRefs.current[next]?.focus();
-  };
   return (
     <aside
       aria-label="Notebook"
@@ -142,15 +132,8 @@ export function DeskRail({
               id={TAB_IDS[name].tab}
               key={name}
               onClick={() => setSelectedTab(name)}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowRight') moveTab(name, 1);
-                if (event.key === 'ArrowLeft') moveTab(name, -1);
-              }}
-              ref={(element) => {
-                tabRefs.current[name] = element;
-              }}
               role="tab"
-              tabIndex={tab === name ? 0 : -1}
+              tabIndex={0}
               type="button"
             >
               {name === 'notes' ? (

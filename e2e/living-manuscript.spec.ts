@@ -617,7 +617,23 @@ test('opens and dismisses the accessible settings panel', async ({ page }) => {
   await backdrop.click({ position: { x: 20, y: 120 } });
   await expect(panel).toBeHidden();
   await expect(backdrop).toBeHidden();
-  await page.getByRole('tab', { name: /^Notes/ }).click();
+  // The page keys belong to the record alone: with a section tab focused,
+  // an arrow key still turns the manuscript page and leaves the tab as is.
+  // Both tabs stay reachable with the Tab key instead.
+  const notesTab = page.getByRole('tab', { name: /^Notes/ });
+  const pageIndicator = page.locator('.sheet-page-indicator');
+  await expect(pageIndicator).toHaveText(/Page \d+ of \d+/);
+  await page.keyboard.press('ArrowRight');
+  const indicatorBefore = await pageIndicator.textContent();
+  await toolsTab.focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(pageIndicator).not.toHaveText(indicatorBefore!);
+  await expect(toolsTab).toHaveAttribute('aria-selected', 'true');
+  await expect(toolsTab).toBeFocused();
+  await expect(notesTab).toHaveAttribute('tabindex', '0');
+  await notesTab.focus();
+  await page.keyboard.press('Enter');
+  await expect(notesTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.webmcp-inspector')).toBeHidden();
   // Switching the inspector back off removes the section tabs again.
   await trigger.click();
